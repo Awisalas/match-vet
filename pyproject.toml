@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "match-vet"
+version = "0.1.0"
+description = "Local-first football research and preference vetting."
+readme = "README.md"
+requires-python = "==3.14.*"
+dependencies = [
+  "requests==2.34.2",
+]
+
+[project.scripts]
+matchvet = "matchvet.cli:main"
+
+[dependency-groups]
+dev = [
+  "mypy==1.18.2",
+  "pytest==9.1.1",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.package-data]
+matchvet = ["baseline.json", "py.typed"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+package = true
+python-downloads = "never"
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+files = ["src", "tests"]

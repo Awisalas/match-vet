@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "termux-aarch64-python-3.14.6-v1",
+  "python": {
+    "implementation": "cpython",
+    "version": "3.14.6",
+    "termux_package_version": "3.14.6-1"
+  },
+  "architecture": "aarch64",
+  "platform": "android-24-arm64_v8a",
+  "termux": {
+    "version": "0.118.3",
+    "release": "F_DROID"
+  },
+  "android": {
+    "version": "16",
+    "api_level": "36"
+  },
+  "termux_packages": {
+    "git": "2.55.0",
+    "libandroid-complex-math": "0.2",
+    "libopenblas": "0.3.34",
+    "python": "3.14.6-1",
+    "python-numpy": "2.4.4-1",
+    "python-scipy": "1.18.1",
+    "ruff": "0.16.1",
+    "sqlite": "3.53.4",
+    "uv": "0.12.1"
+  },
+  "python_packages": {
+    "mypy": "1.18.2",
+    "pytest": "9.1.1",
+    "requests": "2.34.2"
+  },
+  "commands": [
+    "git",
+    "ruff",
+    "sqlite3",
+    "uv"
+  ],
+  "thread_limits": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1"
+  }
+}
