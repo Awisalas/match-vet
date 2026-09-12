@@ -6,6 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from matchvet import cli
+from matchvet.store import open_store
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NETWORK_GUARD = PROJECT_ROOT / "tests" / "no_network"
 
@@ -65,6 +70,33 @@ def test_no_arguments_does_not_create_local_or_home_state(tmp_path: Path) -> Non
     assert result.returncode == 0
     assert list(working_directory.iterdir()) == []
     assert list(home_directory.iterdir()) == []
+
+
+def test_no_arguments_reports_a_healthy_default_store_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    private_home = tmp_path / "home"
+    private_home.mkdir()
+    database_path = private_home / ".local" / "share" / "matchvet" / "matchvet.sqlite3"
+    with open_store(database_path, private_root=tmp_path):
+        pass
+    before = database_path.stat().st_mtime_ns
+    monkeypatch.setattr(cli, "default_database_path", lambda: database_path)
+    monkeypatch.setattr(cli, "termux_private_root", lambda: tmp_path)
+
+    cli._show_bootstrap_state()
+
+    assert capsys.readouterr().out == (
+        "MatchVet\n"
+        "State: READY\n"
+        "Mode: RESEARCH_ONLY\n"
+        "Store: healthy; schema 1\n"
+        "Active run: none\n"
+        "Next action: matchvet doctor\n"
+    )
+    assert database_path.stat().st_mtime_ns == before
 
 
 def test_doctor_captures_the_pinned_environment_without_secrets() -> None:
@@ -183,5 +215,64 @@ def test_human_doctor_report_is_readable_and_keeps_research_only_mode() -> None:
     )
     assert "[PASS] python-version: expected 3.14.6; actual 3.14.6" in result.stdout
     assert result.stdout.endswith(
-        "Store: not configured (T02)\nActive run: none\nNext action: matchvet\n"
+        "Store: not configured\nActive run: none\nNext action: matchvet\n"
     )
+
+
+def test_doctor_reports_a_configured_store_without_migrating_it(tmp_path: Path) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    with open_store(database_path, private_root=private_root):
+        pass
+
+    result = run_matchvet(
+        "doctor",
+        "--json",
+        "--store",
+        str(database_path),
+    )
+
+    assert result.returncode == 0
+    report = json.loads(result.stdout)
+    assert report["store"] == {
+        "applied_migrations": [1],
+        "foreign_key_violations": 0,
+        "integrity": "ok",
+        "issues": [],
+        "limits": {
+            "attached_databases": 0,
+            "columns": 512,
+            "expression_depth": 100,
+            "sql_length_bytes": 1_048_576,
+        },
+        "path": str(database_path),
+        "pragmas": {
+            "application_id": 1_297_499_476,
+            "auto_vacuum": 2,
+            "busy_timeout": 5_000,
+            "foreign_keys": 1,
+            "journal_mode": "wal",
+            "synchronous": 2,
+        },
+        "schema_version": 1,
+        "status": "HEALTHY",
+    }
+    assert any(
+        check["id"] == "store:integrity" and check["status"] == "PASS" for check in report["checks"]
+    )
+
+
+def test_doctor_reports_corruption_without_repairing_the_store(tmp_path: Path) -> None:
+    database_path = tmp_path / "corrupt.sqlite3"
+    original = b"not a sqlite database"
+    database_path.write_bytes(original)
+
+    result = run_matchvet("doctor", "--json", "--store", str(database_path))
+
+    assert result.returncode == 1
+    report = json.loads(result.stdout)
+    assert report["store"]["status"] == "RECOVERY_REQUIRED"
+    assert report["store"]["integrity"] == "unreadable"
+    assert report["error"]["code"] == "MV-STORE-INTEGRITY_FAILED"
+    assert database_path.read_bytes() == original

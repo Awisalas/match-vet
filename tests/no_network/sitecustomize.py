@@ -4,9 +4,10 @@ import socket
 from typing import Never
 
 
-def _deny_live_socket(*args: object, **kwargs: object) -> Never:
-    del args, kwargs
-    raise AssertionError("The default MatchVet test suite forbids live network sockets.")
+class _DeniedSocket(socket.socket):
+    def __new__(cls, *args: object, **kwargs: object) -> Never:
+        del cls, args, kwargs
+        raise AssertionError("The default MatchVet test suite forbids live network sockets.")
 
 
-socket.socket = _deny_live_socket  # type: ignore[assignment,misc]
+socket.socket = _DeniedSocket  # type: ignore[assignment,misc]

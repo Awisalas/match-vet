@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import platform
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,13 @@ from importlib import metadata, resources
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
+
+from matchvet.store import (
+    InspectionStatus,
+    default_database_path,
+    inspect_store,
+    termux_private_root,
+)
 
 
 @dataclass(frozen=True)
@@ -246,7 +254,7 @@ def _availability_check(identifier: str, available: bool) -> Check:
     )
 
 
-def build_report() -> dict[str, Any]:
+def build_report(store_path: Path | None = None) -> dict[str, Any]:
     baseline, baseline_digest = _load_baseline()
     baseline_python = baseline["python"]
     baseline_termux = baseline["termux"]
@@ -279,6 +287,10 @@ def build_report() -> dict[str, Any]:
     apt_sources = _apt_sources()
     dpkg_inventory = _dpkg_inventory()
     git_commit = _git_commit(project_root)
+    store_inspection = inspect_store(
+        store_path or default_database_path(),
+        private_root=termux_private_root(),
+    )
 
     checks = [
         _check(
@@ -299,6 +311,13 @@ def build_report() -> dict[str, Any]:
         _check(f"termux-package:{package}", str(expected), termux_package_versions[package])
         for package, expected in baseline["termux_packages"].items()
     )
+    if store_inspection.status is not InspectionStatus.NOT_CONFIGURED:
+        checks.append(
+            _availability_check(
+                "store:integrity",
+                store_inspection.status is InspectionStatus.HEALTHY,
+            )
+        )
     checks.extend(
         _check(f"python-package:{package}", str(expected), python_package_versions[package])
         for package, expected in baseline["python_packages"].items()
@@ -348,6 +367,17 @@ def build_report() -> dict[str, Any]:
             "baseline_sha256": baseline_digest,
             "files": manifest_files,
         },
+        "store": {
+            "path": store_inspection.path,
+            "status": store_inspection.status,
+            "schema_version": store_inspection.schema_version,
+            "applied_migrations": store_inspection.applied_migrations,
+            "integrity": store_inspection.integrity,
+            "foreign_key_violations": store_inspection.foreign_key_violations,
+            "pragmas": store_inspection.pragmas,
+            "limits": store_inspection.limits,
+            "issues": [asdict(issue) for issue in store_inspection.issues],
+        },
         "environment": {
             "python": python_environment,
             "architecture": platform.machine(),
@@ -364,12 +394,18 @@ def build_report() -> dict[str, Any]:
             "git_commit": git_commit,
         },
         "capabilities": {
-            "authoritative_store": "NOT_CONFIGURED_T02",
+            "authoritative_store": store_inspection.status,
             "active_run": "NONE",
             "source_reachability": "NOT_IMPLEMENTED_T06",
         },
     }
-    if status == "FAIL":
+    if store_inspection.status is InspectionStatus.RECOVERY_REQUIRED:
+        report["error"] = {
+            "code": store_inspection.issues[0].code,
+            "summary": store_inspection.issues[0].message,
+            "recovery_command": f"matchvet doctor --store {shlex.quote(store_inspection.path)}",
+        }
+    elif status == "FAIL":
         report["error"] = {
             "code": "MV-PREFLIGHT-ENVIRONMENT_MISMATCH",
             "summary": "The current Termux environment does not match the pinned baseline.",
@@ -390,7 +426,16 @@ def render_human_report(report: dict[str, Any]) -> str:
             f"[{check['status']}] {check['id']}: expected {check['expected']}; "
             f"actual {check['actual']}"
         )
-    lines.append("Store: not configured (T02)")
+    store = report["store"]
+    if store["status"] == InspectionStatus.NOT_CONFIGURED:
+        lines.append("Store: not configured")
+    elif store["status"] == InspectionStatus.HEALTHY:
+        lines.append(
+            f"Store: healthy; schema {store['schema_version']}; "
+            f"migrations {len(store['applied_migrations'])}"
+        )
+    else:
+        lines.append(f"Store: read-only recovery required; {store['issues'][0]['code']}")
     lines.append("Active run: none")
     if report["status"] == "PASS":
         lines.append("Next action: matchvet")

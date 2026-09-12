@@ -4,6 +4,8 @@ MatchVet is a zero-cost, local-first football research and betting-preference ve
 
 T01 provides the installable command-line baseline only. It does not create a database, ingest football data, or make recommendations.
 
+T02 adds the authoritative local SQLite store. See [the local store guide](docs/local-store.md) for its private-storage, migration, and recovery contracts. It still does not ingest football data or create recommendations.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:
@@ -11,6 +13,10 @@ Use the pinned native Termux packages and Python environment described in [the T
     scripts/bootstrap-termux.sh
     .venv/bin/matchvet
     .venv/bin/matchvet doctor
+
+To inspect a configured store without changing it:
+
+    .venv/bin/matchvet doctor --store /path/in/termux/private/storage/matchvet.sqlite3
 
 ## Checks
 
