@@ -203,8 +203,17 @@ The evidence state used when reliable evidence affirmatively establishes that a 
 **Critical Evidence**:
 Evidence whose absence or staleness could materially change a Preference Fit. Criticality is defined by Preference Family and, where justified, Supported Line using domain reasoning and sufficient historical out-of-sample evidence; insufficient coverage of any Critical Evidence blocks PLAY regardless of overall Data Quality.
 
+**Mandatory Research**:
+The shared investigation that every Betting Preference must receive, whether or not each fact is ultimately found. Failure to perform it makes Research Sufficiency incomplete, while an unsuccessful search blocks PLAY only when the missing fact is Critical Evidence or could materially change the decision.
+
 **Optional Evidence**:
-Evidence that can improve an evaluation without deciding it alone. Missing Optional Evidence lowers confidence and Data Quality rather than automatically blocking PLAY.
+Evidence that can improve an evaluation without deciding it alone. It has either Important or Context influence; missing Optional Evidence lowers confidence and Data Quality rather than automatically blocking PLAY.
+
+**Important Evidence**:
+Optional Evidence that can materially affect Data Quality, Probability Uncertainty, Failure/Risk Assessment, or interpretation without automatically blocking PLAY.
+
+**Context Evidence**:
+Optional Evidence researched and retained when useful, with lower default influence than Important Evidence.
 
 **Evidence Freshness**:
 Whether evidence is recent enough for its type at the Matchweek Research Cutoff. Fast-changing team news requires tighter limits than tactical tendencies, underlying performance, historical matchups, or long-term team strength.
