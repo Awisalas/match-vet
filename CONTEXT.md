@@ -13,6 +13,18 @@ The fixed recommendation scope for the 2026/27 season: Premier League, Serie A, 
 **Matchweek**:
 The user-facing Friday-through-Monday calendar slate containing every eligible Target Match in the seven configured Target Leagues whose scheduled kickoff falls within that window. Official league round numbers do not control membership; a rescheduled fixture outside the window belongs to another Matchweek.
 
+**Fixture Revision**:
+An append-only, source-backed statement of a fixture's canonical identity, teams, competition, venue, kickoff, and status as known at a particular time. A later revision may supersede the current view but never overwrites an earlier revision.
+
+**Frozen Matchweek Membership**:
+The immutable set of Target Matches established at the Matchweek Research Cutoff from each fixture's highest-authority, latest cutoff-valid Fixture Revision. It retains the controlling revision ID and digest and never changes when later schedule information arrives.
+
+**Indeterminate Fixture Membership**:
+The audited state used when MatchVet cannot resolve a fixture's canonical identity confidently at the Matchweek Research Cutoff. It is not a Target Match, receives no match decision, and does not count in normal recommendation-coverage metrics.
+
+**Post-cutoff Fixture Appendix**:
+The append-only audit timeline for fixtures first added to the Matchweek window and for Fixture Revisions learned after the Matchweek Research Cutoff. It can support evaluation or Research-only analysis but cannot alter Frozen Matchweek Membership or create a retroactive recommendation.
+
 **Target Match**:
 An upcoming fixture in a Target League and Matchweek that is eligible for a PLAY or AVOID MATCH outcome.
 
