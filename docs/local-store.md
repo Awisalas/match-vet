@@ -9,7 +9,9 @@ captures, cutoff assessments, source status history, corrections, corroboration,
 conflict records. Models, decisions, and reports remain outside this schema.
 T06 adds source captures, canonical league/team/fixture identities, structured match statistics,
 append-only fixture revisions, source assertions, and retained conflict records. Private source
-artifacts remain subject to their source-specific rights and retention metadata.
+artifacts remain subject to their source-specific rights and retention metadata. T08 adds
+append-only workload schedule context, frozen workload evidence, verified venue locations,
+Open-Meteo forecast captures, and Important weather evidence.
 
 ## Open and inspect
 
@@ -31,7 +33,7 @@ Every authoritative writer uses:
 
 One private lock file permits one MatchVet writer coordinator. Write work uses explicit bounded transactions. Network, parsing, modelling, and report work must remain outside them.
 
-## Schema version 6
+## Schema version 7
 
 The schema contains:
 
@@ -51,6 +53,10 @@ The schema contains:
 - canonical people and contextual evidence assertions for fixtures, teams, and people
 - source status history, cutoff eligibility, independent-origin corroboration, corrections, and
   immutable contextual conflict/resolution records
+- append-only domestic-cup, continental, international, and other workload schedule context
+- frozen Important workload evidence with rest, turnaround, density, congestion, and provenance
+- verified venue location provenance and bounded Open-Meteo forecast captures
+- cutoff-classified Important weather evidence, including explicit UNKNOWN states
 
 Later tickets add their own entities through new migrations.
 
@@ -65,7 +71,7 @@ Snapshot Manifest membership. Migration 3 adds the T04 run lifecycle. Existing s
 verified private SQLite pre-migration copy before a released migration runs. Migration 4 adds the
 T06 structured-ingestion records and append-only source assertions. Migration 5 adds T05
 Matchweek freeze records and cutoff membership. Migration 6 adds T07 contextual evidence
-records. A custom or
+records. Migration 7 adds T08 workload and weather evidence records. A custom or
 unsupported migration plan remains refused until a later backup capability can provide the
 required recovery export.
 

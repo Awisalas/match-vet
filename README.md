@@ -27,6 +27,11 @@ See the [Source Evidence guide](docs/source-evidence.md). It preserves retained 
 captures, independent origins, explicit OBSERVED/ABSENT/UNKNOWN states, cutoff classification,
 corroboration, corrections, and conflicts without researching, predicting, or recommending.
 
+T08 builds cutoff-valid workload and venue-weather Evidence for frozen Target Matches. See the
+[workload and weather guide](docs/workload-weather.md). It derives rest, turnaround, density,
+congestion, and cross-competition context from canonical Fixture Revisions, retains verified
+Open-Meteo provenance, represents unavailable weather as UNKNOWN, and remains RESEARCH_ONLY.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:

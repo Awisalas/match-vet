@@ -1755,6 +1755,273 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=7,
+        name="workload_and_weather_evidence",
+        statements=(
+            """
+            CREATE TABLE workload_schedule_events (
+                event_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                source_fixture_id TEXT NOT NULL,
+                revision_id TEXT NOT NULL,
+                revision_digest TEXT,
+                competition_key TEXT NOT NULL,
+                competition_name TEXT NOT NULL,
+                competition_type TEXT NOT NULL CHECK (
+                    competition_type IN (
+                        'TARGET_LEAGUE', 'DOMESTIC_CUP', 'CONTINENTAL', 'INTERNATIONAL',
+                        'FRIENDLY', 'LOWER_DIVISION', 'OTHER'
+                    )
+                ),
+                season_label TEXT NOT NULL,
+                home_team_id TEXT NOT NULL,
+                home_team_name TEXT,
+                away_team_id TEXT NOT NULL,
+                away_team_name TEXT,
+                kickoff_state TEXT NOT NULL CHECK (kickoff_state IN ('OBSERVED', 'UNKNOWN')),
+                kickoff_utc TEXT,
+                fixture_status TEXT NOT NULL CHECK (
+                    fixture_status IN (
+                        'COMPLETED', 'SCHEDULED', 'POSTPONED', 'CANCELLED', 'UNKNOWN'
+                    )
+                ),
+                observed_at_utc TEXT NOT NULL,
+                cutoff_eligibility TEXT NOT NULL CHECK (
+                    cutoff_eligibility IN ('CUTOFF_VALID', 'POST_CUTOFF', 'INDETERMINATE')
+                ),
+                provenance_json TEXT NOT NULL,
+                event_digest TEXT NOT NULL
+                    CHECK (length(event_digest) = 64 AND event_digest NOT GLOB '*[^0-9a-f]*'),
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (source_fixture_id, revision_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE workload_evidence (
+                workload_evidence_id TEXT PRIMARY KEY
+                    REFERENCES canonical_identifiers(canonical_id),
+                matchweek_id TEXT NOT NULL REFERENCES matchweeks(matchweek_id),
+                cutoff_id TEXT NOT NULL REFERENCES matchweek_research_cutoffs(cutoff_id),
+                target_fixture_id TEXT NOT NULL REFERENCES fixtures(fixture_id),
+                evidence_state TEXT NOT NULL CHECK (evidence_state IN ('OBSERVED', 'UNKNOWN')),
+                evidence_class TEXT NOT NULL CHECK (evidence_class = 'IMPORTANT'),
+                cutoff_eligibility TEXT NOT NULL CHECK (cutoff_eligibility = 'CUTOFF_VALID'),
+                payload_json TEXT NOT NULL,
+                provenance_json TEXT NOT NULL,
+                rules_name TEXT NOT NULL,
+                rules_digest TEXT NOT NULL
+                    CHECK (length(rules_digest) = 64 AND rules_digest NOT GLOB '*[^0-9a-f]*'),
+                evidence_digest TEXT NOT NULL
+                    CHECK (length(evidence_digest) = 64 AND evidence_digest NOT GLOB '*[^0-9a-f]*'),
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (matchweek_id, target_fixture_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE weather_locations (
+                location_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                venue_key TEXT NOT NULL UNIQUE,
+                venue_name TEXT NOT NULL,
+                latitude REAL,
+                longitude REAL,
+                location_state TEXT NOT NULL CHECK (location_state IN ('OBSERVED', 'UNKNOWN')),
+                source_key TEXT NOT NULL,
+                locator TEXT NOT NULL,
+                source_capture_id TEXT,
+                observed_at_utc TEXT NOT NULL,
+                provenance_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                CHECK (
+                    (location_state = 'OBSERVED' AND latitude IS NOT NULL AND longitude IS NOT NULL)
+                    OR (location_state = 'UNKNOWN' AND latitude IS NULL AND longitude IS NULL)
+                ),
+                CHECK (latitude IS NULL OR (latitude >= -90 AND latitude <= 90)),
+                CHECK (longitude IS NULL OR (longitude >= -180 AND longitude <= 180))
+            ) STRICT
+            """,
+            """
+            CREATE TABLE weather_captures (
+                capture_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                target_fixture_id TEXT NOT NULL REFERENCES fixtures(fixture_id),
+                request_key TEXT NOT NULL,
+                locator TEXT NOT NULL,
+                forecast_model TEXT NOT NULL,
+                forecast_issue_time_utc TEXT NOT NULL,
+                forecast_issue_time_source TEXT NOT NULL,
+                retrieved_at_utc TEXT NOT NULL,
+                response_status INTEGER NOT NULL CHECK (response_status BETWEEN 100 AND 599),
+                content_sha256 TEXT NOT NULL
+                    CHECK (length(content_sha256) = 64 AND content_sha256 NOT GLOB '*[^0-9a-f]*'),
+                byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
+                artifact_digest TEXT REFERENCES artifacts(digest),
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                forecast_target_time_utc TEXT NOT NULL,
+                forecast_interval_start_utc TEXT NOT NULL,
+                forecast_interval_end_utc TEXT NOT NULL,
+                cutoff_eligibility TEXT NOT NULL CHECK (
+                    cutoff_eligibility IN ('CUTOFF_VALID', 'POST_CUTOFF', 'INDETERMINATE')
+                ),
+                attribution TEXT NOT NULL,
+                units_json TEXT NOT NULL,
+                provenance_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (target_fixture_id, request_key, content_sha256)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE weather_evidence (
+                weather_evidence_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                matchweek_id TEXT NOT NULL REFERENCES matchweeks(matchweek_id),
+                target_fixture_id TEXT NOT NULL REFERENCES fixtures(fixture_id),
+                cutoff_utc TEXT NOT NULL,
+                location_id TEXT REFERENCES weather_locations(location_id),
+                capture_id TEXT REFERENCES weather_captures(capture_id),
+                evidence_state TEXT NOT NULL CHECK (evidence_state IN ('OBSERVED', 'UNKNOWN')),
+                evidence_class TEXT NOT NULL CHECK (evidence_class = 'IMPORTANT'),
+                cutoff_eligibility TEXT NOT NULL CHECK (
+                    cutoff_eligibility IN ('CUTOFF_VALID', 'POST_CUTOFF', 'INDETERMINATE')
+                ),
+                freshness TEXT NOT NULL CHECK (
+                    freshness IN ('CUTOFF_VALID', 'POST_CUTOFF', 'UNKNOWN')
+                ),
+                unknown_reason TEXT,
+                target_time_utc TEXT NOT NULL,
+                forecast_target_time_utc TEXT,
+                forecast_interval_start_utc TEXT,
+                forecast_interval_end_utc TEXT,
+                forecast_model TEXT,
+                forecast_issue_time_utc TEXT,
+                forecast_issue_time_source TEXT,
+                retrieved_at_utc TEXT,
+                latitude REAL,
+                longitude REAL,
+                values_json TEXT NOT NULL,
+                units_json TEXT NOT NULL,
+                location_provenance_json TEXT NOT NULL,
+                attribution TEXT NOT NULL,
+                source_locator TEXT,
+                response_status INTEGER,
+                response_content_sha256 TEXT,
+                eligible_target_match INTEGER NOT NULL CHECK (eligible_target_match IN (0, 1)),
+                freshness_age_seconds_at_cutoff REAL,
+                evidence_digest TEXT NOT NULL
+                    CHECK (length(evidence_digest) = 64 AND evidence_digest NOT GLOB '*[^0-9a-f]*'),
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (matchweek_id, target_fixture_id),
+                CHECK (
+                    (evidence_state = 'OBSERVED' AND unknown_reason IS NULL)
+                    OR (evidence_state = 'UNKNOWN' AND unknown_reason IS NOT NULL)
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TRIGGER workload_schedule_events_typed_identifier
+            BEFORE INSERT ON workload_schedule_events
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.event_id AND entity_kind = 'workload_schedule_event'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'workload schedule events require typed identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER workload_evidence_typed_identifier
+            BEFORE INSERT ON workload_evidence
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.workload_evidence_id AND entity_kind = 'workload_evidence'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'workload evidence requires typed identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER weather_locations_typed_identifier
+            BEFORE INSERT ON weather_locations
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.location_id AND entity_kind = 'weather_location'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'weather locations require typed identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER weather_captures_typed_identifier
+            BEFORE INSERT ON weather_captures
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.capture_id AND entity_kind = 'weather_capture'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'weather captures require typed identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER weather_evidence_typed_identifier
+            BEFORE INSERT ON weather_evidence
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.weather_evidence_id AND entity_kind = 'weather_evidence'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'weather evidence requires typed identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER workload_evidence_no_update
+            BEFORE UPDATE ON workload_evidence
+            BEGIN SELECT RAISE(ABORT, 'workload evidence is immutable'); END
+            """,
+            """
+            CREATE TRIGGER workload_evidence_no_delete
+            BEFORE DELETE ON workload_evidence
+            BEGIN SELECT RAISE(ABORT, 'workload evidence is immutable'); END
+            """,
+            """
+            CREATE TRIGGER workload_schedule_events_no_update
+            BEFORE UPDATE ON workload_schedule_events
+            BEGIN SELECT RAISE(ABORT, 'workload schedule events are immutable'); END
+            """,
+            """
+            CREATE TRIGGER workload_schedule_events_no_delete
+            BEFORE DELETE ON workload_schedule_events
+            BEGIN SELECT RAISE(ABORT, 'workload schedule events are immutable'); END
+            """,
+            """
+            CREATE TRIGGER weather_locations_no_update
+            BEFORE UPDATE ON weather_locations
+            BEGIN SELECT RAISE(ABORT, 'weather locations are immutable'); END
+            """,
+            """
+            CREATE TRIGGER weather_locations_no_delete
+            BEFORE DELETE ON weather_locations
+            BEGIN SELECT RAISE(ABORT, 'weather locations are immutable'); END
+            """,
+            """
+            CREATE TRIGGER weather_captures_no_update
+            BEFORE UPDATE ON weather_captures
+            BEGIN SELECT RAISE(ABORT, 'weather captures are immutable'); END
+            """,
+            """
+            CREATE TRIGGER weather_captures_no_delete
+            BEFORE DELETE ON weather_captures
+            BEGIN SELECT RAISE(ABORT, 'weather captures are immutable'); END
+            """,
+            """
+            CREATE TRIGGER weather_evidence_no_update
+            BEFORE UPDATE ON weather_evidence
+            BEGIN SELECT RAISE(ABORT, 'weather evidence is immutable'); END
+            """,
+            """
+            CREATE TRIGGER weather_evidence_no_delete
+            BEFORE DELETE ON weather_evidence
+            BEGIN SELECT RAISE(ABORT, 'weather evidence is immutable'); END
+            """,
+        ),
+    ),
 )
 
 
@@ -2215,6 +2482,81 @@ def _verify_schema_manifest(
                 ),
             }
         )
+    if schema_version >= 7:
+        expected_indexes.update(
+            {
+                (
+                    "workload_schedule_events",
+                    "sqlite_autoindex_workload_schedule_events_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "workload_schedule_events",
+                    "sqlite_autoindex_workload_schedule_events_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "workload_evidence",
+                    "sqlite_autoindex_workload_evidence_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "workload_evidence",
+                    "sqlite_autoindex_workload_evidence_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "weather_locations",
+                    "sqlite_autoindex_weather_locations_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "weather_locations",
+                    "sqlite_autoindex_weather_locations_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "weather_captures",
+                    "sqlite_autoindex_weather_captures_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "weather_captures",
+                    "sqlite_autoindex_weather_captures_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "weather_evidence",
+                    "sqlite_autoindex_weather_evidence_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "weather_evidence",
+                    "sqlite_autoindex_weather_evidence_2",
+                    1,
+                    "u",
+                    0,
+                ),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -2261,6 +2603,11 @@ def _verify_schema_manifest(
         "evidence_conflicts",
         "evidence_conflict_assertions",
         "evidence_conflict_resolutions",
+        "workload_schedule_events",
+        "workload_evidence",
+        "weather_locations",
+        "weather_captures",
+        "weather_evidence",
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))
