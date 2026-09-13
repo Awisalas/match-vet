@@ -6,6 +6,8 @@ T01 provides the installable command-line baseline only. It does not create a da
 
 T02 adds the authoritative local SQLite store. See [the local store guide](docs/local-store.md) for its private-storage, migration, and recovery contracts. It still does not ingest football data or create recommendations.
 
+T03 adds immutable content-addressed artifacts and deterministic Snapshot Manifests. See [the artifact guide](docs/artifacts.md) for publication, verification, and orphan-reporting contracts.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:

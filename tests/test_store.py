@@ -23,7 +23,7 @@ from matchvet.store import (
 )
 
 
-def test_fresh_private_store_is_created_at_schema_version_one(tmp_path: Path) -> None:
+def test_fresh_private_store_is_created_at_current_schema_version(tmp_path: Path) -> None:
     private_root = tmp_path / "private"
     private_root.mkdir()
     database_path = private_root / "matchvet" / "matchvet.sqlite3"
@@ -32,8 +32,8 @@ def test_fresh_private_store_is_created_at_schema_version_one(tmp_path: Path) ->
         status = store.status
 
         assert status.mode is StoreMode.READ_WRITE
-        assert status.schema_version == 1
-        assert status.applied_migrations == (1,)
+        assert status.schema_version == len(MIGRATIONS)
+        assert status.applied_migrations == tuple(range(1, len(MIGRATIONS) + 1))
         assert status.integrity == "ok"
         assert status.foreign_key_violations == 0
 
@@ -46,13 +46,13 @@ def test_existing_store_reopens_without_reapplying_migrations(tmp_path: Path) ->
     database_path = private_root / "matchvet.sqlite3"
 
     with open_store(database_path, private_root=private_root) as first:
-        assert first.status.migration_count == 1
+        assert first.status.migration_count == len(MIGRATIONS)
 
     with open_store(database_path, private_root=private_root) as reopened:
         assert reopened.status.mode is StoreMode.READ_WRITE
-        assert reopened.status.schema_version == 1
-        assert reopened.status.applied_migrations == (1,)
-        assert reopened.status.migration_count == 1
+        assert reopened.status.schema_version == len(MIGRATIONS)
+        assert reopened.status.applied_migrations == tuple(range(1, len(MIGRATIONS) + 1))
+        assert reopened.status.migration_count == len(MIGRATIONS)
 
 
 def test_migration_ledger_records_reproducibility_metadata(tmp_path: Path) -> None:
@@ -313,7 +313,7 @@ def test_changed_applied_migration_enters_read_only_recovery(tmp_path: Path) -> 
     with open_store(database_path, private_root=private_root):
         pass
 
-    changed_plan = (replace(MIGRATIONS[0], name="changed_after_release"),)
+    changed_plan = (*MIGRATIONS[:-1], replace(MIGRATIONS[-1], name="changed_after_release"))
     with open_store(
         database_path,
         private_root=private_root,
@@ -406,7 +406,7 @@ def test_existing_store_refuses_migration_without_verified_backup(tmp_path: Path
     with open_store(database_path, private_root=private_root):
         pass
     second_migration = Migration(
-        number=2,
+        number=3,
         name="requires_backup",
         statements=("CREATE TABLE second_table (value TEXT) STRICT",),
     )
@@ -420,17 +420,32 @@ def test_existing_store_refuses_migration_without_verified_backup(tmp_path: Path
         assert recovered.status.issues[0].code == "MV-STORE-MIGRATION_BACKUP_REQUIRED"
 
     connection = sqlite3.connect(database_path)
-    assert connection.execute("PRAGMA user_version").fetchone() == (1,)
+    assert connection.execute("PRAGMA user_version").fetchone() == (len(MIGRATIONS),)
     assert connection.execute(
         "SELECT count(*) FROM sqlite_schema WHERE name = 'second_table'"
     ).fetchone() == (0,)
     connection.close()
 
 
+def test_t03_migration_upgrades_a_t02_store_after_private_backup(tmp_path: Path) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+
+    with open_store(database_path, private_root=private_root, migrations=MIGRATIONS[:1]) as store:
+        assert store.status.schema_version == 1
+
+    with open_store(database_path, private_root=private_root) as upgraded:
+        assert upgraded.status.mode is StoreMode.READ_WRITE
+        assert upgraded.status.schema_version == len(MIGRATIONS)
+        assert upgraded.status.applied_migrations == tuple(range(1, len(MIGRATIONS) + 1))
+    assert not list(private_root.glob("*.migration-backup"))
+
+
 def test_migration_plan_must_be_sequential(tmp_path: Path) -> None:
     private_root = tmp_path / "private"
     private_root.mkdir()
-    out_of_order = Migration(number=3, name="skipped_two", statements=("SELECT 1",))
+    out_of_order = Migration(number=4, name="skipped_three", statements=("SELECT 1",))
 
     with pytest.raises(ValueError, match="sequential"):
         open_store(
@@ -447,7 +462,7 @@ def test_newer_database_schema_enters_read_only_recovery(tmp_path: Path) -> None
     with open_store(database_path, private_root=private_root):
         pass
     connection = sqlite3.connect(database_path)
-    connection.execute("PRAGMA user_version = 2")
+    connection.execute(f"PRAGMA user_version = {len(MIGRATIONS) + 1}")
     connection.close()
 
     with open_store(database_path, private_root=private_root) as recovered:
@@ -476,7 +491,7 @@ def test_incomplete_migration_enters_read_only_recovery(tmp_path: Path) -> None:
     with open_store(database_path, private_root=private_root):
         pass
     second_migration = Migration(
-        number=2,
+        number=3,
         name="second_test_migration",
         statements=("CREATE TABLE second_table (value TEXT) STRICT",),
     )
@@ -495,13 +510,13 @@ def test_incomplete_migration_enters_read_only_recovery(tmp_path: Path) -> None:
             result,
             software_commit
         ) VALUES (
-            2, ?, ?, 1, '0.1.0', '0.1.0',
+            3, ?, ?, 1, '0.1.0', '0.1.0',
             '2026-09-12T00:00:00+00:00', NULL, 'IN_PROGRESS', 'test'
         )
         """,
         (second_migration.name, second_migration.checksum),
     )
-    connection.execute("PRAGMA user_version = 2")
+    connection.execute("PRAGMA user_version = 3")
     connection.commit()
     connection.close()
 

@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 from matchvet import cli
-from matchvet.store import open_store
+from matchvet.artifacts import ArtifactStore
+from matchvet.store import MIGRATIONS, open_store
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NETWORK_GUARD = PROJECT_ROOT / "tests" / "no_network"
@@ -92,7 +93,7 @@ def test_no_arguments_reports_a_healthy_default_store_without_mutation(
         "MatchVet\n"
         "State: READY\n"
         "Mode: RESEARCH_ONLY\n"
-        "Store: healthy; schema 1\n"
+        "Store: healthy; schema 2\n"
         "Active run: none\n"
         "Next action: matchvet doctor\n"
     )
@@ -236,7 +237,7 @@ def test_doctor_reports_a_configured_store_without_migrating_it(tmp_path: Path) 
     assert result.returncode == 0
     report = json.loads(result.stdout)
     assert report["store"] == {
-        "applied_migrations": [1],
+        "applied_migrations": [1, 2],
         "foreign_key_violations": 0,
         "integrity": "ok",
         "issues": [],
@@ -255,11 +256,38 @@ def test_doctor_reports_a_configured_store_without_migrating_it(tmp_path: Path) 
             "journal_mode": "wal",
             "synchronous": 2,
         },
-        "schema_version": 1,
+        "schema_version": len(MIGRATIONS),
         "status": "HEALTHY",
     }
     assert any(
         check["id"] == "store:integrity" and check["status"] == "PASS" for check in report["checks"]
+    )
+    assert report["artifacts"] == {
+        "corrupt": [],
+        "malformed_manifests": [],
+        "missing": [],
+        "orphans": [],
+        "staging_orphans": [],
+        "unreferenced": [],
+    }
+
+
+def test_doctor_reports_missing_artifacts_without_repairing_them(tmp_path: Path) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    with open_store(database_path, private_root=private_root) as store:
+        record = ArtifactStore(store).publish_artifact(b"missing", "text/plain")
+    (private_root / record.relative_path).unlink()
+
+    result = run_matchvet("doctor", "--json", "--store", str(database_path))
+
+    assert result.returncode == 1
+    report = json.loads(result.stdout)
+    assert report["artifacts"]["missing"] == [record.digest]
+    assert any(
+        check["id"] == "artifacts:integrity" and check["status"] == "FAIL"
+        for check in report["checks"]
     )
 
 

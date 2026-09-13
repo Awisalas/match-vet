@@ -1,6 +1,6 @@
 # Local store
 
-MatchVet keeps one authoritative SQLite database in Termux private storage. The default path is `$HOME/.local/share/matchvet/matchvet.sqlite3`. Shared Android storage is never accepted as the live database location. The trusted private-storage boundary comes from the running Termux Python installation, not mutable environment variables.
+MatchVet keeps one authoritative SQLite database and content-addressed object store in Termux private storage. The default database path is `$HOME/.local/share/matchvet/matchvet.sqlite3`. Shared Android storage is never accepted as live state. The trusted private-storage boundary comes from the running Termux Python installation, not mutable environment variables.
 
 T02 owns only the store foundation. It does not create artifact storage, snapshots, research runs, evidence, models, or reports.
 
@@ -8,7 +8,7 @@ T02 owns only the store foundation. It does not create artifact storage, snapsho
 
 Application code opens the store through `matchvet.store.open_store`. Opening a fresh store creates its parent directory, takes the single-writer lock, applies the schema in a bounded transaction, and verifies the result. Each returned `Store` must be closed or used as a context manager.
 
-`matchvet doctor` inspects the default store. Pass `--store PATH` to inspect another private-storage database. Inspection is read-only. It reports `HEALTHY`, `NOT_CONFIGURED`, or `RECOVERY_REQUIRED` together with schema, migration, integrity, foreign-key, and SQLite setting details.
+`matchvet doctor` inspects the default store. Pass `--store PATH` to inspect another private-storage database. Inspection is read-only. It reports `HEALTHY`, `NOT_CONFIGURED`, or `RECOVERY_REQUIRED` together with schema, migration, integrity, foreign-key, SQLite setting, and artifact-reference details. Artifact publication and manifest contracts are documented in [the artifact guide](artifacts.md).
 
 ## SQLite profile
 
@@ -24,7 +24,7 @@ Every authoritative writer uses:
 
 One private lock file permits one MatchVet writer coordinator. Write work uses explicit bounded transactions. Network, parsing, modelling, and report work must remain outside them.
 
-## Schema version 1
+## Schema version 2
 
 The initial schema contains only:
 
@@ -33,6 +33,7 @@ The initial schema contains only:
 - typed canonical identifier records
 - immutable version definitions with separate stable logical IDs, predecessor links, and content digests
 - append-only integrity observations
+- immutable artifact catalog and Snapshot Manifest membership
 
 Later tickets add their own entities through new migrations.
 
@@ -42,7 +43,7 @@ Migrations are application-owned, sequential, and forward-only. Their SHA-256 ch
 
 Never edit a released migration. Add the next numbered migration. Transactional DDL and its completed ledger entry commit together. A failure rolls back the whole migration. An incomplete ledger entry, changed checksum, missing migration, schema drift, or newer schema forces read-only recovery.
 
-T02 can apply the initial migration to a fresh database. It refuses to migrate an existing store until a later backup capability can create and verify the required private SQLite backup. This prevents future schema work from weakening the settled pre-migration recovery rule.
+The initial migration creates the T02 foundation; migration 2 adds the T03 artifact catalog and Snapshot Manifest membership. Existing T02 stores receive a verified private SQLite pre-migration copy before this migration runs. A custom or unsupported migration plan remains refused until a later backup capability can provide the required recovery export.
 
 ## Recovery behavior
 

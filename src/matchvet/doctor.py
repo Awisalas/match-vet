@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from matchvet.artifacts import inspect_artifacts
 from matchvet.store import (
     InspectionStatus,
     default_database_path,
@@ -291,6 +292,10 @@ def build_report(store_path: Path | None = None) -> dict[str, Any]:
         store_path or default_database_path(),
         private_root=termux_private_root(),
     )
+    artifact_inspection = inspect_artifacts(
+        store_path or default_database_path(),
+        private_root=termux_private_root(),
+    )
 
     checks = [
         _check(
@@ -318,6 +323,8 @@ def build_report(store_path: Path | None = None) -> dict[str, Any]:
                 store_inspection.status is InspectionStatus.HEALTHY,
             )
         )
+    if store_inspection.status is not InspectionStatus.NOT_CONFIGURED:
+        checks.append(_availability_check("artifacts:integrity", artifact_inspection.healthy))
     checks.extend(
         _check(f"python-package:{package}", str(expected), python_package_versions[package])
         for package, expected in baseline["python_packages"].items()
@@ -378,6 +385,7 @@ def build_report(store_path: Path | None = None) -> dict[str, Any]:
             "limits": store_inspection.limits,
             "issues": [asdict(issue) for issue in store_inspection.issues],
         },
+        "artifacts": asdict(artifact_inspection),
         "environment": {
             "python": python_environment,
             "architecture": platform.machine(),
@@ -436,6 +444,27 @@ def render_human_report(report: dict[str, Any]) -> str:
         )
     else:
         lines.append(f"Store: read-only recovery required; {store['issues'][0]['code']}")
+    artifacts = report["artifacts"]
+    if store["status"] == InspectionStatus.HEALTHY:
+        if all(
+            not artifacts[name] for name in ("missing", "corrupt", "orphans", "malformed_manifests")
+        ):
+            lines.append("Artifacts: healthy")
+        else:
+            lines.append(
+                "Artifacts: issues; "
+                + ", ".join(
+                    f"{name}={len(artifacts[name])}"
+                    for name in (
+                        "missing",
+                        "corrupt",
+                        "orphans",
+                        "unreferenced",
+                        "malformed_manifests",
+                    )
+                    if artifacts[name]
+                )
+            )
     lines.append("Active run: none")
     if report["status"] == "PASS":
         lines.append("Next action: matchvet")

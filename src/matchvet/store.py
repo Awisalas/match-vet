@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import sys
 import uuid
 from collections.abc import Iterator
@@ -59,6 +60,17 @@ class StoreStatus:
     pragmas: dict[str, int | str]
     limits: dict[str, int]
     issues: tuple[StoreIssue, ...] = ()
+
+
+@dataclass(frozen=True)
+class ArtifactMetadata:
+    artifact_id: CanonicalIdentifier
+    digest: str
+    media_type: str
+    byte_length: int
+    relative_path: str
+    created_at_utc: str
+    retention_class: str
 
 
 @dataclass(frozen=True)
@@ -311,6 +323,223 @@ MIGRATIONS = (
             BEFORE DELETE ON integrity_observations
             BEGIN
                 SELECT RAISE(ABORT, 'integrity observations are immutable');
+            END
+            """,
+        ),
+    ),
+    Migration(
+        number=2,
+        name="immutable_artifacts_and_snapshot_manifests",
+        statements=(
+            """
+            CREATE TABLE artifacts (
+                artifact_id TEXT PRIMARY KEY
+                    REFERENCES canonical_identifiers(canonical_id),
+                digest TEXT NOT NULL UNIQUE
+                    CHECK (
+                        length(digest) = 64
+                        AND digest NOT GLOB '*[^0-9a-f]*'
+                    ),
+                media_type TEXT NOT NULL CHECK (length(media_type) > 0),
+                byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
+                relative_path TEXT NOT NULL UNIQUE,
+                created_at_utc TEXT NOT NULL,
+                retention_class TEXT NOT NULL
+                    CHECK (retention_class IN ('PROTECTED', 'REUSABLE', 'DISPOSABLE'))
+            ) STRICT
+            """,
+            """
+            CREATE TABLE snapshot_manifests (
+                manifest_digest TEXT PRIMARY KEY
+                    REFERENCES artifacts(digest),
+                snapshot_id TEXT NOT NULL
+                    REFERENCES canonical_identifiers(canonical_id),
+                matchweek_id TEXT NOT NULL
+                    REFERENCES canonical_identifiers(canonical_id),
+                research_cutoff_id TEXT NOT NULL
+                    REFERENCES canonical_identifiers(canonical_id),
+                version_manifest_id TEXT NOT NULL
+                    REFERENCES canonical_identifiers(canonical_id),
+                research_cutoff_utc TEXT NOT NULL,
+                aggregate_sha256 TEXT NOT NULL
+                    CHECK (
+                        length(aggregate_sha256) = 64
+                        AND aggregate_sha256 NOT GLOB '*[^0-9a-f]*'
+                    ),
+                completeness_state TEXT NOT NULL
+                    CHECK (completeness_state IN ('COMPLETE', 'INCOMPLETE')),
+                manifest_schema_version INTEGER NOT NULL
+                    CHECK (manifest_schema_version >= 1),
+                created_at_utc TEXT NOT NULL,
+                verification_state TEXT NOT NULL
+                    CHECK (verification_state IN ('VERIFIED', 'UNVERIFIED')),
+                verified_at_utc TEXT,
+                parent_snapshot_id TEXT
+                    REFERENCES canonical_identifiers(canonical_id),
+                UNIQUE (snapshot_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE manifest_artifacts (
+                manifest_digest TEXT NOT NULL
+                    REFERENCES snapshot_manifests(manifest_digest),
+                artifact_id TEXT NOT NULL
+                    REFERENCES artifacts(artifact_id),
+                artifact_digest TEXT NOT NULL
+                    REFERENCES artifacts(digest),
+                PRIMARY KEY (manifest_digest, artifact_id),
+                UNIQUE (manifest_digest, artifact_digest)
+            ) STRICT
+            """,
+            """
+            CREATE TRIGGER artifacts_typed_identifiers
+            BEFORE INSERT ON artifacts
+            WHEN NOT EXISTS (
+                     SELECT 1
+                     FROM canonical_identifiers
+                     WHERE canonical_id = NEW.artifact_id
+                       AND entity_kind = 'artifact'
+                 )
+            BEGIN
+                SELECT RAISE(ABORT, 'artifacts require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER manifest_artifacts_matching_identity
+            BEFORE INSERT ON manifest_artifacts
+            WHEN NOT EXISTS (
+                     SELECT 1
+                     FROM artifacts
+                     WHERE artifact_id = NEW.artifact_id
+                       AND digest = NEW.artifact_digest
+                 )
+            BEGIN
+                SELECT RAISE(ABORT, 'manifest artifact ID and digest must identify one object');
+            END
+            """,
+            """
+            CREATE TABLE manifest_versions (
+                manifest_digest TEXT NOT NULL
+                    REFERENCES snapshot_manifests(manifest_digest),
+                version_id TEXT NOT NULL
+                    REFERENCES version_definitions(version_id),
+                definition_id TEXT NOT NULL
+                    REFERENCES canonical_identifiers(canonical_id),
+                version_kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                content_sha256 TEXT NOT NULL
+                    CHECK (
+                        length(content_sha256) = 64
+                        AND content_sha256 NOT GLOB '*[^0-9a-f]*'
+                    ),
+                canonical_contract_version INTEGER NOT NULL
+                    CHECK (canonical_contract_version >= 1),
+                PRIMARY KEY (manifest_digest, version_id)
+            ) STRICT
+            """,
+            """
+            CREATE TRIGGER artifacts_no_update
+            BEFORE UPDATE ON artifacts
+            BEGIN
+                SELECT RAISE(ABORT, 'artifacts are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER artifacts_no_delete
+            BEFORE DELETE ON artifacts
+            BEGIN
+                SELECT RAISE(ABORT, 'artifacts are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER snapshot_manifests_typed_identifiers
+            BEFORE INSERT ON snapshot_manifests
+            WHEN NOT EXISTS (
+                     SELECT 1
+                     FROM canonical_identifiers
+                     WHERE canonical_id = NEW.snapshot_id
+                       AND entity_kind = 'snapshot_manifest'
+                 )
+                 OR NOT EXISTS (
+                     SELECT 1
+                     FROM canonical_identifiers
+                     WHERE canonical_id = NEW.matchweek_id
+                       AND entity_kind = 'matchweek'
+                 )
+                 OR NOT EXISTS (
+                     SELECT 1
+                     FROM canonical_identifiers
+                     WHERE canonical_id = NEW.research_cutoff_id
+                       AND entity_kind = 'research_cutoff'
+                 )
+                 OR NOT EXISTS (
+                     SELECT 1
+                     FROM canonical_identifiers
+                     WHERE canonical_id = NEW.version_manifest_id
+                       AND entity_kind = 'version_manifest'
+                 )
+                 OR (
+                     NEW.parent_snapshot_id IS NOT NULL
+                     AND NOT EXISTS (
+                         SELECT 1
+                         FROM canonical_identifiers
+                         WHERE canonical_id = NEW.parent_snapshot_id
+                           AND entity_kind = 'snapshot_manifest'
+                     )
+                 )
+            BEGIN
+                SELECT RAISE(ABORT, 'snapshot manifests require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER snapshot_manifests_verification_state
+            BEFORE INSERT ON snapshot_manifests
+            WHEN (NEW.verification_state = 'VERIFIED' AND NEW.verified_at_utc IS NULL)
+                 OR (NEW.verification_state = 'UNVERIFIED' AND NEW.verified_at_utc IS NOT NULL)
+            BEGIN
+                SELECT RAISE(ABORT, 'snapshot manifest verification metadata is inconsistent');
+            END
+            """,
+            """
+            CREATE TRIGGER snapshot_manifests_no_update
+            BEFORE UPDATE ON snapshot_manifests
+            BEGIN
+                SELECT RAISE(ABORT, 'snapshot manifests are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER snapshot_manifests_no_delete
+            BEFORE DELETE ON snapshot_manifests
+            BEGIN
+                SELECT RAISE(ABORT, 'snapshot manifests are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER manifest_artifacts_no_update
+            BEFORE UPDATE ON manifest_artifacts
+            BEGIN
+                SELECT RAISE(ABORT, 'manifest artifact membership is immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER manifest_artifacts_no_delete
+            BEFORE DELETE ON manifest_artifacts
+            BEGIN
+                SELECT RAISE(ABORT, 'manifest artifact membership is immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER manifest_versions_no_update
+            BEFORE UPDATE ON manifest_versions
+            BEGIN
+                SELECT RAISE(ABORT, 'manifest version membership is immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER manifest_versions_no_delete
+            BEFORE DELETE ON manifest_versions
+            BEGIN
+                SELECT RAISE(ABORT, 'manifest version membership is immutable');
             END
             """,
         ),
@@ -571,6 +800,19 @@ def _verify_schema_manifest(
         ("version_definitions", "sqlite_autoindex_version_definitions_2", 1, "u", 0),
         ("version_definitions", "sqlite_autoindex_version_definitions_3", 1, "u", 0),
     }
+    if schema_version >= 2:
+        expected_indexes.update(
+            {
+                ("artifacts", "sqlite_autoindex_artifacts_1", 1, "pk", 0),
+                ("artifacts", "sqlite_autoindex_artifacts_2", 1, "u", 0),
+                ("artifacts", "sqlite_autoindex_artifacts_3", 1, "u", 0),
+                ("snapshot_manifests", "sqlite_autoindex_snapshot_manifests_1", 1, "pk", 0),
+                ("snapshot_manifests", "sqlite_autoindex_snapshot_manifests_2", 1, "u", 0),
+                ("manifest_artifacts", "sqlite_autoindex_manifest_artifacts_1", 1, "pk", 0),
+                ("manifest_artifacts", "sqlite_autoindex_manifest_artifacts_2", 1, "u", 0),
+                ("manifest_versions", "sqlite_autoindex_manifest_versions_1", 1, "pk", 0),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -578,6 +820,10 @@ def _verify_schema_manifest(
         "integrity_observations",
         "schema_migrations",
         "version_definitions",
+        "artifacts",
+        "snapshot_manifests",
+        "manifest_artifacts",
+        "manifest_versions",
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))
@@ -610,6 +856,71 @@ def _verify_canonical_reference_types(connection: sqlite3.Connection) -> None:
         )
 
 
+def _verify_artifact_objects(
+    connection: sqlite3.Connection,
+    database_path: Path,
+) -> None:
+    """Verify every catalogued object before allowing normal store writes."""
+    rows = connection.execute(
+        """
+        SELECT digest, byte_length, relative_path
+        FROM artifacts
+        ORDER BY digest
+        """
+    ).fetchall()
+    for row in rows:
+        digest = str(row[0])
+        byte_length = int(row[1])
+        relative_path = str(row[2])
+        expected_relative_path = (Path("objects") / "sha256" / digest[:2] / digest).as_posix()
+        if relative_path != expected_relative_path:
+            raise StoreVerificationError(
+                "MV-STORE-ACTIVE_ARTIFACT_FAILED",
+                f"Catalogued artifact {digest} has an invalid private path.",
+            )
+        object_path = database_path.parent / relative_path
+        try:
+            if not _private_path_components_are_directories(database_path.parent, relative_path):
+                raise OSError("artifact path contains a symbolic link")
+            object_stat = object_path.lstat()
+            if not stat.S_ISREG(object_stat.st_mode):
+                raise OSError("artifact is not a regular file")
+            actual_length, actual_digest = _sha256_file(object_path)
+        except OSError as error:
+            raise StoreVerificationError(
+                "MV-STORE-ACTIVE_ARTIFACT_FAILED",
+                f"Catalogued artifact {digest} is missing or unreadable.",
+            ) from error
+        if actual_length != byte_length or actual_digest != digest:
+            raise StoreVerificationError(
+                "MV-STORE-ACTIVE_ARTIFACT_FAILED",
+                f"Catalogued artifact {digest} failed digest verification.",
+            )
+
+
+def _sha256_file(path: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    length = 0
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+            length += len(chunk)
+    return length, digest.hexdigest()
+
+
+def _private_path_components_are_directories(base: Path, relative_path: str) -> bool:
+    current = base
+    for component in Path(relative_path).parts[:-1]:
+        current /= component
+        try:
+            component_stat = current.lstat()
+        except OSError:
+            return False
+        if not stat.S_ISDIR(component_stat.st_mode):
+            return False
+    return True
+
+
 def _verify_application_identity(connection: sqlite3.Connection) -> None:
     application_id = _pragma_value(connection, "application_id")
     if application_id != APPLICATION_ID:
@@ -625,13 +936,17 @@ def _apply_migrations(
     migrations: tuple[Migration, ...],
     *,
     new_database: bool,
+    database_path: Path,
 ) -> None:
     current_version = _schema_version(connection)
+    migration_backup: Path | None = None
     if current_version < len(migrations) and not new_database:
-        raise StoreVerificationError(
-            "MV-STORE-MIGRATION_BACKUP_REQUIRED",
-            "An existing store cannot migrate until a verified private backup is available.",
-        )
+        if migrations != MIGRATIONS:
+            raise StoreVerificationError(
+                "MV-STORE-MIGRATION_BACKUP_REQUIRED",
+                "An existing store cannot migrate until a verified private backup is available.",
+            )
+        migration_backup = _create_private_migration_backup(connection, database_path)
     for migration in migrations[current_version:]:
         _verify_integrity(connection, full=True)
         started_at = _utc_now()
@@ -675,6 +990,52 @@ def _apply_migrations(
         except BaseException:
             connection.rollback()
             raise
+    if migration_backup is not None:
+        migration_backup.unlink(missing_ok=True)
+        _fsync_directory(database_path.parent)
+
+
+def _create_private_migration_backup(
+    connection: sqlite3.Connection,
+    database_path: Path,
+) -> Path:
+    backup_path = database_path.with_name(
+        f".{database_path.name}.{uuid.uuid4().hex}.migration-backup"
+    )
+    backup_connection: sqlite3.Connection | None = None
+    try:
+        backup_connection = sqlite3.connect(backup_path, isolation_level=None)
+        connection.backup(backup_connection)
+        _apply_defensive_limits(backup_connection)
+        backup_connection.execute("PRAGMA foreign_keys = ON")
+        backup_connection.execute("PRAGMA synchronous = FULL")
+        _verify_application_identity(backup_connection)
+        _verify_integrity(backup_connection, full=True)
+        backup_connection.commit()
+        descriptor = os.open(backup_path, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        _fsync_directory(database_path.parent)
+        return backup_path
+    except (OSError, sqlite3.DatabaseError) as error:
+        backup_path.unlink(missing_ok=True)
+        raise StoreVerificationError(
+            "MV-STORE-MIGRATION_BACKUP_FAILED",
+            "A verified private pre-migration backup could not be created.",
+        ) from error
+    finally:
+        if backup_connection is not None:
+            backup_connection.close()
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _recovery_connection(path: Path) -> sqlite3.Connection | None:
@@ -848,6 +1209,146 @@ class Store:
             predecessor_id=str(row[9]) if row[9] is not None else None,
         )
 
+    def artifact_metadata(self, digest: str) -> ArtifactMetadata | None:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        row = self._connection.execute(
+            """
+            SELECT artifact_id, digest, media_type, byte_length, relative_path,
+                   created_at_utc, retention_class
+            FROM artifacts
+            WHERE digest = ?
+            """,
+            (digest,),
+        ).fetchone()
+        if row is None:
+            return None
+        return ArtifactMetadata(
+            artifact_id=CanonicalIdentifier(kind="artifact", value=str(row[0])),
+            digest=str(row[1]),
+            media_type=str(row[2]),
+            byte_length=int(row[3]),
+            relative_path=str(row[4]),
+            created_at_utc=str(row[5]),
+            retention_class=str(row[6]),
+        )
+
+    def artifact_catalog(self) -> tuple[ArtifactMetadata, ...]:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        rows = self._connection.execute(
+            """
+            SELECT artifact_id, digest, media_type, byte_length, relative_path,
+                   created_at_utc, retention_class
+            FROM artifacts
+            ORDER BY digest
+            """
+        ).fetchall()
+        return tuple(
+            ArtifactMetadata(
+                artifact_id=CanonicalIdentifier(kind="artifact", value=str(row[0])),
+                digest=str(row[1]),
+                media_type=str(row[2]),
+                byte_length=int(row[3]),
+                relative_path=str(row[4]),
+                created_at_utc=str(row[5]),
+                retention_class=str(row[6]),
+            )
+            for row in rows
+        )
+
+    def snapshot_manifest_metadata(self, digest: str) -> tuple[str | None, ...] | None:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        row = self._connection.execute(
+            """
+            SELECT
+                manifest_digest,
+                snapshot_id,
+                matchweek_id,
+                research_cutoff_id,
+                version_manifest_id,
+                research_cutoff_utc,
+                aggregate_sha256,
+                completeness_state,
+                manifest_schema_version,
+                created_at_utc,
+                verification_state,
+                verified_at_utc,
+                parent_snapshot_id
+            FROM snapshot_manifests
+            WHERE manifest_digest = ?
+            """,
+            (digest,),
+        ).fetchone()
+        return (
+            tuple(None if value is None else str(value) for value in row)
+            if row is not None
+            else None
+        )
+
+    def snapshot_manifest_digests(self) -> tuple[str, ...]:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        rows = self._connection.execute(
+            "SELECT manifest_digest FROM snapshot_manifests ORDER BY manifest_digest"
+        ).fetchall()
+        return tuple(str(row[0]) for row in rows)
+
+    def snapshot_manifest_digest_for_snapshot(self, snapshot_id: str) -> str | None:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        row = self._connection.execute(
+            """
+            SELECT manifest_digest
+            FROM snapshot_manifests
+            WHERE snapshot_id = ?
+            """,
+            (snapshot_id,),
+        ).fetchone()
+        return None if row is None else str(row[0])
+
+    def snapshot_manifest_artifacts(self, digest: str) -> tuple[tuple[str, str], ...]:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        rows = self._connection.execute(
+            """
+            SELECT artifact_id, artifact_digest
+            FROM manifest_artifacts
+            WHERE manifest_digest = ?
+            ORDER BY artifact_digest
+            """,
+            (digest,),
+        ).fetchall()
+        return tuple((str(row[0]), str(row[1])) for row in rows)
+
+    def snapshot_manifest_versions(self, digest: str) -> tuple[tuple[str, ...], ...]:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        rows = self._connection.execute(
+            """
+            SELECT
+                version_id,
+                definition_id,
+                version_kind,
+                name,
+                content_sha256,
+                canonical_contract_version
+            FROM manifest_versions
+            WHERE manifest_digest = ?
+            ORDER BY version_id
+            """,
+            (digest,),
+        ).fetchall()
+        return tuple(tuple(str(value) for value in row) for row in rows)
+
     def close(self) -> None:
         if self._closed:
             return
@@ -899,6 +1400,11 @@ class StoreTransaction:
             (identifier.value, identifier.kind, _utc_now()),
         )
 
+    def add_identifier_if_missing(self, identifier: CanonicalIdentifier) -> None:
+        self._ensure_active()
+        if not _identifier_exists(self._connection, identifier):
+            self.add_identifier(identifier)
+
     def add_version(self, version: VersionIdentity) -> None:
         self._ensure_active()
         if version.predecessor_id is not None:
@@ -933,6 +1439,224 @@ class StoreTransaction:
                 version.predecessor_id,
             ),
         )
+
+    def record_artifact(self, artifact: ArtifactMetadata) -> None:
+        self._ensure_active()
+        existing = self._connection.execute(
+            """
+            SELECT artifact_id, media_type, byte_length, relative_path, retention_class
+            FROM artifacts
+            WHERE digest = ?
+            """,
+            (artifact.digest,),
+        ).fetchone()
+        if existing is not None:
+            if tuple(existing[1:]) != (
+                artifact.media_type,
+                artifact.byte_length,
+                artifact.relative_path,
+                artifact.retention_class,
+            ):
+                raise sqlite3.IntegrityError("artifact catalog metadata does not match its digest")
+            return
+        if not _identifier_exists(self._connection, artifact.artifact_id):
+            self.add_identifier(artifact.artifact_id)
+        self._connection.execute(
+            """
+            INSERT INTO artifacts (
+                artifact_id,
+                digest,
+                media_type,
+                byte_length,
+                relative_path,
+                created_at_utc,
+                retention_class
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                artifact.artifact_id.value,
+                artifact.digest,
+                artifact.media_type,
+                artifact.byte_length,
+                artifact.relative_path,
+                artifact.created_at_utc,
+                artifact.retention_class,
+            ),
+        )
+
+    def record_snapshot_manifest(
+        self,
+        *,
+        manifest_digest: str,
+        snapshot_id: str,
+        matchweek_id: str,
+        research_cutoff_id: str,
+        version_manifest_id: str,
+        research_cutoff_utc: str,
+        aggregate_sha256: str,
+        completeness_state: str,
+        manifest_schema_version: int,
+        created_at_utc: str,
+        verification_state: str,
+        verified_at_utc: str | None,
+        parent_snapshot_id: str | None,
+    ) -> None:
+        self._ensure_active()
+        self._connection.execute(
+            """
+            INSERT INTO snapshot_manifests (
+                manifest_digest,
+                snapshot_id,
+                matchweek_id,
+                research_cutoff_id,
+                version_manifest_id,
+                research_cutoff_utc,
+                aggregate_sha256,
+                completeness_state,
+                manifest_schema_version,
+                created_at_utc,
+                verification_state,
+                verified_at_utc,
+                parent_snapshot_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(manifest_digest) DO NOTHING
+            """,
+            (
+                manifest_digest,
+                snapshot_id,
+                matchweek_id,
+                research_cutoff_id,
+                version_manifest_id,
+                research_cutoff_utc,
+                aggregate_sha256,
+                completeness_state,
+                manifest_schema_version,
+                created_at_utc,
+                verification_state,
+                verified_at_utc,
+                parent_snapshot_id,
+            ),
+        )
+        row = self._connection.execute(
+            """
+            SELECT
+                snapshot_id,
+                matchweek_id,
+                research_cutoff_id,
+                version_manifest_id,
+                research_cutoff_utc,
+                aggregate_sha256,
+                completeness_state,
+                manifest_schema_version,
+                created_at_utc,
+                verification_state,
+                verified_at_utc,
+                parent_snapshot_id
+            FROM snapshot_manifests
+            WHERE manifest_digest = ?
+            """,
+            (manifest_digest,),
+        ).fetchone()
+        expected = (
+            snapshot_id,
+            matchweek_id,
+            research_cutoff_id,
+            version_manifest_id,
+            research_cutoff_utc,
+            aggregate_sha256,
+            completeness_state,
+            manifest_schema_version,
+            created_at_utc,
+            verification_state,
+            verified_at_utc,
+            parent_snapshot_id,
+        )
+        if row is None or tuple(row) != expected:
+            raise sqlite3.IntegrityError("snapshot manifest metadata does not match its digest")
+
+    def record_manifest_artifact(
+        self,
+        manifest_digest: str,
+        artifact_id: str,
+        artifact_digest: str,
+    ) -> None:
+        self._ensure_active()
+        self._connection.execute(
+            """
+            INSERT INTO manifest_artifacts (manifest_digest, artifact_id, artifact_digest)
+            VALUES (?, ?, ?)
+            ON CONFLICT(manifest_digest, artifact_id) DO NOTHING
+            """,
+            (manifest_digest, artifact_id, artifact_digest),
+        )
+        row = self._connection.execute(
+            """
+            SELECT artifact_digest
+            FROM manifest_artifacts
+            WHERE manifest_digest = ? AND artifact_id = ?
+            """,
+            (manifest_digest, artifact_id),
+        ).fetchone()
+        if row is None or str(row[0]) != artifact_digest:
+            raise sqlite3.IntegrityError("manifest artifact identity does not match its digest")
+
+    def record_manifest_version(
+        self,
+        *,
+        manifest_digest: str,
+        version_id: str,
+        definition_id: str,
+        version_kind: str,
+        name: str,
+        content_sha256: str,
+        canonical_contract_version: int,
+    ) -> None:
+        self._ensure_active()
+        self._connection.execute(
+            """
+            INSERT INTO manifest_versions (
+                manifest_digest,
+                version_id,
+                definition_id,
+                version_kind,
+                name,
+                content_sha256,
+                canonical_contract_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(manifest_digest, version_id) DO NOTHING
+            """,
+            (
+                manifest_digest,
+                version_id,
+                definition_id,
+                version_kind,
+                name,
+                content_sha256,
+                canonical_contract_version,
+            ),
+        )
+        row = self._connection.execute(
+            """
+            SELECT
+                definition_id,
+                version_kind,
+                name,
+                content_sha256,
+                canonical_contract_version
+            FROM manifest_versions
+            WHERE manifest_digest = ? AND version_id = ?
+            """,
+            (manifest_digest, version_id),
+        ).fetchone()
+        expected = (
+            definition_id,
+            version_kind,
+            name,
+            content_sha256,
+            canonical_contract_version,
+        )
+        if row is None or tuple(row) != expected:
+            raise sqlite3.IntegrityError("manifest version metadata does not match its identity")
 
 
 def _identifier_exists(connection: sqlite3.Connection, identifier: CanonicalIdentifier) -> bool:
@@ -978,6 +1702,7 @@ def open_store(
                 software_commit,
                 migrations,
                 new_database=new_database,
+                database_path=path,
             )
         except sqlite3.DatabaseError as error:
             raise StoreVerificationError(
@@ -987,6 +1712,8 @@ def open_store(
         _verify_migrations(connection, migrations)
         _verify_schema_manifest(connection, migrations)
         _verify_canonical_reference_types(connection)
+        if _schema_version(connection) >= 2:
+            _verify_artifact_objects(connection, path)
         integrity_row = connection.execute("PRAGMA quick_check").fetchone()
         integrity = str(integrity_row[0]) if integrity_row is not None else "missing"
         foreign_key_violations = len(connection.execute("PRAGMA foreign_key_check").fetchall())
@@ -1085,6 +1812,8 @@ def inspect_store(
             )
         _verify_schema_manifest(connection, migrations)
         _verify_canonical_reference_types(connection)
+        if schema_version >= 2:
+            _verify_artifact_objects(connection, path)
         applied_migrations = _applied_migrations(connection)
         return StoreInspection(
             path=str(path),
