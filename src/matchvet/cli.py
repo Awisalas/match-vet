@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -83,6 +83,22 @@ def _parser() -> argparse.ArgumentParser:
     )
     freeze.add_argument("--resume", dest="resume_run_id", help="resume a T05 run by ID")
     _add_run_options(freeze)
+    grade = commands.add_parser(
+        "grade", help="grade all 37 T10 preferences from recorded fixture evidence"
+    )
+    grade.add_argument(
+        "--input",
+        type=Path,
+        required=True,
+        dest="input_path",
+        help="local JSON evidence pack recorded from an approved fixture source",
+    )
+    grade.add_argument(
+        "--finalize",
+        action="store_true",
+        help="close unresolved evidence as VOID instead of leaving it pending",
+    )
+    _add_run_options(grade)
     return parser
 
 
@@ -169,9 +185,128 @@ def main(arguments: Sequence[str] | None = None) -> int:
             parsed.as_json,
             parsed.resume_run_id,
         )
+    if parsed.command == "grade":
+        return _grade_command(parsed.input_path, parsed.store, parsed.as_json, parsed.finalize)
     if parsed.command == "status":
         return _status_command(parsed.run_id, parsed.store, parsed.as_json)
     return _resume_command(parsed.run_id, parsed.store, parsed.as_json)
+
+
+def _grade_command(input_path: Path, store_path: Path | None, as_json: bool, finalize: bool) -> int:
+    from matchvet.t10 import SettlementGradeRecorder, T10Error
+
+    database_path = store_path or default_database_path()
+    try:
+        raw = json.loads(input_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, Mapping):
+            raise ValueError("T10 grading input must be a JSON object.")
+        raw_evidence = raw.get("evidence")
+        if not isinstance(raw_evidence, list) or not raw_evidence:
+            raise ValueError("T10 grading input must contain a non-empty evidence list.")
+        if not all(isinstance(item, Mapping) for item in raw_evidence):
+            raise ValueError("Every T10 evidence entry must be a JSON object.")
+
+        def string_map(key: str) -> dict[str, str]:
+            selected = raw.get(key, {})
+            if not isinstance(selected, Mapping):
+                raise ValueError(f"T10 grading input field {key} must be an object.")
+            if not all(
+                isinstance(name, str) and isinstance(value, str) for name, value in selected.items()
+            ):
+                raise ValueError(f"T10 grading input field {key} must map strings to strings.")
+            return {str(name): str(value) for name, value in selected.items()}
+
+        fixture_id = raw.get("fixture_id")
+        if fixture_id is not None and not isinstance(fixture_id, str):
+            raise ValueError("T10 grading input field fixture_id must be a string or null.")
+        frozen_evidence_digest = raw.get("frozen_evidence_digest")
+        if frozen_evidence_digest is not None and not isinstance(frozen_evidence_digest, str):
+            raise ValueError(
+                "T10 grading input field frozen_evidence_digest must be a string or null."
+            )
+        matchweek_id = raw.get("matchweek_id", "")
+        if not isinstance(matchweek_id, str):
+            raise ValueError("T10 grading input field matchweek_id must be a string.")
+        withdrawn = raw.get("withdrawn", False)
+        if not isinstance(withdrawn, bool):
+            raise ValueError("T10 grading input field withdrawn must be boolean.")
+        input_finalize = raw.get("finalize", False)
+        if not isinstance(input_finalize, bool):
+            raise ValueError("T10 grading input field finalize must be boolean.")
+
+        with open_store(database_path, private_root=termux_private_root()) as store:
+            if store.status.mode is not StoreMode.READ_WRITE:
+                issue = store.status.issues[0]
+                return _print_error(
+                    {
+                        "status": "REFUSED",
+                        "code": issue.code,
+                        "explanation": issue.message,
+                        "last_checkpoint": "none",
+                        "reuse_state": "NONE",
+                        "recovery_command": f"matchvet doctor --store {database_path}",
+                    },
+                    as_json,
+                )
+            grades = SettlementGradeRecorder(store).grade_fixture_and_record(
+                tuple(raw_evidence),
+                fixture_id=fixture_id,
+                finalize=finalize or input_finalize,
+                withdrawn=withdrawn,
+                matchweek_id=matchweek_id,
+                recommendation_ids=string_map("recommendation_ids"),
+                prediction_digests=string_map("prediction_digests"),
+                frozen_evidence_digest=frozen_evidence_digest,
+            )
+    except StoreBusyError:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T10-COORDINATOR_BUSY",
+                "explanation": "Another foreground MatchVet coordinator owns the store.",
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": f"matchvet grade --input {input_path}",
+            },
+            as_json,
+        )
+    except (OSError, T10Error, TypeError, ValueError) as error:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T10-GRADING_FAILED",
+                "explanation": str(error),
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": f"matchvet grade --input {input_path}",
+            },
+            as_json,
+        )
+    payload = {
+        "catalog_count": len(grades),
+        "fixture_id": grades[0].fixture_id if grades else fixture_id,
+        "grades": [grade.to_dict() for grade in grades],
+        "grading_state_counts": {
+            "FINAL": sum(grade.grading_state.value == "FINAL" for grade in grades),
+            "PENDING": sum(grade.grading_state.value == "PENDING" for grade in grades),
+        },
+        "settlement_counts": {
+            result: sum(
+                grade.settlement_result is not None and grade.settlement_result.value == result
+                for grade in grades
+            )
+            for result in ("WIN", "LOSS", "PUSH", "VOID")
+        },
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print("MatchVet T10 grading")
+        print(f"Fixture: {payload['fixture_id']}")
+        print(f"Preferences: {payload['catalog_count']}")
+        print(f"States: {payload['grading_state_counts']}")
+        print(f"Results: {payload['settlement_counts']}")
+    return 0
 
 
 def _run_command(date_text: str | None, store_path: Path | None, as_json: bool) -> int:

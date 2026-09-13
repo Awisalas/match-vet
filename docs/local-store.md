@@ -33,7 +33,7 @@ Every authoritative writer uses:
 
 One private lock file permits one MatchVet writer coordinator. Write work uses explicit bounded transactions. Network, parsing, modelling, and report work must remain outside them.
 
-## Schema version 7
+## Schema version 9
 
 The schema contains:
 
@@ -57,6 +57,7 @@ The schema contains:
 - frozen Important workload evidence with rest, turnaround, density, congestion, and provenance
 - verified venue location provenance and bounded Open-Meteo forecast captures
 - cutoff-classified Important weather evidence, including explicit UNKNOWN states
+- append-only T10 Settlement Evidence Sets, Settlement Grades, and grade-to-evidence links
 
 Later tickets add their own entities through new migrations.
 
@@ -71,7 +72,9 @@ Snapshot Manifest membership. Migration 3 adds the T04 run lifecycle. Existing s
 verified private SQLite pre-migration copy before a released migration runs. Migration 4 adds the
 T06 structured-ingestion records and append-only source assertions. Migration 5 adds T05
 Matchweek freeze records and cutoff membership. Migration 6 adds T07 contextual evidence
-records. Migration 7 adds T08 workload and weather evidence records. A custom or
+records. Migration 7 adds T08 workload and weather evidence records. Migration 8 adds T09 frozen
+evidence states. Migration 9 adds the T10 append-only settlement evidence and grade records. A
+custom or
 unsupported migration plan remains refused until a later backup capability can provide the
 required recovery export.
 

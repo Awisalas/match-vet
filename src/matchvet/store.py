@@ -2199,6 +2199,146 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=9,
+        name="deterministic_settlement_grading",
+        statements=(
+            """
+            CREATE TABLE settlement_evidence_sets (
+                evidence_set_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                fixture_id TEXT NOT NULL,
+                source_level TEXT NOT NULL
+                    CHECK (source_level IN ('COMPETITION', 'FEDERATION', 'CLUB', 'FOOTBALL_DATA')),
+                source_key TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                record_set_id TEXT NOT NULL,
+                evidence_digest TEXT NOT NULL
+                    CHECK (length(evidence_digest) = 64 AND evidence_digest NOT GLOB '*[^0-9a-f]*'),
+                payload_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (evidence_digest)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE settlement_grades (
+                grade_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                grading_key TEXT NOT NULL,
+                fixture_id TEXT NOT NULL,
+                matchweek_id TEXT NOT NULL,
+                recommendation_id TEXT NOT NULL,
+                preference_id TEXT NOT NULL,
+                catalog_version TEXT NOT NULL,
+                catalog_digest TEXT NOT NULL
+                    CHECK (length(catalog_digest) = 64 AND catalog_digest NOT GLOB '*[^0-9a-f]*'),
+                grading_state TEXT NOT NULL CHECK (grading_state IN ('PENDING', 'FINAL')),
+                settlement_result TEXT CHECK (
+                    settlement_result IS NULL
+                    OR settlement_result IN ('WIN', 'LOSS', 'PUSH', 'VOID')
+                ),
+                reason_code TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                selected_evidence_set_id TEXT REFERENCES settlement_evidence_sets(evidence_set_id),
+                selected_source_level TEXT CHECK (
+                    selected_source_level IS NULL
+                    OR selected_source_level IN (
+                        'COMPETITION', 'FEDERATION', 'CLUB', 'FOOTBALL_DATA'
+                    )
+                ),
+                selected_source_key TEXT,
+                input_evidence_digest TEXT NOT NULL
+                    CHECK (
+                        length(input_evidence_digest) = 64
+                        AND input_evidence_digest NOT GLOB '*[^0-9a-f]*'
+                    ),
+                prediction_digest TEXT,
+                frozen_evidence_digest TEXT,
+                predecessor_grade_id TEXT REFERENCES settlement_grades(grade_id),
+                correction_sequence INTEGER NOT NULL CHECK (correction_sequence >= 0),
+                grade_digest TEXT NOT NULL
+                    CHECK (length(grade_digest) = 64 AND grade_digest NOT GLOB '*[^0-9a-f]*'),
+                payload_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (grading_key, correction_sequence),
+                CHECK (
+                    (grading_state = 'PENDING' AND settlement_result IS NULL)
+                    OR (grading_state = 'FINAL' AND settlement_result IS NOT NULL)
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TABLE settlement_grade_evidence (
+                grade_id TEXT NOT NULL REFERENCES settlement_grades(grade_id),
+                evidence_set_id TEXT NOT NULL REFERENCES settlement_evidence_sets(evidence_set_id),
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                PRIMARY KEY (grade_id, evidence_set_id)
+            ) STRICT
+            """,
+            """
+            CREATE TRIGGER settlement_evidence_sets_typed_identifier
+            BEFORE INSERT ON settlement_evidence_sets
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.evidence_set_id AND entity_kind = 'settlement_evidence'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'settlement evidence requires typed identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER settlement_grades_typed_identifier
+            BEFORE INSERT ON settlement_grades
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.grade_id AND entity_kind = 'settlement_grade'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'settlement grades require typed identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER settlement_evidence_sets_no_update
+            BEFORE UPDATE ON settlement_evidence_sets
+            BEGIN
+                SELECT RAISE(ABORT, 'settlement evidence sets are append-only');
+            END
+            """,
+            """
+            CREATE TRIGGER settlement_evidence_sets_no_delete
+            BEFORE DELETE ON settlement_evidence_sets
+            BEGIN
+                SELECT RAISE(ABORT, 'settlement evidence sets are append-only');
+            END
+            """,
+            """
+            CREATE TRIGGER settlement_grades_no_update
+            BEFORE UPDATE ON settlement_grades
+            BEGIN
+                SELECT RAISE(ABORT, 'settlement grades are append-only');
+            END
+            """,
+            """
+            CREATE TRIGGER settlement_grades_no_delete
+            BEFORE DELETE ON settlement_grades
+            BEGIN
+                SELECT RAISE(ABORT, 'settlement grades are append-only');
+            END
+            """,
+            """
+            CREATE TRIGGER settlement_grade_evidence_no_update
+            BEFORE UPDATE ON settlement_grade_evidence
+            BEGIN
+                SELECT RAISE(ABORT, 'settlement grade evidence links are append-only');
+            END
+            """,
+            """
+            CREATE TRIGGER settlement_grade_evidence_no_delete
+            BEFORE DELETE ON settlement_grade_evidence
+            BEGIN
+                SELECT RAISE(ABORT, 'settlement grade evidence links are append-only');
+            END
+            """,
+        ),
+    ),
 )
 
 
@@ -2784,6 +2924,46 @@ def _verify_schema_manifest(
                 ),
             }
         )
+    if schema_version >= 9:
+        expected_indexes.update(
+            {
+                (
+                    "settlement_evidence_sets",
+                    "sqlite_autoindex_settlement_evidence_sets_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "settlement_evidence_sets",
+                    "sqlite_autoindex_settlement_evidence_sets_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "settlement_grades",
+                    "sqlite_autoindex_settlement_grades_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "settlement_grades",
+                    "sqlite_autoindex_settlement_grades_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "settlement_grade_evidence",
+                    "sqlite_autoindex_settlement_grade_evidence_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -2842,6 +3022,9 @@ def _verify_schema_manifest(
         "evidence_state_gaps",
         "evidence_state_conflicts",
         "evidence_state_corroboration",
+        "settlement_evidence_sets",
+        "settlement_grades",
+        "settlement_grade_evidence",
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))

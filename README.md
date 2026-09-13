@@ -32,6 +32,11 @@ T08 builds cutoff-valid workload and venue-weather Evidence for frozen Target Ma
 congestion, and cross-competition context from canonical Fixture Revisions, retains verified
 Open-Meteo provenance, represents unavailable weather as UNKNOWN, and remains RESEARCH_ONLY.
 
+T10 grades all 37 v1 Betting Preferences from recorded, approved Fixture evidence. See the
+[settlement grading guide](docs/settlement-grading.md). It applies the fixed source hierarchy,
+keeps pending and VOID distinct, excludes extra time and shootouts, and appends corrections
+without rewriting frozen Matchweek state.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:
@@ -44,6 +49,7 @@ Use the pinned native Termux packages and Python environment described in [the T
     .venv/bin/matchvet resume RUN_ID
     .venv/bin/matchvet ingest --season 2026-27 --history-season 2025-26 --json
     .venv/bin/matchvet freeze 2026-09-18 --season 2026-27 --json
+    .venv/bin/matchvet grade --input /path/to/fixture-evidence.json --store /path/to/matchvet.sqlite3 --json
 
 To inspect a configured store without changing it:
 
