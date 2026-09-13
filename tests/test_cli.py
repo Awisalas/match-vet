@@ -120,7 +120,7 @@ def test_no_arguments_reports_a_healthy_default_store_without_mutation(
         "MatchVet\n"
         "State: READY\n"
         "Mode: RESEARCH_ONLY\n"
-        "Store: healthy; schema 3\n"
+        f"Store: healthy; schema {len(MIGRATIONS)}\n"
         "Active run: none\n"
         "Next action: matchvet run\n"
     )
@@ -411,7 +411,7 @@ def test_doctor_reports_a_configured_store_without_migrating_it(tmp_path: Path) 
     assert result.returncode == 0
     report = json.loads(result.stdout)
     assert report["store"] == {
-        "applied_migrations": [1, 2, 3],
+        "applied_migrations": list(range(1, len(MIGRATIONS) + 1)),
         "foreign_key_violations": 0,
         "integrity": "ok",
         "issues": [],

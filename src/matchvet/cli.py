@@ -57,6 +57,22 @@ def _parser() -> argparse.ArgumentParser:
     resume = commands.add_parser("resume", help="resume a digest-compatible unfinished run")
     resume.add_argument("run_id", nargs="?", help="run ID; defaults to the latest run")
     _add_run_options(resume)
+    ingest = commands.add_parser("ingest", help="acquire T06 fixtures and structured history")
+    ingest.add_argument("--season", default="2026-27", help="current season in YYYY-YY form")
+    ingest.add_argument(
+        "--history-season",
+        action="append",
+        default=[],
+        dest="history_seasons",
+        help="historical season in YYYY-YY form; repeat for more seasons",
+    )
+    ingest.add_argument("--resume", dest="resume_run_id", help="resume a T06 run by ID")
+    ingest.add_argument(
+        "--refresh-current",
+        action="store_true",
+        help="refresh the current-season cache instead of reusing it",
+    )
+    _add_run_options(ingest)
     return parser
 
 
@@ -125,6 +141,15 @@ def main(arguments: Sequence[str] | None = None) -> int:
         return 0 if report["status"] == "PASS" else 1
     if parsed.command == "run":
         return _run_command(parsed.date, parsed.store, parsed.as_json)
+    if parsed.command == "ingest":
+        return _ingest_command(
+            parsed.season,
+            tuple(parsed.history_seasons),
+            parsed.store,
+            parsed.as_json,
+            parsed.resume_run_id,
+            parsed.refresh_current,
+        )
     if parsed.command == "status":
         return _status_command(parsed.run_id, parsed.store, parsed.as_json)
     return _resume_command(parsed.run_id, parsed.store, parsed.as_json)
@@ -347,3 +372,120 @@ def _matchweek_key(date_text: str | None) -> str:
     today = datetime.now(ZoneInfo("Africa/Lagos")).date()
     days_until_friday = (4 - today.weekday()) % 7
     return (today + timedelta(days=days_until_friday)).isoformat()
+
+
+def _ingest_command(
+    season: str,
+    historical_seasons: tuple[str, ...],
+    store_path: Path | None,
+    as_json: bool,
+    resume_run_id: str | None,
+    refresh_current: bool,
+) -> int:
+    from matchvet.ingestion import (
+        FixtureHistoryAcquirer,
+        FixtureHistoryImporter,
+        IngestionError,
+        IngestionPlan,
+        ResumableSourceDownloader,
+        T06AcquisitionRunner,
+    )
+
+    database_path = store_path or default_database_path()
+    try:
+        plan = IngestionPlan(
+            current_season=season,
+            historical_seasons=historical_seasons,
+            refresh_current=refresh_current,
+        )
+        private_root = termux_private_root()
+        with open_store(database_path, private_root=private_root) as store:
+            if store.status.mode is not StoreMode.READ_WRITE:
+                issue = store.status.issues[0]
+                return _print_error(
+                    {
+                        "status": "REFUSED",
+                        "code": issue.code,
+                        "explanation": issue.message,
+                        "last_checkpoint": "none",
+                        "reuse_state": "NONE",
+                        "recovery_command": f"matchvet doctor --store {database_path}",
+                    },
+                    as_json,
+                )
+            downloader = ResumableSourceDownloader(private_root)
+            importer = FixtureHistoryImporter(store, private_root=private_root)
+            acquirer = FixtureHistoryAcquirer(importer, downloader)
+            runner = T06AcquisitionRunner(store, acquirer)
+            observation = observe_resources(database_path)
+            status = (
+                runner.resume(
+                    resume_run_id,
+                    plan,
+                    observation=observation,
+                    progress=None if as_json else _print_progress,
+                )
+                if resume_run_id is not None
+                else runner.start(
+                    plan,
+                    observation=observation,
+                    progress=None if as_json else _print_progress,
+                )
+            )
+            report = runner.last_report
+    except RunLifecycleError as error:
+        return _print_error(asdict(error.error), as_json)
+    except StoreBusyError:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T06-COORDINATOR_BUSY",
+                "explanation": "Another foreground MatchVet coordinator owns the store.",
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": "matchvet status",
+            },
+            as_json,
+        )
+    except (IngestionError, OSError, RuntimeError, ValueError) as error:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T06-INGESTION_FAILED",
+                "explanation": str(error),
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": f"matchvet doctor --store {database_path}",
+            },
+            as_json,
+        )
+
+    report_json = None
+    if report is not None:
+        report_json = {
+            "bytes_downloaded": report.bytes_downloaded,
+            "cache_hits": report.cache_hits,
+            "digest": report.digest,
+            "fallback_imports": report.fallback_imports,
+            "imports": [asdict(item) for item in report.imports],
+            "issues": [asdict(item) for item in report.issues],
+            "plan_digest": report.plan_digest,
+        }
+    if as_json:
+        print(
+            json.dumps(
+                {"acquisition": report_json, "run": asdict(status)},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        _print_status(status, False, heading="MatchVet T06 ingestion")
+        if report is not None:
+            print(
+                "Acquisition: "
+                f"imports={len(report.imports)}; fallback={report.fallback_imports}; "
+                f"cache_hits={report.cache_hits}; bytes={report.bytes_downloaded}; "
+                f"issues={len(report.issues)}"
+            )
+    return 0

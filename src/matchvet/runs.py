@@ -50,7 +50,7 @@ class RunPhase(StrEnum):
     ATOMIC_PUBLICATION = "atomic_report_and_audit_publication"
 
 
-RUN_PHASES = tuple(RunPhase)
+RUN_PHASES: tuple[RunPhase, ...] = tuple(RunPhase)
 
 
 class RunState(StrEnum):

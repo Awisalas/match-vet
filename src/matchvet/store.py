@@ -9,7 +9,7 @@ import sqlite3
 import stat
 import sys
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -103,7 +103,8 @@ class CanonicalIdentifier:
 
     @classmethod
     def new(cls, kind: str) -> CanonicalIdentifier:
-        return cls(kind=kind, value=str(uuid.uuid7()))
+        generator: Callable[[], uuid.UUID] = getattr(uuid, "uuid7", uuid.uuid4)
+        return cls(kind=kind, value=str(generator()))
 
 
 @dataclass(frozen=True)
@@ -791,6 +792,336 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=4,
+        name="fixture_history_ingestion",
+        statements=(
+            """
+            CREATE TABLE source_identities (
+                source_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                source_key TEXT NOT NULL UNIQUE,
+                canonical_name TEXT NOT NULL,
+                owner TEXT NOT NULL,
+                source_class TEXT NOT NULL,
+                access_method TEXT NOT NULL,
+                base_locator TEXT NOT NULL,
+                allowed_use TEXT NOT NULL,
+                retention_status TEXT NOT NULL,
+                redistributable INTEGER NOT NULL CHECK (redistributable IN (0, 1)),
+                terms_reference TEXT NOT NULL,
+                terms_observed_at_utc TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            ) STRICT
+            """,
+            """
+            CREATE TABLE independent_origins (
+                origin_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                origin_key TEXT NOT NULL UNIQUE,
+                organization TEXT NOT NULL,
+                locator TEXT,
+                classification TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            ) STRICT
+            """,
+            """
+            CREATE TABLE source_captures (
+                capture_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                source_id TEXT NOT NULL REFERENCES source_identities(source_id),
+                cache_key TEXT NOT NULL,
+                locator TEXT NOT NULL,
+                access_method TEXT NOT NULL,
+                retrieved_at_utc TEXT NOT NULL,
+                source_published_at_utc TEXT,
+                response_status INTEGER NOT NULL CHECK (response_status BETWEEN 100 AND 599),
+                content_type TEXT NOT NULL,
+                content_sha256 TEXT NOT NULL
+                    CHECK (length(content_sha256) = 64 AND content_sha256 NOT GLOB '*[^0-9a-f]*'),
+                byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
+                artifact_digest TEXT NOT NULL REFERENCES artifacts(digest),
+                retention_status TEXT NOT NULL,
+                observed_terms TEXT NOT NULL,
+                terms_reference TEXT NOT NULL,
+                rights_json TEXT NOT NULL,
+                collector_version TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (source_id, cache_key, content_sha256, retrieved_at_utc)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE target_leagues (
+                league_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                league_key TEXT NOT NULL UNIQUE,
+                canonical_name TEXT NOT NULL,
+                country TEXT NOT NULL,
+                football_data_code TEXT NOT NULL UNIQUE,
+                openfootball_code TEXT,
+                source_timezone TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            ) STRICT
+            """,
+            """
+            CREATE TABLE competition_seasons (
+                season_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),
+                season_label TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (league_id, season_label)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE teams (
+                team_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),
+                canonical_name TEXT NOT NULL,
+                normalized_name TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (league_id, normalized_name)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE team_aliases (
+                alias_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),
+                team_id TEXT NOT NULL REFERENCES teams(team_id),
+                source_id TEXT REFERENCES source_identities(source_id),
+                alias_name TEXT NOT NULL,
+                normalized_alias TEXT NOT NULL,
+                mapping_rule_version TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (league_id, team_id, normalized_alias)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE source_team_mappings (
+                mapping_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                source_id TEXT NOT NULL REFERENCES source_identities(source_id),
+                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),
+                source_team_key TEXT,
+                source_team_name TEXT NOT NULL,
+                mapping_state TEXT NOT NULL
+                    CHECK (mapping_state IN ('CONFIRMED', 'AMBIGUOUS', 'UNKNOWN')),
+                team_id TEXT REFERENCES teams(team_id),
+                candidates_json TEXT NOT NULL,
+                mapping_rule_version TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (source_id, league_id, source_team_key, source_team_name)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE fixtures (
+                fixture_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),
+                season_id TEXT NOT NULL REFERENCES competition_seasons(season_id),
+                home_team_id TEXT NOT NULL REFERENCES teams(team_id),
+                away_team_id TEXT NOT NULL REFERENCES teams(team_id),
+                identity_state TEXT NOT NULL
+                    CHECK (identity_state IN ('CONFIRMED', 'INDETERMINATE')),
+                identity_key TEXT NOT NULL UNIQUE,
+                created_at_utc TEXT NOT NULL,
+                CHECK (home_team_id != away_team_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE fixture_revisions (
+                revision_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                fixture_id TEXT NOT NULL REFERENCES fixtures(fixture_id),
+                predecessor_revision_id TEXT REFERENCES fixture_revisions(revision_id),
+                revision_digest TEXT NOT NULL
+                    CHECK (length(revision_digest) = 64 AND revision_digest NOT GLOB '*[^0-9a-f]*'),
+                kickoff_state TEXT NOT NULL
+                    CHECK (kickoff_state IN ('OBSERVED', 'ABSENT', 'UNKNOWN')),
+                kickoff_utc TEXT,
+                kickoff_local_text TEXT,
+                kickoff_precision TEXT NOT NULL,
+                fixture_status TEXT NOT NULL,
+                source_round TEXT,
+                observed_at_utc TEXT NOT NULL,
+                source_capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
+                source_assertion_ids_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (fixture_id, revision_digest)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE fixture_revision_assertions (
+                revision_id TEXT NOT NULL REFERENCES fixture_revisions(revision_id),
+                assertion_id TEXT NOT NULL REFERENCES source_assertions(assertion_id),
+                PRIMARY KEY (revision_id, assertion_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE source_assertions (
+                assertion_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
+                origin_id TEXT REFERENCES independent_origins(origin_id),
+                source_row_key TEXT NOT NULL,
+                subject_kind TEXT NOT NULL,
+                subject_key TEXT NOT NULL,
+                evidence_type TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                raw_field_name TEXT NOT NULL,
+                raw_value_json TEXT,
+                normalized_value_json TEXT,
+                evidence_state TEXT NOT NULL
+                    CHECK (evidence_state IN ('OBSERVED', 'ABSENT', 'UNKNOWN')),
+                unknown_reason TEXT,
+                event_time_utc TEXT,
+                effective_time_utc TEXT,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (capture_id, source_row_key, predicate)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE match_statistics (
+                statistic_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                fixture_id TEXT NOT NULL REFERENCES fixtures(fixture_id),
+                season_id TEXT NOT NULL REFERENCES competition_seasons(season_id),
+                metric_key TEXT NOT NULL,
+                team_role TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                evidence_class TEXT NOT NULL
+                    CHECK (evidence_class IN ('CORE', 'OPTIONAL_EVIDENCE')),
+                evidence_state TEXT NOT NULL
+                    CHECK (evidence_state IN ('OBSERVED', 'ABSENT', 'UNKNOWN')),
+                value_integer INTEGER CHECK (value_integer IS NULL OR value_integer >= 0),
+                value_text TEXT,
+                unit TEXT,
+                unknown_reason TEXT,
+                source_assertion_id TEXT NOT NULL REFERENCES source_assertions(assertion_id),
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (source_assertion_id, metric_key, team_role, phase),
+                CHECK (
+                    (evidence_state = 'OBSERVED'
+                        AND (value_integer IS NOT NULL OR value_text IS NOT NULL))
+                    OR (
+                        evidence_state != 'OBSERVED'
+                        AND value_integer IS NULL AND value_text IS NULL
+                    )
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TABLE unresolved_fixture_rows (
+                unresolved_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
+                source_row_key TEXT NOT NULL,
+                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),
+                season_id TEXT NOT NULL REFERENCES competition_seasons(season_id),
+                home_name TEXT NOT NULL,
+                away_name TEXT NOT NULL,
+                resolution_state TEXT NOT NULL CHECK (resolution_state IN ('AMBIGUOUS', 'UNKNOWN')),
+                candidates_json TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (capture_id, source_row_key)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE conflict_sets (
+                conflict_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                subject_kind TEXT NOT NULL,
+                subject_key TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                value_digest TEXT NOT NULL
+                    CHECK (length(value_digest) = 64 AND value_digest NOT GLOB '*[^0-9a-f]*'),
+                status TEXT NOT NULL CHECK (status = 'UNRESOLVED'),
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (subject_kind, subject_key, predicate, value_digest)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE conflict_assertions (
+                conflict_id TEXT NOT NULL REFERENCES conflict_sets(conflict_id),
+                assertion_id TEXT NOT NULL REFERENCES source_assertions(assertion_id),
+                PRIMARY KEY (conflict_id, assertion_id)
+            ) STRICT
+            """,
+            """
+            CREATE INDEX source_assertions_subject_predicate_state
+            ON source_assertions(subject_kind, subject_key, predicate, evidence_state)
+            """,
+            """
+            CREATE TRIGGER source_identities_no_update
+            BEFORE UPDATE ON source_identities
+            BEGIN SELECT RAISE(ABORT, 'source identities are immutable'); END
+            """,
+            """
+            CREATE TRIGGER source_identities_no_delete
+            BEFORE DELETE ON source_identities
+            BEGIN SELECT RAISE(ABORT, 'source identities are immutable'); END
+            """,
+            """
+            CREATE TRIGGER source_captures_no_update
+            BEFORE UPDATE ON source_captures
+            BEGIN SELECT RAISE(ABORT, 'source captures are immutable'); END
+            """,
+            """
+            CREATE TRIGGER source_captures_no_delete
+            BEFORE DELETE ON source_captures
+            BEGIN SELECT RAISE(ABORT, 'source captures are immutable'); END
+            """,
+            """
+            CREATE TRIGGER source_assertions_no_update
+            BEFORE UPDATE ON source_assertions
+            BEGIN SELECT RAISE(ABORT, 'source assertions are immutable'); END
+            """,
+            """
+            CREATE TRIGGER source_assertions_no_delete
+            BEFORE DELETE ON source_assertions
+            BEGIN SELECT RAISE(ABORT, 'source assertions are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_revisions_no_update
+            BEFORE UPDATE ON fixture_revisions
+            BEGIN SELECT RAISE(ABORT, 'fixture revisions are append-only'); END
+            """,
+            """
+            CREATE TRIGGER fixture_revisions_no_delete
+            BEFORE DELETE ON fixture_revisions
+            BEGIN SELECT RAISE(ABORT, 'fixture revisions are append-only'); END
+            """,
+            """
+            CREATE TRIGGER match_statistics_no_update
+            BEFORE UPDATE ON match_statistics
+            BEGIN SELECT RAISE(ABORT, 'match statistics are immutable'); END
+            """,
+            """
+            CREATE TRIGGER match_statistics_no_delete
+            BEFORE DELETE ON match_statistics
+            BEGIN SELECT RAISE(ABORT, 'match statistics are immutable'); END
+            """,
+            """
+            CREATE TRIGGER conflict_sets_no_update
+            BEFORE UPDATE ON conflict_sets
+            BEGIN SELECT RAISE(ABORT, 'conflict sets are immutable'); END
+            """,
+            """
+            CREATE TRIGGER conflict_sets_no_delete
+            BEFORE DELETE ON conflict_sets
+            BEGIN SELECT RAISE(ABORT, 'conflict sets are immutable'); END
+            """,
+            """
+            CREATE TRIGGER conflict_assertions_no_update
+            BEFORE UPDATE ON conflict_assertions
+            BEGIN SELECT RAISE(ABORT, 'conflict assertion links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER conflict_assertions_no_delete
+            BEFORE DELETE ON conflict_assertions
+            BEGIN SELECT RAISE(ABORT, 'conflict assertion links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_revision_assertions_no_update
+            BEFORE UPDATE ON fixture_revision_assertions
+            BEGIN SELECT RAISE(ABORT, 'fixture revision assertion links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_revision_assertions_no_delete
+            BEFORE DELETE ON fixture_revision_assertions
+            BEGIN SELECT RAISE(ABORT, 'fixture revision assertion links are immutable'); END
+            """,
+        ),
+    ),
 )
 
 
@@ -1080,6 +1411,61 @@ def _verify_schema_manifest(
                 ("run_completions", "sqlite_autoindex_run_completions_2", 1, "u", 0),
             }
         )
+    if schema_version >= 4:
+        expected_indexes.update(
+            {
+                ("source_identities", "sqlite_autoindex_source_identities_1", 1, "pk", 0),
+                ("source_identities", "sqlite_autoindex_source_identities_2", 1, "u", 0),
+                ("independent_origins", "sqlite_autoindex_independent_origins_1", 1, "pk", 0),
+                ("independent_origins", "sqlite_autoindex_independent_origins_2", 1, "u", 0),
+                ("source_captures", "sqlite_autoindex_source_captures_1", 1, "pk", 0),
+                ("source_captures", "sqlite_autoindex_source_captures_2", 1, "u", 0),
+                ("target_leagues", "sqlite_autoindex_target_leagues_1", 1, "pk", 0),
+                ("target_leagues", "sqlite_autoindex_target_leagues_2", 1, "u", 0),
+                ("target_leagues", "sqlite_autoindex_target_leagues_3", 1, "u", 0),
+                ("competition_seasons", "sqlite_autoindex_competition_seasons_1", 1, "pk", 0),
+                ("competition_seasons", "sqlite_autoindex_competition_seasons_2", 1, "u", 0),
+                ("teams", "sqlite_autoindex_teams_1", 1, "pk", 0),
+                ("teams", "sqlite_autoindex_teams_2", 1, "u", 0),
+                ("team_aliases", "sqlite_autoindex_team_aliases_1", 1, "pk", 0),
+                ("team_aliases", "sqlite_autoindex_team_aliases_2", 1, "u", 0),
+                ("source_team_mappings", "sqlite_autoindex_source_team_mappings_1", 1, "pk", 0),
+                ("source_team_mappings", "sqlite_autoindex_source_team_mappings_2", 1, "u", 0),
+                ("fixtures", "sqlite_autoindex_fixtures_1", 1, "pk", 0),
+                ("fixtures", "sqlite_autoindex_fixtures_2", 1, "u", 0),
+                ("fixture_revisions", "sqlite_autoindex_fixture_revisions_1", 1, "pk", 0),
+                ("fixture_revisions", "sqlite_autoindex_fixture_revisions_2", 1, "u", 0),
+                (
+                    "fixture_revision_assertions",
+                    "sqlite_autoindex_fixture_revision_assertions_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                ("source_assertions", "sqlite_autoindex_source_assertions_1", 1, "pk", 0),
+                ("source_assertions", "sqlite_autoindex_source_assertions_2", 1, "u", 0),
+                ("source_assertions", "source_assertions_subject_predicate_state", 0, "c", 0),
+                ("match_statistics", "sqlite_autoindex_match_statistics_1", 1, "pk", 0),
+                ("match_statistics", "sqlite_autoindex_match_statistics_2", 1, "u", 0),
+                (
+                    "unresolved_fixture_rows",
+                    "sqlite_autoindex_unresolved_fixture_rows_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "unresolved_fixture_rows",
+                    "sqlite_autoindex_unresolved_fixture_rows_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                ("conflict_sets", "sqlite_autoindex_conflict_sets_1", 1, "pk", 0),
+                ("conflict_sets", "sqlite_autoindex_conflict_sets_2", 1, "u", 0),
+                ("conflict_assertions", "sqlite_autoindex_conflict_assertions_1", 1, "pk", 0),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -1097,6 +1483,22 @@ def _verify_schema_manifest(
         "run_attempts",
         "run_checkpoints",
         "run_completions",
+        "source_identities",
+        "independent_origins",
+        "source_captures",
+        "target_leagues",
+        "competition_seasons",
+        "teams",
+        "team_aliases",
+        "source_team_mappings",
+        "fixtures",
+        "fixture_revisions",
+        "fixture_revision_assertions",
+        "source_assertions",
+        "match_statistics",
+        "unresolved_fixture_rows",
+        "conflict_sets",
+        "conflict_assertions",
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))
@@ -1674,6 +2076,10 @@ class StoreTransaction:
             raise RuntimeError("The bounded store transaction is closed.")
         if os.getpid() != self._pid:
             raise RuntimeError("Store transactions cannot cross a process boundary.")
+
+    def execute(self, sql: str, parameters: Sequence[object] = ()) -> sqlite3.Cursor:
+        self._ensure_active()
+        return self._connection.execute(sql, parameters)
 
     def close(self) -> None:
         self._active = False
