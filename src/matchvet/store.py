@@ -1122,6 +1122,283 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=5,
+        name="frozen_matchweek_membership",
+        statements=(
+            """
+            CREATE TABLE matchweeks (
+                matchweek_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                season_label TEXT NOT NULL,
+                friday_local_date TEXT NOT NULL,
+                timezone TEXT NOT NULL CHECK (timezone = 'Africa/Lagos'),
+                window_start_utc TEXT NOT NULL,
+                window_end_utc TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (season_label, friday_local_date)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE matchweek_research_cutoffs (
+                cutoff_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                matchweek_id TEXT NOT NULL UNIQUE REFERENCES matchweeks(matchweek_id),
+                cutoff_utc TEXT NOT NULL,
+                earliest_included_fixture_id TEXT REFERENCES fixtures(fixture_id),
+                earliest_included_kickoff_utc TEXT NOT NULL,
+                lead_time_seconds INTEGER NOT NULL CHECK (lead_time_seconds = 21600),
+                cutoff_digest TEXT NOT NULL
+                    CHECK (length(cutoff_digest) = 64 AND cutoff_digest NOT GLOB '*[^0-9a-f]*'),
+                created_at_utc TEXT NOT NULL
+            ) STRICT
+            """,
+            """
+            CREATE TABLE matchweek_memberships (
+                membership_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                matchweek_id TEXT NOT NULL REFERENCES matchweeks(matchweek_id),
+                subject_kind TEXT NOT NULL
+                    CHECK (subject_kind IN ('FIXTURE', 'UNRESOLVED_FIXTURE_ROW')),
+                subject_id TEXT NOT NULL,
+                fixture_id TEXT REFERENCES fixtures(fixture_id),
+                unresolved_id TEXT REFERENCES unresolved_fixture_rows(unresolved_id),
+                membership_state TEXT NOT NULL
+                    CHECK (membership_state IN ('INCLUDED', 'EXCLUDED', 'INDETERMINATE')),
+                target_match INTEGER NOT NULL CHECK (target_match IN (0, 1)),
+                controlling_revision_id TEXT REFERENCES fixture_revisions(revision_id),
+                controlling_revision_digest TEXT
+                    CHECK (
+                        controlling_revision_digest IS NULL
+                        OR (length(controlling_revision_digest) = 64
+                            AND controlling_revision_digest NOT GLOB '*[^0-9a-f]*')
+                    ),
+                source_authority_rank INTEGER NOT NULL CHECK (source_authority_rank >= 0),
+                source_authority TEXT NOT NULL,
+                original_kickoff_utc TEXT,
+                original_kickoff_local_text TEXT,
+                material_conflict INTEGER NOT NULL CHECK (material_conflict IN (0, 1)),
+                conflict_predicates_json TEXT NOT NULL,
+                reason_code TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                decision_state TEXT NOT NULL,
+                membership_digest TEXT NOT NULL
+                    CHECK (
+                        length(membership_digest) = 64
+                        AND membership_digest NOT GLOB '*[^0-9a-f]*'
+                    ),
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (matchweek_id, subject_kind, subject_id),
+                CHECK (
+                    (subject_kind = 'FIXTURE' AND fixture_id = subject_id AND unresolved_id IS NULL)
+                    OR (
+                        subject_kind = 'UNRESOLVED_FIXTURE_ROW'
+                        AND unresolved_id = subject_id
+                        AND fixture_id IS NULL
+                    )
+                ),
+                CHECK (
+                    (membership_state = 'INCLUDED' AND target_match = 1)
+                    OR (membership_state != 'INCLUDED' AND target_match = 0)
+                ),
+                CHECK (
+                    (controlling_revision_id IS NULL AND controlling_revision_digest IS NULL)
+                    OR (
+                        controlling_revision_id IS NOT NULL
+                        AND controlling_revision_digest IS NOT NULL
+                    )
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TABLE matchweek_freeze_records (
+                matchweek_id TEXT PRIMARY KEY REFERENCES matchweeks(matchweek_id),
+                cutoff_id TEXT NOT NULL REFERENCES matchweek_research_cutoffs(cutoff_id),
+                snapshot_manifest_digest TEXT NOT NULL
+                    REFERENCES snapshot_manifests(manifest_digest),
+                membership_manifest_digest TEXT NOT NULL REFERENCES artifacts(digest),
+                revision_snapshot_digest TEXT NOT NULL REFERENCES artifacts(digest),
+                frozen_at_utc TEXT NOT NULL
+            ) STRICT
+            """,
+            """
+            CREATE TABLE post_cutoff_fixture_appendix (
+                appendix_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                matchweek_id TEXT NOT NULL REFERENCES matchweeks(matchweek_id),
+                event_key TEXT NOT NULL UNIQUE,
+                subject_kind TEXT NOT NULL
+                    CHECK (subject_kind IN ('FIXTURE', 'UNRESOLVED_FIXTURE_ROW')),
+                subject_id TEXT NOT NULL,
+                fixture_id TEXT REFERENCES fixtures(fixture_id),
+                membership_id TEXT REFERENCES matchweek_memberships(membership_id),
+                revision_id TEXT REFERENCES fixture_revisions(revision_id),
+                revision_digest TEXT
+                    CHECK (
+                        revision_digest IS NULL
+                        OR (length(revision_digest) = 64 AND revision_digest NOT GLOB '*[^0-9a-f]*')
+                    ),
+                event_kind TEXT NOT NULL
+                    CHECK (
+                        event_kind IN (
+                            'FIXTURE_ADDED_AFTER_CUTOFF',
+                            'MOVED_IN_AFTER_CUTOFF',
+                            'SAME_WINDOW_KICKOFF_CHANGE',
+                            'MOVED_OUTSIDE_WINDOW',
+                            'POSTPONED',
+                            'CANCELLED',
+                            'INVALID_PREMATCH_TIMING',
+                            'IDENTITY_CONFLICT',
+                            'MATERIAL_CONFLICT',
+                            'REVISION_LEARNED_AFTER_CUTOFF'
+                        )
+                    ),
+                disposition TEXT NOT NULL
+                    CHECK (disposition IN ('APPENDIX_ONLY', 'PRESERVED', 'WITHDRAWN')),
+                settlement_result TEXT
+                    CHECK (settlement_result IS NULL OR settlement_result = 'VOID'),
+                original_kickoff_utc TEXT,
+                current_kickoff_utc TEXT,
+                observed_at_utc TEXT NOT NULL,
+                validity_review_json TEXT NOT NULL,
+                reason_code TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                entry_digest TEXT NOT NULL
+                    CHECK (length(entry_digest) = 64 AND entry_digest NOT GLOB '*[^0-9a-f]*'),
+                created_at_utc TEXT NOT NULL,
+                CHECK (
+                    (subject_kind = 'FIXTURE' AND fixture_id = subject_id)
+                    OR (subject_kind = 'UNRESOLVED_FIXTURE_ROW' AND fixture_id IS NULL)
+                ),
+                CHECK (
+                    (disposition = 'WITHDRAWN' AND settlement_result = 'VOID')
+                    OR (disposition != 'WITHDRAWN' AND settlement_result IS NULL)
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TRIGGER matchweeks_typed_identifier
+            BEFORE INSERT ON matchweeks
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.matchweek_id AND entity_kind = 'matchweek'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweeks require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_cutoffs_typed_identifier
+            BEFORE INSERT ON matchweek_research_cutoffs
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.cutoff_id AND entity_kind = 'research_cutoff'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweek cutoffs require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_memberships_typed_identifier
+            BEFORE INSERT ON matchweek_memberships
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.membership_id AND entity_kind = 'frozen_membership'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweek memberships require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_freeze_records_typed_identifier
+            BEFORE INSERT ON matchweek_freeze_records
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.matchweek_id AND entity_kind = 'matchweek'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweek freeze records require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER post_cutoff_appendix_typed_identifier
+            BEFORE INSERT ON post_cutoff_fixture_appendix
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.appendix_id AND entity_kind = 'post_cutoff_appendix'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'post-cutoff appendix requires typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweeks_no_update
+            BEFORE UPDATE ON matchweeks
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweeks are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweeks_no_delete
+            BEFORE DELETE ON matchweeks
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweeks are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_cutoffs_no_update
+            BEFORE UPDATE ON matchweek_research_cutoffs
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweek research cutoffs are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_cutoffs_no_delete
+            BEFORE DELETE ON matchweek_research_cutoffs
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweek research cutoffs are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_memberships_no_update
+            BEFORE UPDATE ON matchweek_memberships
+            BEGIN
+                SELECT RAISE(ABORT, 'frozen matchweek memberships are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_memberships_no_delete
+            BEFORE DELETE ON matchweek_memberships
+            BEGIN
+                SELECT RAISE(ABORT, 'frozen matchweek memberships are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_freeze_records_no_update
+            BEFORE UPDATE ON matchweek_freeze_records
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweek freeze records are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER matchweek_freeze_records_no_delete
+            BEFORE DELETE ON matchweek_freeze_records
+            BEGIN
+                SELECT RAISE(ABORT, 'matchweek freeze records are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER post_cutoff_appendix_no_update
+            BEFORE UPDATE ON post_cutoff_fixture_appendix
+            BEGIN
+                SELECT RAISE(ABORT, 'post-cutoff fixture appendix entries are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER post_cutoff_appendix_no_delete
+            BEFORE DELETE ON post_cutoff_fixture_appendix
+            BEGIN
+                SELECT RAISE(ABORT, 'post-cutoff fixture appendix entries are immutable');
+            END
+            """,
+        ),
+    ),
 )
 
 
@@ -1466,6 +1743,62 @@ def _verify_schema_manifest(
                 ("conflict_assertions", "sqlite_autoindex_conflict_assertions_1", 1, "pk", 0),
             }
         )
+    if schema_version >= 5:
+        expected_indexes.update(
+            {
+                ("matchweeks", "sqlite_autoindex_matchweeks_1", 1, "pk", 0),
+                ("matchweeks", "sqlite_autoindex_matchweeks_2", 1, "u", 0),
+                (
+                    "matchweek_research_cutoffs",
+                    "sqlite_autoindex_matchweek_research_cutoffs_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "matchweek_research_cutoffs",
+                    "sqlite_autoindex_matchweek_research_cutoffs_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "matchweek_memberships",
+                    "sqlite_autoindex_matchweek_memberships_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "matchweek_memberships",
+                    "sqlite_autoindex_matchweek_memberships_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "matchweek_freeze_records",
+                    "sqlite_autoindex_matchweek_freeze_records_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "post_cutoff_fixture_appendix",
+                    "sqlite_autoindex_post_cutoff_fixture_appendix_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "post_cutoff_fixture_appendix",
+                    "sqlite_autoindex_post_cutoff_fixture_appendix_2",
+                    1,
+                    "u",
+                    0,
+                ),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -1499,6 +1832,11 @@ def _verify_schema_manifest(
         "unresolved_fixture_rows",
         "conflict_sets",
         "conflict_assertions",
+        "matchweeks",
+        "matchweek_research_cutoffs",
+        "matchweek_memberships",
+        "matchweek_freeze_records",
+        "post_cutoff_fixture_appendix",
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))

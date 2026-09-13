@@ -18,6 +18,10 @@ Use the explicit ingestion command to acquire current data; add one or more `--h
 options for historical imports. T06 does not freeze matchweeks, add contextual evidence, or make
 predictions.
 
+T05 freezes Matchweek membership from those acquired Fixture Revisions. See the [Matchweek freeze
+guide](docs/matchweek-freeze.md). It records the immutable Friday-to-Monday membership manifest,
+cutoff, controlling revision digests, and post-cutoff appendix while remaining RESEARCH_ONLY.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:
@@ -29,6 +33,7 @@ Use the pinned native Termux packages and Python environment described in [the T
     .venv/bin/matchvet status
     .venv/bin/matchvet resume RUN_ID
     .venv/bin/matchvet ingest --season 2026-27 --history-season 2025-26 --json
+    .venv/bin/matchvet freeze 2026-09-18 --season 2026-27 --json
 
 To inspect a configured store without changing it:
 

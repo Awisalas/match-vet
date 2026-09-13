@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from matchvet.doctor import apply_runtime_limits, build_report, render_human_report
 from matchvet.runs import (
@@ -73,6 +72,17 @@ def _parser() -> argparse.ArgumentParser:
         help="refresh the current-season cache instead of reusing it",
     )
     _add_run_options(ingest)
+    freeze = commands.add_parser(
+        "freeze", help="freeze T05 Matchweek membership from acquired Fixture Revisions"
+    )
+    freeze.add_argument("date", help="Matchweek Friday in Africa/Lagos (YYYY-MM-DD)")
+    freeze.add_argument("--season", default="2026-27", help="Target season in YYYY-YY form")
+    freeze.add_argument(
+        "--as-of-utc",
+        help="observation time for deterministic replay (canonical UTC ISO-8601)",
+    )
+    freeze.add_argument("--resume", dest="resume_run_id", help="resume a T05 run by ID")
+    _add_run_options(freeze)
     return parser
 
 
@@ -149,6 +159,15 @@ def main(arguments: Sequence[str] | None = None) -> int:
             parsed.as_json,
             parsed.resume_run_id,
             parsed.refresh_current,
+        )
+    if parsed.command == "freeze":
+        return _freeze_command(
+            parsed.date,
+            parsed.season,
+            parsed.as_of_utc,
+            parsed.store,
+            parsed.as_json,
+            parsed.resume_run_id,
         )
     if parsed.command == "status":
         return _status_command(parsed.run_id, parsed.store, parsed.as_json)
@@ -369,7 +388,9 @@ def _matchweek_key(date_text: str | None) -> str:
         if selected.weekday() != 4:
             raise ValueError("Matchweeks start on Friday")
         return selected.isoformat()
-    today = datetime.now(ZoneInfo("Africa/Lagos")).date()
+    from matchvet.matchweek import AFRICA_LAGOS
+
+    today = datetime.now(AFRICA_LAGOS).date()
     days_until_friday = (4 - today.weekday()) % 7
     return (today + timedelta(days=days_until_friday)).isoformat()
 
@@ -489,3 +510,121 @@ def _ingest_command(
                 f"issues={len(report.issues)}"
             )
     return 0
+
+
+def _freeze_command(
+    date_text: str,
+    season: str,
+    as_of_utc: str | None,
+    store_path: Path | None,
+    as_json: bool,
+    resume_run_id: str | None,
+) -> int:
+    from matchvet.matchweek import MatchweekError, MatchweekFreezePlan, MatchweekFreezeRunner
+
+    database_path = store_path or default_database_path()
+    try:
+        plan = MatchweekFreezePlan(date_text, season=season, as_of_utc=as_of_utc)
+        with open_store(database_path, private_root=termux_private_root()) as store:
+            if store.status.mode is not StoreMode.READ_WRITE:
+                issue = store.status.issues[0]
+                return _print_error(
+                    {
+                        "status": "REFUSED",
+                        "code": issue.code,
+                        "explanation": issue.message,
+                        "last_checkpoint": "none",
+                        "reuse_state": "NONE",
+                        "recovery_command": f"matchvet doctor --store {database_path}",
+                    },
+                    as_json,
+                )
+            runner = MatchweekFreezeRunner(store)
+            observation = observe_resources(database_path)
+            if resume_run_id is None:
+                status = runner.start(
+                    plan,
+                    observation=observation,
+                    progress=None if as_json else _print_progress,
+                )
+            else:
+                status = runner.resume(
+                    resume_run_id,
+                    plan,
+                    observation=observation,
+                    progress=None if as_json else _print_progress,
+                )
+            frozen = runner.last_freeze
+            if frozen is None:
+                raise MatchweekError(
+                    "MV-T05-FREEZE_NOT_PUBLISHED", "T05 completed without a frozen Matchweek."
+                )
+            summary = _freeze_summary(frozen)
+    except MatchweekError as error:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": error.code,
+                "explanation": str(error),
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": f"matchvet freeze {date_text} --store {database_path}",
+            },
+            as_json,
+        )
+    except RunLifecycleError as error:
+        return _print_error(asdict(error.error), as_json)
+    except StoreBusyError:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T05-COORDINATOR_BUSY",
+                "explanation": "Another foreground MatchVet coordinator owns the store.",
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": "matchvet status",
+            },
+            as_json,
+        )
+    except (ValueError, LookupError, RuntimeError) as error:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T05-FREEZE_UNAVAILABLE",
+                "explanation": str(error),
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": f"matchvet doctor --store {database_path}",
+            },
+            as_json,
+        )
+    if as_json:
+        payload = asdict(status)
+        payload["freeze"] = summary
+        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+    else:
+        _print_status(status, False, heading="MatchVet freeze")
+        print(
+            "Freeze: "
+            f"cutoff={summary['cutoff_utc']}; targets={summary['target_matches']}; "
+            f"indeterminate={summary['indeterminate_memberships']}; "
+            f"manifest={summary['snapshot_manifest_digest']}"
+        )
+    return 0
+
+
+def _freeze_summary(frozen: object) -> dict[str, object]:
+    from matchvet.matchweek import MatchweekFreeze
+
+    if not isinstance(frozen, MatchweekFreeze):
+        raise TypeError("A MatchweekFreeze summary requires a frozen Matchweek.")
+    return {
+        "cutoff_utc": frozen.cutoff.cutoff_utc,
+        "excluded_memberships": len(frozen.excluded_memberships),
+        "indeterminate_memberships": len(frozen.indeterminate_memberships),
+        "matchweek": frozen.window.friday_local.isoformat(),
+        "membership_manifest_digest": frozen.membership_manifest_digest,
+        "season": frozen.season,
+        "snapshot_manifest_digest": frozen.snapshot_manifest_digest,
+        "target_matches": len(frozen.target_matches),
+    }
