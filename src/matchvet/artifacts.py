@@ -416,6 +416,7 @@ def _inspect_catalog(
     manifest_metadata: Mapping[str, tuple[str | None, ...]],
     manifest_members: Mapping[str, tuple[tuple[str, str], ...]],
     manifest_versions: Mapping[str, tuple[tuple[str, ...], ...]],
+    other_references: tuple[str, ...] = (),
     *,
     object_root: Path,
     staging_root: Path,
@@ -425,7 +426,7 @@ def _inspect_catalog(
     missing: list[str] = []
     corrupt: list[str] = []
     malformed_manifests: list[str] = []
-    referenced = set(manifest_metadata)
+    referenced = set(manifest_metadata) | set(other_references)
     for digest in manifest_metadata:
         referenced.update(member_digest for _, member_digest in manifest_members.get(digest, ()))
 
@@ -510,6 +511,24 @@ class ArtifactStore:
         self.store = store
         self.object_root = store.path.parent / ARTIFACT_RELATIVE_ROOT
         self.staging_root = store.path.parent / ARTIFACT_STAGING_RELATIVE_ROOT
+
+    def discard_incomplete_staging(self) -> tuple[str, ...]:
+        """Remove private partial files left by an interrupted artifact publication."""
+        self._ensure_writeable()
+        relative_paths = _scan_staging_orphans(self.staging_root, self.store.path.parent)
+        removed: list[str] = []
+        for relative_path in relative_paths:
+            candidate = self.store.path.parent / relative_path
+            try:
+                metadata = candidate.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISREG(metadata.st_mode) and not candidate.is_symlink():
+                candidate.unlink()
+                removed.append(relative_path)
+        if removed:
+            _fsync_directory(self.staging_root)
+        return tuple(removed)
 
     def publish_artifact(
         self,
@@ -799,6 +818,7 @@ class ArtifactStore:
             {digest: value for digest, value in manifest_metadata.items() if value is not None},
             manifest_members,
             manifest_versions,
+            self.store.run_completion_digests(),
             object_root=self.object_root,
             staging_root=self.staging_root,
             base_path=self.store.path.parent,
@@ -1041,6 +1061,12 @@ def inspect_artifacts(
                 )
                 for digest in manifest_digests
             }
+            run_completion_digests = tuple(
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT publication_digest FROM run_completions ORDER BY publication_digest"
+                )
+            )
         finally:
             connection.close()
     except sqlite3.DatabaseError:
@@ -1051,6 +1077,7 @@ def inspect_artifacts(
         {digest: value for digest, value in manifest_metadata.items() if value is not None},
         manifest_members,
         manifest_versions,
+        run_completion_digests,
         object_root=path.parent / ARTIFACT_RELATIVE_ROOT,
         staging_root=path.parent / ARTIFACT_STAGING_RELATIVE_ROOT,
         base_path=path.parent,

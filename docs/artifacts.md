@@ -43,4 +43,7 @@ Citation-only evidence is represented by a retention omission; it does not creat
 
 Inspection never deletes, repairs, or rewrites objects, manifests, or protected history. A missing or altered object fails the artifact-integrity doctor check. Orphans remain available for a later explicit retention operation. The artifact catalog and manifest memberships are append-only and protected by SQLite immutability triggers.
 
-T03 does not implement MatchVet runs, checkpoints, evidence ingestion, model output, report exports, or backup/restore commands. Those capabilities consume verified artifacts through later tickets.
+T04 uses the same artifact-first contract for an operational run-completion record. The artifact
+is published first, then its database reference and the run's `COMPLETE` state commit together.
+It is not a Matchweek Report, Matchweek Audit, PLAY, or AVOID MATCH decision. Evidence ingestion,
+model output, reports, exports, and backup/restore remain later work.

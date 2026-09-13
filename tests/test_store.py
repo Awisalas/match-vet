@@ -406,7 +406,7 @@ def test_existing_store_refuses_migration_without_verified_backup(tmp_path: Path
     with open_store(database_path, private_root=private_root):
         pass
     second_migration = Migration(
-        number=3,
+        number=4,
         name="requires_backup",
         statements=("CREATE TABLE second_table (value TEXT) STRICT",),
     )
@@ -445,7 +445,7 @@ def test_t03_migration_upgrades_a_t02_store_after_private_backup(tmp_path: Path)
 def test_migration_plan_must_be_sequential(tmp_path: Path) -> None:
     private_root = tmp_path / "private"
     private_root.mkdir()
-    out_of_order = Migration(number=4, name="skipped_three", statements=("SELECT 1",))
+    out_of_order = Migration(number=5, name="skipped_four", statements=("SELECT 1",))
 
     with pytest.raises(ValueError, match="sequential"):
         open_store(
@@ -491,7 +491,7 @@ def test_incomplete_migration_enters_read_only_recovery(tmp_path: Path) -> None:
     with open_store(database_path, private_root=private_root):
         pass
     second_migration = Migration(
-        number=3,
+        number=4,
         name="second_test_migration",
         statements=("CREATE TABLE second_table (value TEXT) STRICT",),
     )
@@ -510,13 +510,13 @@ def test_incomplete_migration_enters_read_only_recovery(tmp_path: Path) -> None:
             result,
             software_commit
         ) VALUES (
-            3, ?, ?, 1, '0.1.0', '0.1.0',
+                4, ?, ?, 1, '0.1.0', '0.1.0',
             '2026-09-12T00:00:00+00:00', NULL, 'IN_PROGRESS', 'test'
         )
         """,
         (second_migration.name, second_migration.checksum),
     )
-    connection.execute("PRAGMA user_version = 3")
+    connection.execute("PRAGMA user_version = 4")
     connection.commit()
     connection.close()
 

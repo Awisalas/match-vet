@@ -2,7 +2,9 @@
 
 MatchVet keeps one authoritative SQLite database and content-addressed object store in Termux private storage. The default database path is `$HOME/.local/share/matchvet/matchvet.sqlite3`. Shared Android storage is never accepted as live state. The trusted private-storage boundary comes from the running Termux Python installation, not mutable environment variables.
 
-T02 owns only the store foundation. It does not create artifact storage, snapshots, research runs, evidence, models, or reports.
+T02 owns the store foundation. T03 adds artifact and snapshot records. T04 adds operational
+research-run, work-unit, attempt, checkpoint, and completion-publication records. Evidence,
+models, decisions, and reports remain outside this schema.
 
 ## Open and inspect
 
@@ -24,9 +26,9 @@ Every authoritative writer uses:
 
 One private lock file permits one MatchVet writer coordinator. Write work uses explicit bounded transactions. Network, parsing, modelling, and report work must remain outside them.
 
-## Schema version 2
+## Schema version 3
 
-The initial schema contains only:
+The schema contains:
 
 - the immutable migration ledger
 - application metadata
@@ -34,6 +36,10 @@ The initial schema contains only:
 - immutable version definitions with separate stable logical IDs, predecessor links, and content digests
 - append-only integrity observations
 - immutable artifact catalog and Snapshot Manifest membership
+- preserved Research Runs and their exact input digests
+- bounded work units and attempt history
+- immutable safe-boundary checkpoints
+- atomic operational completion publications
 
 Later tickets add their own entities through new migrations.
 
@@ -43,7 +49,11 @@ Migrations are application-owned, sequential, and forward-only. Their SHA-256 ch
 
 Never edit a released migration. Add the next numbered migration. Transactional DDL and its completed ledger entry commit together. A failure rolls back the whole migration. An incomplete ledger entry, changed checksum, missing migration, schema drift, or newer schema forces read-only recovery.
 
-The initial migration creates the T02 foundation; migration 2 adds the T03 artifact catalog and Snapshot Manifest membership. Existing T02 stores receive a verified private SQLite pre-migration copy before this migration runs. A custom or unsupported migration plan remains refused until a later backup capability can provide the required recovery export.
+The initial migration creates the T02 foundation. Migration 2 adds the T03 artifact catalog and
+Snapshot Manifest membership. Migration 3 adds the T04 run lifecycle. Existing stores receive a
+verified private SQLite pre-migration copy before a released migration runs. A custom or
+unsupported migration plan remains refused until a later backup capability can provide the
+required recovery export.
 
 ## Recovery behavior
 

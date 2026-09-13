@@ -10,6 +10,19 @@ import pytest
 
 from matchvet import cli
 from matchvet.artifacts import ArtifactStore
+from matchvet.runs import (
+    GIB,
+    MIB,
+    ResourceEstimate,
+    ResourceObservation,
+    RunCoordinator,
+    RunLifecycleError,
+    RunPhase,
+    WorkContext,
+    WorkInterrupted,
+    WorkResult,
+    build_local_input_contract,
+)
 from matchvet.store import MIGRATIONS, open_store
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +50,20 @@ def run_matchvet(
         capture_output=True,
         text=True,
     )
+
+
+def _safe_estimate() -> ResourceEstimate:
+    return ResourceEstimate(MIB, 128 * MIB, 1, 0, 1)
+
+
+def _safe_observation() -> ResourceObservation:
+    return ResourceObservation(0, 5 * GIB, 2 * GIB, 3, False, False, 0)
+
+
+def _interrupt_evidence(context: WorkContext) -> WorkResult:
+    if context.phase is RunPhase.EVIDENCE_ACQUISITION:
+        raise WorkInterrupted("terminal process ended")
+    return WorkResult.for_phase(context.phase)
 
 
 def test_no_arguments_reports_bootstrap_state_and_next_action() -> None:
@@ -93,11 +120,45 @@ def test_no_arguments_reports_a_healthy_default_store_without_mutation(
         "MatchVet\n"
         "State: READY\n"
         "Mode: RESEARCH_ONLY\n"
-        "Store: healthy; schema 2\n"
+        "Store: healthy; schema 3\n"
         "Active run: none\n"
-        "Next action: matchvet doctor\n"
+        "Next action: matchvet run\n"
     )
     assert database_path.stat().st_mtime_ns == before
+
+
+def test_no_arguments_prioritizes_an_older_incomplete_run_over_the_latest_complete_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    with open_store(database_path, private_root=private_root) as store:
+        with pytest.raises(RunLifecycleError) as interrupted:
+            RunCoordinator(store).start(
+                matchweek="2026-09-18",
+                inputs=build_local_input_contract("2026-09-18"),
+                estimate=_safe_estimate(),
+                observation=_safe_observation(),
+                executor=_interrupt_evidence,
+            )
+        run_id = interrupted.value.run_id
+        RunCoordinator(store).start(
+            matchweek="2026-09-25",
+            inputs=build_local_input_contract("2026-09-25"),
+            estimate=_safe_estimate(),
+            observation=_safe_observation(),
+        )
+    monkeypatch.setattr(cli, "default_database_path", lambda: database_path)
+    monkeypatch.setattr(cli, "termux_private_root", lambda: private_root)
+
+    cli._show_bootstrap_state()
+
+    output = capsys.readouterr().out
+    assert f"Active run: {run_id}; INCOMPLETE; preflight" in output
+    assert f"Next action: matchvet resume {run_id}" in output
 
 
 def test_doctor_captures_the_pinned_environment_without_secrets() -> None:
@@ -220,6 +281,119 @@ def test_human_doctor_report_is_readable_and_keeps_research_only_mode() -> None:
     )
 
 
+def test_run_and_status_commands_expose_checkpointed_research_only_lifecycle(
+    tmp_path: Path,
+) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+
+    started = run_matchvet("run", "2026-09-18", "--store", str(database_path), "--json")
+
+    assert started.returncode == 0
+    assert started.stderr == ""
+    run = json.loads(started.stdout)
+    assert run["state"] == "COMPLETE"
+    assert run["mode"] == "RESEARCH_ONLY"
+    assert run["completed_work_units"] == 7
+    assert run["total_work_units"] == 7
+    assert run["decision_state"] == "NO_DECISION"
+    assert "PLAY" not in started.stdout
+    assert "AVOID" not in started.stdout
+
+    shown = run_matchvet("status", run["run_id"], "--store", str(database_path))
+
+    assert shown.returncode == 0
+    assert shown.stderr == ""
+    assert f"Run: {run['run_id']}" in shown.stdout
+    assert "State: COMPLETE" in shown.stdout
+    assert "Phase: atomic_report_and_audit_publication" in shown.stdout
+    assert "Work units: 7/7" in shown.stdout
+    assert "Last checkpoint: atomic_report_and_audit_publication" in shown.stdout
+    assert "Mode: RESEARCH_ONLY" in shown.stdout
+    assert "Decision: NO_DECISION" in shown.stdout
+
+
+def test_run_command_rejects_a_non_friday_matchweek_date(tmp_path: Path) -> None:
+    database_path = tmp_path / "private" / "matchvet.sqlite3"
+
+    result = run_matchvet("run", "2026-09-20", "--store", str(database_path), "--json")
+
+    assert result.returncode == 1
+    error = json.loads(result.stdout)
+    assert error["code"] == "MV-USAGE-DATE_INVALID"
+    assert "Matchweek Friday" in error["explanation"]
+    assert not database_path.exists()
+
+
+def test_human_run_streams_preflight_and_checkpoint_progress(tmp_path: Path) -> None:
+    database_path = tmp_path / "private" / "matchvet.sqlite3"
+
+    result = run_matchvet("run", "2026-09-18", "--store", str(database_path))
+
+    assert result.returncode == 0
+    assert "Preflight: matchweek=2026-09-18" in result.stdout
+    assert "Progress: phase=preflight; work=0/7" in result.stdout
+    assert "work=7/7" in result.stdout
+
+
+def test_resume_command_completes_a_compatible_incomplete_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    monkeypatch.setenv("OPENBLAS_NUM_THREADS", "1")
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+    inputs = build_local_input_contract("2026-09-18")
+    with open_store(database_path, private_root=private_root) as store:
+        with pytest.raises(RunLifecycleError) as interrupted:
+            RunCoordinator(store).start(
+                matchweek="2026-09-18",
+                inputs=inputs,
+                estimate=_safe_estimate(),
+                observation=_safe_observation(),
+                executor=_interrupt_evidence,
+            )
+        run_id = interrupted.value.run_id
+
+    resumed = run_matchvet("resume", run_id, "--store", str(database_path), "--json")
+
+    assert resumed.returncode == 0
+    output = json.loads(resumed.stdout)
+    assert output["run_id"] == run_id
+    assert output["state"] == "COMPLETE"
+    assert output["reuse_state"] == "REUSED"
+    assert output["work_units"][1]["attempt"] == 2
+
+
+def test_resume_command_reports_stable_digest_mismatch_error(tmp_path: Path) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    with open_store(database_path, private_root=private_root) as store:
+        with pytest.raises(RunLifecycleError) as interrupted:
+            RunCoordinator(store).start(
+                matchweek="2026-09-18",
+                inputs=build_local_input_contract("different-matchweek-input"),
+                estimate=_safe_estimate(),
+                observation=_safe_observation(),
+                executor=_interrupt_evidence,
+            )
+        run_id = interrupted.value.run_id
+
+    refused = run_matchvet("resume", run_id, "--store", str(database_path), "--json")
+
+    assert refused.returncode == 1
+    error = json.loads(refused.stdout)
+    assert error["status"] == "REFUSED"
+    assert error["code"] == "MV-RESUME-DIGEST_MISMATCH"
+    assert error["last_checkpoint"] == "preflight"
+    assert error["checkpoint_at_utc"] is not None
+    assert error["reuse_state"] == "BLOCKED"
+    assert error["recovery_command"] == "matchvet run 2026-09-18"
+
+
 def test_doctor_reports_a_configured_store_without_migrating_it(tmp_path: Path) -> None:
     private_root = tmp_path / "private"
     private_root.mkdir()
@@ -237,7 +411,7 @@ def test_doctor_reports_a_configured_store_without_migrating_it(tmp_path: Path) 
     assert result.returncode == 0
     report = json.loads(result.stdout)
     assert report["store"] == {
-        "applied_migrations": [1, 2],
+        "applied_migrations": [1, 2, 3],
         "foreign_key_violations": 0,
         "integrity": "ok",
         "issues": [],

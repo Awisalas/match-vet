@@ -544,6 +544,253 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=3,
+        name="checkpointed_run_lifecycle",
+        statements=(
+            """
+            CREATE TABLE research_runs (
+                run_id TEXT PRIMARY KEY
+                    REFERENCES canonical_identifiers(canonical_id),
+                matchweek TEXT NOT NULL CHECK (length(matchweek) > 0),
+                state TEXT NOT NULL CHECK (state IN ('INCOMPLETE', 'COMPLETE')),
+                mode TEXT NOT NULL CHECK (mode = 'RESEARCH_ONLY'),
+                current_phase TEXT NOT NULL,
+                started_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL,
+                completed_at_utc TEXT,
+                elapsed_seconds INTEGER NOT NULL CHECK (elapsed_seconds >= 0),
+                input_contract_json TEXT NOT NULL,
+                input_digest TEXT NOT NULL
+                    CHECK (length(input_digest) = 64 AND input_digest NOT GLOB '*[^0-9a-f]*'),
+                resource_contract_json TEXT NOT NULL,
+                cpu_concurrency INTEGER NOT NULL CHECK (cpu_concurrency BETWEEN 1 AND 2),
+                warnings_json TEXT NOT NULL,
+                last_checkpoint TEXT,
+                last_checkpoint_at_utc TEXT,
+                last_error_code TEXT,
+                last_error_explanation TEXT,
+                reuse_state TEXT NOT NULL
+                    CHECK (reuse_state IN ('NONE', 'NOT_REUSED', 'REUSABLE', 'REUSED', 'BLOCKED')),
+                coordinator_token TEXT NOT NULL,
+                CHECK (
+                    (state = 'INCOMPLETE' AND completed_at_utc IS NULL)
+                    OR (state = 'COMPLETE' AND completed_at_utc IS NOT NULL)
+                ),
+                CHECK (
+                    (last_checkpoint IS NULL AND last_checkpoint_at_utc IS NULL)
+                    OR (last_checkpoint IS NOT NULL AND last_checkpoint_at_utc IS NOT NULL)
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TABLE run_input_digests (
+                run_id TEXT NOT NULL REFERENCES research_runs(run_id),
+                input_kind TEXT NOT NULL,
+                digest TEXT NOT NULL
+                    CHECK (length(digest) = 64 AND digest NOT GLOB '*[^0-9a-f]*'),
+                PRIMARY KEY (run_id, input_kind)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE run_work_units (
+                run_id TEXT NOT NULL REFERENCES research_runs(run_id),
+                stable_key TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                phase_order INTEGER NOT NULL CHECK (phase_order BETWEEN 0 AND 6),
+                mode TEXT NOT NULL CHECK (mode = 'RESEARCH_ONLY'),
+                input_digest TEXT NOT NULL
+                    CHECK (length(input_digest) = 64 AND input_digest NOT GLOB '*[^0-9a-f]*'),
+                state TEXT NOT NULL CHECK (state IN ('PENDING', 'RUNNING', 'COMPLETE')),
+                attempt_count INTEGER NOT NULL CHECK (attempt_count >= 0),
+                checkpoint_at_utc TEXT,
+                elapsed_seconds INTEGER NOT NULL CHECK (elapsed_seconds >= 0),
+                output_digest TEXT
+                    CHECK (
+                        output_digest IS NULL
+                        OR (length(output_digest) = 64
+                            AND output_digest NOT GLOB '*[^0-9a-f]*')
+                    ),
+                artifact_digests_json TEXT NOT NULL,
+                PRIMARY KEY (run_id, stable_key),
+                UNIQUE (run_id, phase_order),
+                CHECK (
+                    (state = 'COMPLETE' AND checkpoint_at_utc IS NOT NULL
+                        AND output_digest IS NOT NULL)
+                    OR (state != 'COMPLETE' AND checkpoint_at_utc IS NULL
+                        AND output_digest IS NULL)
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TABLE run_attempts (
+                run_id TEXT NOT NULL,
+                stable_key TEXT NOT NULL,
+                attempt INTEGER NOT NULL CHECK (attempt >= 1),
+                status TEXT NOT NULL
+                    CHECK (status IN ('RUNNING', 'COMPLETED', 'INTERRUPTED', 'FAILED')),
+                started_at_utc TEXT NOT NULL,
+                ended_at_utc TEXT,
+                elapsed_seconds INTEGER NOT NULL CHECK (elapsed_seconds >= 0),
+                owner_token TEXT NOT NULL,
+                error_code TEXT,
+                error_explanation TEXT,
+                PRIMARY KEY (run_id, stable_key, attempt),
+                FOREIGN KEY (run_id, stable_key)
+                    REFERENCES run_work_units(run_id, stable_key),
+                CHECK (
+                    (status = 'RUNNING' AND ended_at_utc IS NULL)
+                    OR (status != 'RUNNING' AND ended_at_utc IS NOT NULL)
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TABLE run_checkpoints (
+                run_id TEXT NOT NULL,
+                stable_key TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                checkpoint_order INTEGER NOT NULL CHECK (checkpoint_order BETWEEN 0 AND 6),
+                attempt INTEGER NOT NULL,
+                input_digest TEXT NOT NULL
+                    CHECK (length(input_digest) = 64 AND input_digest NOT GLOB '*[^0-9a-f]*'),
+                output_digest TEXT NOT NULL
+                    CHECK (length(output_digest) = 64 AND output_digest NOT GLOB '*[^0-9a-f]*'),
+                artifact_digests_json TEXT NOT NULL,
+                checkpoint_at_utc TEXT NOT NULL,
+                elapsed_seconds INTEGER NOT NULL CHECK (elapsed_seconds >= 0),
+                PRIMARY KEY (run_id, stable_key),
+                UNIQUE (run_id, checkpoint_order),
+                FOREIGN KEY (run_id, stable_key, attempt)
+                    REFERENCES run_attempts(run_id, stable_key, attempt)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE run_completions (
+                run_id TEXT PRIMARY KEY REFERENCES research_runs(run_id),
+                publication_digest TEXT NOT NULL UNIQUE REFERENCES artifacts(digest),
+                completed_at_utc TEXT NOT NULL
+            ) STRICT
+            """,
+            """
+            CREATE INDEX research_runs_matchweek_state
+            ON research_runs(matchweek, state, started_at_utc)
+            """,
+            """
+            CREATE INDEX run_attempts_status
+            ON run_attempts(status, run_id)
+            """,
+            """
+            CREATE TRIGGER research_runs_typed_identifier
+            BEFORE INSERT ON research_runs
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.run_id AND entity_kind = 'research_run'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'research runs require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER research_runs_complete_requires_publication
+            BEFORE UPDATE OF state ON research_runs
+            WHEN NEW.state = 'COMPLETE'
+                 AND NOT EXISTS (SELECT 1 FROM run_completions WHERE run_id = NEW.run_id)
+            BEGIN
+                SELECT RAISE(ABORT, 'completed state requires completion publication');
+            END
+            """,
+            """
+            CREATE TRIGGER research_runs_inputs_immutable
+            BEFORE UPDATE OF matchweek, mode, started_at_utc, input_contract_json, input_digest
+            ON research_runs
+            BEGIN
+                SELECT RAISE(ABORT, 'research run inputs are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER research_runs_completed_immutable
+            BEFORE UPDATE ON research_runs
+            WHEN OLD.state = 'COMPLETE'
+            BEGIN
+                SELECT RAISE(ABORT, 'completed research runs are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER research_runs_no_delete
+            BEFORE DELETE ON research_runs
+            BEGIN
+                SELECT RAISE(ABORT, 'research runs are preserved');
+            END
+            """,
+            """
+            CREATE TRIGGER run_input_digests_no_update
+            BEFORE UPDATE ON run_input_digests
+            BEGIN
+                SELECT RAISE(ABORT, 'run input digests are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER run_input_digests_no_delete
+            BEFORE DELETE ON run_input_digests
+            BEGIN
+                SELECT RAISE(ABORT, 'run input digests are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER run_attempts_terminal_immutable
+            BEFORE UPDATE ON run_attempts
+            WHEN OLD.status != 'RUNNING'
+            BEGIN
+                SELECT RAISE(ABORT, 'terminal run attempts are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER run_attempts_no_delete
+            BEFORE DELETE ON run_attempts
+            BEGIN
+                SELECT RAISE(ABORT, 'run attempts are preserved');
+            END
+            """,
+            """
+            CREATE TRIGGER run_checkpoints_no_update
+            BEFORE UPDATE ON run_checkpoints
+            BEGIN
+                SELECT RAISE(ABORT, 'run checkpoints are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER run_checkpoints_no_delete
+            BEFORE DELETE ON run_checkpoints
+            BEGIN
+                SELECT RAISE(ABORT, 'run checkpoints are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER run_completions_require_all_checkpoints
+            BEFORE INSERT ON run_completions
+            WHEN (
+                SELECT count(*) FROM run_checkpoints WHERE run_id = NEW.run_id
+            ) != 7
+            BEGIN
+                SELECT RAISE(ABORT, 'completion publication requires every phase checkpoint');
+            END
+            """,
+            """
+            CREATE TRIGGER run_completions_no_update
+            BEFORE UPDATE ON run_completions
+            BEGIN
+                SELECT RAISE(ABORT, 'run completion publications are immutable');
+            END
+            """,
+            """
+            CREATE TRIGGER run_completions_no_delete
+            BEFORE DELETE ON run_completions
+            BEGIN
+                SELECT RAISE(ABORT, 'run completion publications are immutable');
+            END
+            """,
+        ),
+    ),
 )
 
 
@@ -764,7 +1011,11 @@ def _expected_schema_objects(
         for statement in migration.statements:
             normalized = _normalized_sql(statement)
             words = normalized.split(maxsplit=3)
-            if len(words) < 3 or words[0:2] not in (["CREATE", "TABLE"], ["CREATE", "TRIGGER"]):
+            if len(words) < 3 or words[0:2] not in (
+                ["CREATE", "TABLE"],
+                ["CREATE", "TRIGGER"],
+                ["CREATE", "INDEX"],
+            ):
                 continue
             object_type = words[1].lower()
             expected[(object_type, words[2])] = normalized
@@ -813,6 +1064,22 @@ def _verify_schema_manifest(
                 ("manifest_versions", "sqlite_autoindex_manifest_versions_1", 1, "pk", 0),
             }
         )
+    if schema_version >= 3:
+        expected_indexes.update(
+            {
+                ("research_runs", "sqlite_autoindex_research_runs_1", 1, "pk", 0),
+                ("research_runs", "research_runs_matchweek_state", 0, "c", 0),
+                ("run_input_digests", "sqlite_autoindex_run_input_digests_1", 1, "pk", 0),
+                ("run_work_units", "sqlite_autoindex_run_work_units_1", 1, "pk", 0),
+                ("run_work_units", "sqlite_autoindex_run_work_units_2", 1, "u", 0),
+                ("run_attempts", "sqlite_autoindex_run_attempts_1", 1, "pk", 0),
+                ("run_attempts", "run_attempts_status", 0, "c", 0),
+                ("run_checkpoints", "sqlite_autoindex_run_checkpoints_1", 1, "pk", 0),
+                ("run_checkpoints", "sqlite_autoindex_run_checkpoints_2", 1, "u", 0),
+                ("run_completions", "sqlite_autoindex_run_completions_1", 1, "pk", 0),
+                ("run_completions", "sqlite_autoindex_run_completions_2", 1, "u", 0),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -824,6 +1091,12 @@ def _verify_schema_manifest(
         "snapshot_manifests",
         "manifest_artifacts",
         "manifest_versions",
+        "research_runs",
+        "run_input_digests",
+        "run_work_units",
+        "run_attempts",
+        "run_checkpoints",
+        "run_completions",
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))
@@ -1141,6 +1414,12 @@ class Store:
         if os.getpid() != self._pid:
             raise RuntimeError("SQLite connections cannot cross a process boundary.")
 
+    def _connection_for_repository(self) -> sqlite3.Connection:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        return self._connection
+
     @contextmanager
     def transaction(self) -> Iterator[StoreTransaction]:
         self._ensure_write_allowed()
@@ -1348,6 +1627,15 @@ class Store:
             (digest,),
         ).fetchall()
         return tuple(tuple(str(value) for value in row) for row in rows)
+
+    def run_completion_digests(self) -> tuple[str, ...]:
+        self._ensure_connection_owner()
+        if self._connection is None:
+            raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
+        rows = self._connection.execute(
+            "SELECT publication_digest FROM run_completions ORDER BY publication_digest"
+        ).fetchall()
+        return tuple(str(row[0]) for row in rows)
 
     def close(self) -> None:
         if self._closed:
