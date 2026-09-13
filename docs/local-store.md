@@ -3,8 +3,10 @@
 MatchVet keeps one authoritative SQLite database and content-addressed object store in Termux private storage. The default database path is `$HOME/.local/share/matchvet/matchvet.sqlite3`. Shared Android storage is never accepted as live state. The trusted private-storage boundary comes from the running Termux Python installation, not mutable environment variables.
 
 T02 owns the store foundation. T03 adds artifact and snapshot records. T04 adds operational
-research-run, work-unit, attempt, checkpoint, and completion-publication records. Evidence,
-models, decisions, and reports remain outside this schema.
+research-run, work-unit, attempt, checkpoint, and completion-publication records. T07 adds
+canonical people, contextual source identities and origins, retained or citation-only evidence
+captures, cutoff assessments, source status history, corrections, corroboration, and immutable
+conflict records. Models, decisions, and reports remain outside this schema.
 T06 adds source captures, canonical league/team/fixture identities, structured match statistics,
 append-only fixture revisions, source assertions, and retained conflict records. Private source
 artifacts remain subject to their source-specific rights and retention metadata.
@@ -29,7 +31,7 @@ Every authoritative writer uses:
 
 One private lock file permits one MatchVet writer coordinator. Write work uses explicit bounded transactions. Network, parsing, modelling, and report work must remain outside them.
 
-## Schema version 4
+## Schema version 6
 
 The schema contains:
 
@@ -46,6 +48,9 @@ The schema contains:
 - source identities and capture metadata, including rights and retention policy
 - canonical league, season, team, fixture, and fixture-revision records
 - structured statistics, source assertions, unresolved mappings, and conflict sets
+- canonical people and contextual evidence assertions for fixtures, teams, and people
+- source status history, cutoff eligibility, independent-origin corroboration, corrections, and
+  immutable contextual conflict/resolution records
 
 Later tickets add their own entities through new migrations.
 
@@ -58,7 +63,9 @@ Never edit a released migration. Add the next numbered migration. Transactional 
 The initial migration creates the T02 foundation. Migration 2 adds the T03 artifact catalog and
 Snapshot Manifest membership. Migration 3 adds the T04 run lifecycle. Existing stores receive a
 verified private SQLite pre-migration copy before a released migration runs. Migration 4 adds the
-T06 structured-ingestion records and append-only source assertions. A custom or
+T06 structured-ingestion records and append-only source assertions. Migration 5 adds T05
+Matchweek freeze records and cutoff membership. Migration 6 adds T07 contextual evidence
+records. A custom or
 unsupported migration plan remains refused until a later backup capability can provide the
 required recovery export.
 

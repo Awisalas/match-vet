@@ -22,6 +22,11 @@ T05 freezes Matchweek membership from those acquired Fixture Revisions. See the 
 guide](docs/matchweek-freeze.md). It records the immutable Friday-to-Monday membership manifest,
 cutoff, controlling revision digests, and post-cutoff appendix while remaining RESEARCH_ONLY.
 
+T07 records official and contextual Source Evidence against canonical fixtures, teams, and people.
+See the [Source Evidence guide](docs/source-evidence.md). It preserves retained or citation-only
+captures, independent origins, explicit OBSERVED/ABSENT/UNKNOWN states, cutoff classification,
+corroboration, corrections, and conflicts without researching, predicting, or recommending.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:

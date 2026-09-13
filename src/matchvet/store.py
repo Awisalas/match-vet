@@ -1399,6 +1399,362 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=6,
+        name="contextual_source_evidence",
+        statements=(
+            """
+            CREATE TABLE people (
+                person_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                canonical_name TEXT NOT NULL,
+                normalized_name TEXT NOT NULL,
+                person_role TEXT NOT NULL
+                    CHECK (person_role IN ('PLAYER', 'MANAGER', 'REFEREE', 'OTHER')),
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (normalized_name, person_role)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_source_status (
+                status_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                source_id TEXT NOT NULL REFERENCES source_identities(source_id),
+                status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'SUSPENDED')),
+                reason TEXT NOT NULL,
+                observed_at_utc TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (source_id, observed_at_utc)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_captures (
+                capture_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                source_id TEXT NOT NULL REFERENCES source_identities(source_id),
+                origin_id TEXT NOT NULL REFERENCES independent_origins(origin_id),
+                capture_key TEXT NOT NULL,
+                locator TEXT NOT NULL,
+                access_method TEXT NOT NULL,
+                retrieved_at_utc TEXT NOT NULL,
+                source_published_at_utc TEXT,
+                response_status INTEGER NOT NULL CHECK (response_status BETWEEN 100 AND 599),
+                content_type TEXT NOT NULL,
+                content_sha256 TEXT
+                    CHECK (
+                        content_sha256 IS NULL
+                        OR (length(content_sha256) = 64
+                            AND content_sha256 NOT GLOB '*[^0-9a-f]*')
+                    ),
+                byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
+                artifact_digest TEXT REFERENCES artifacts(digest),
+                capture_kind TEXT NOT NULL CHECK (capture_kind IN ('RETAINED', 'CITATION_ONLY')),
+                retention_status TEXT NOT NULL,
+                rights_json TEXT NOT NULL,
+                terms_reference TEXT NOT NULL,
+                citation_note TEXT,
+                created_at_utc TEXT NOT NULL,
+                CHECK (
+                    (capture_kind = 'RETAINED'
+                        AND content_sha256 IS NOT NULL AND artifact_digest IS NOT NULL)
+                    OR (capture_kind = 'CITATION_ONLY' AND artifact_digest IS NULL)
+                ),
+                CHECK (
+                    (capture_kind = 'CITATION_ONLY' AND byte_length = 0)
+                    OR capture_kind = 'RETAINED'
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_assertions (
+                assertion_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                capture_id TEXT REFERENCES evidence_captures(capture_id),
+                source_id TEXT REFERENCES source_identities(source_id),
+                origin_id TEXT REFERENCES independent_origins(origin_id),
+                source_class TEXT NOT NULL,
+                source_row_key TEXT NOT NULL,
+                subject_kind TEXT NOT NULL
+                    CHECK (subject_kind IN ('FIXTURE', 'TEAM', 'PERSON')),
+                subject_id TEXT NOT NULL,
+                evidence_type TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                evidence_class TEXT NOT NULL
+                    CHECK (evidence_class IN ('CRITICAL', 'IMPORTANT', 'CONTEXT')),
+                authority_rank INTEGER NOT NULL CHECK (authority_rank >= 0),
+                normalized_value_json TEXT,
+                evidence_state TEXT NOT NULL
+                    CHECK (evidence_state IN ('OBSERVED', 'ABSENT', 'UNKNOWN')),
+                unknown_reason TEXT,
+                affirmative_basis TEXT,
+                event_time_utc TEXT,
+                effective_time_utc TEXT,
+                predecessor_assertion_id TEXT REFERENCES evidence_assertions(assertion_id),
+                provenance_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                CHECK (
+                    (evidence_state = 'OBSERVED'
+                        AND normalized_value_json IS NOT NULL
+                        AND unknown_reason IS NULL
+                        AND affirmative_basis IS NULL)
+                    OR (evidence_state = 'ABSENT'
+                        AND normalized_value_json IS NULL
+                        AND unknown_reason IS NULL
+                        AND affirmative_basis IS NOT NULL)
+                    OR (evidence_state = 'UNKNOWN'
+                        AND normalized_value_json IS NULL
+                        AND unknown_reason IS NOT NULL
+                        AND affirmative_basis IS NULL)
+                ),
+                CHECK (
+                    (evidence_state IN ('OBSERVED', 'ABSENT')
+                        AND capture_id IS NOT NULL
+                        AND source_id IS NOT NULL
+                        AND origin_id IS NOT NULL)
+                    OR evidence_state = 'UNKNOWN'
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_cutoff_assessments (
+                assessment_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                assertion_id TEXT NOT NULL REFERENCES evidence_assertions(assertion_id),
+                research_cutoff_id TEXT REFERENCES matchweek_research_cutoffs(cutoff_id),
+                cutoff_utc TEXT,
+                eligibility TEXT NOT NULL
+                    CHECK (eligibility IN ('CUTOFF_VALID', 'POST_CUTOFF', 'INDETERMINATE')),
+                reason TEXT NOT NULL,
+                assessed_at_utc TEXT NOT NULL,
+                UNIQUE (assertion_id, cutoff_utc)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_conflicts (
+                conflict_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                subject_kind TEXT NOT NULL
+                    CHECK (subject_kind IN ('FIXTURE', 'TEAM', 'PERSON')),
+                subject_id TEXT NOT NULL,
+                evidence_type TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                value_digest TEXT NOT NULL
+                    CHECK (length(value_digest) = 64 AND value_digest NOT GLOB '*[^0-9a-f]*'),
+                status TEXT NOT NULL CHECK (status = 'UNRESOLVED'),
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (subject_kind, subject_id, evidence_type, predicate, value_digest)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_conflict_assertions (
+                conflict_id TEXT NOT NULL REFERENCES evidence_conflicts(conflict_id),
+                assertion_id TEXT NOT NULL REFERENCES evidence_assertions(assertion_id),
+                PRIMARY KEY (conflict_id, assertion_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_conflict_resolutions (
+                resolution_id TEXT PRIMARY KEY REFERENCES canonical_identifiers(canonical_id),
+                conflict_id TEXT NOT NULL REFERENCES evidence_conflicts(conflict_id),
+                selected_assertion_id TEXT NOT NULL REFERENCES evidence_assertions(assertion_id),
+                basis_json TEXT NOT NULL,
+                rationale TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            ) STRICT
+            """,
+            """
+            CREATE INDEX evidence_assertions_subject_predicate_state
+            ON evidence_assertions(
+                subject_kind, subject_id, evidence_type, predicate, evidence_state
+            )
+            """,
+            """
+            CREATE TRIGGER people_typed_identifier
+            BEFORE INSERT ON people
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.person_id AND entity_kind = 'person'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'people require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_source_status_typed_identifier
+            BEFORE INSERT ON evidence_source_status
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.status_id AND entity_kind = 'source_status'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'source status requires typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_captures_typed_identifier
+            BEFORE INSERT ON evidence_captures
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.capture_id AND entity_kind = 'source_capture'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'evidence captures require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_assertions_typed_identifier
+            BEFORE INSERT ON evidence_assertions
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.assertion_id AND entity_kind = 'evidence_assertion'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'evidence assertions require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_assertions_canonical_subject
+            BEFORE INSERT ON evidence_assertions
+            WHEN (NEW.subject_kind = 'FIXTURE' AND NOT EXISTS (
+                      SELECT 1 FROM fixtures WHERE fixture_id = NEW.subject_id
+                  ))
+               OR (NEW.subject_kind = 'TEAM' AND NOT EXISTS (
+                      SELECT 1 FROM teams WHERE team_id = NEW.subject_id
+                  ))
+               OR (NEW.subject_kind = 'PERSON' AND NOT EXISTS (
+                      SELECT 1 FROM people WHERE person_id = NEW.subject_id
+                  ))
+            BEGIN
+                SELECT RAISE(ABORT, 'evidence must attach to a canonical fixture, team, or person');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_conflicts_canonical_subject
+            BEFORE INSERT ON evidence_conflicts
+            WHEN (NEW.subject_kind = 'FIXTURE' AND NOT EXISTS (
+                      SELECT 1 FROM fixtures WHERE fixture_id = NEW.subject_id
+                  ))
+               OR (NEW.subject_kind = 'TEAM' AND NOT EXISTS (
+                      SELECT 1 FROM teams WHERE team_id = NEW.subject_id
+                  ))
+               OR (NEW.subject_kind = 'PERSON' AND NOT EXISTS (
+                      SELECT 1 FROM people WHERE person_id = NEW.subject_id
+                  ))
+            BEGIN
+                SELECT RAISE(ABORT, 'evidence conflicts require a canonical subject');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_cutoff_assessments_typed_identifier
+            BEFORE INSERT ON evidence_cutoff_assessments
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.assessment_id
+                  AND entity_kind = 'evidence_cutoff_assessment'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'cutoff assessments require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_conflicts_typed_identifier
+            BEFORE INSERT ON evidence_conflicts
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.conflict_id AND entity_kind = 'evidence_conflict'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'evidence conflicts require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_conflict_resolutions_typed_identifier
+            BEFORE INSERT ON evidence_conflict_resolutions
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.resolution_id
+                  AND entity_kind = 'evidence_conflict_resolution'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'conflict resolutions require typed canonical identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER people_no_update
+            BEFORE UPDATE ON people
+            BEGIN SELECT RAISE(ABORT, 'people are immutable'); END
+            """,
+            """
+            CREATE TRIGGER people_no_delete
+            BEFORE DELETE ON people
+            BEGIN SELECT RAISE(ABORT, 'people are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_source_status_no_update
+            BEFORE UPDATE ON evidence_source_status
+            BEGIN SELECT RAISE(ABORT, 'source status history is immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_source_status_no_delete
+            BEFORE DELETE ON evidence_source_status
+            BEGIN SELECT RAISE(ABORT, 'source status history is immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_captures_no_update
+            BEFORE UPDATE ON evidence_captures
+            BEGIN SELECT RAISE(ABORT, 'evidence captures are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_captures_no_delete
+            BEFORE DELETE ON evidence_captures
+            BEGIN SELECT RAISE(ABORT, 'evidence captures are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_assertions_no_update
+            BEFORE UPDATE ON evidence_assertions
+            BEGIN SELECT RAISE(ABORT, 'evidence assertions are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_assertions_no_delete
+            BEFORE DELETE ON evidence_assertions
+            BEGIN SELECT RAISE(ABORT, 'evidence assertions are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_cutoff_assessments_no_update
+            BEFORE UPDATE ON evidence_cutoff_assessments
+            BEGIN SELECT RAISE(ABORT, 'cutoff assessments are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_cutoff_assessments_no_delete
+            BEFORE DELETE ON evidence_cutoff_assessments
+            BEGIN SELECT RAISE(ABORT, 'cutoff assessments are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_conflicts_no_update
+            BEFORE UPDATE ON evidence_conflicts
+            BEGIN SELECT RAISE(ABORT, 'evidence conflicts are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_conflicts_no_delete
+            BEFORE DELETE ON evidence_conflicts
+            BEGIN SELECT RAISE(ABORT, 'evidence conflicts are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_conflict_assertions_no_update
+            BEFORE UPDATE ON evidence_conflict_assertions
+            BEGIN SELECT RAISE(ABORT, 'evidence conflict links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_conflict_assertions_no_delete
+            BEFORE DELETE ON evidence_conflict_assertions
+            BEGIN SELECT RAISE(ABORT, 'evidence conflict links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_conflict_resolutions_no_update
+            BEFORE UPDATE ON evidence_conflict_resolutions
+            BEGIN SELECT RAISE(ABORT, 'conflict resolutions are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_conflict_resolutions_no_delete
+            BEFORE DELETE ON evidence_conflict_resolutions
+            BEGIN SELECT RAISE(ABORT, 'conflict resolutions are immutable'); END
+            """,
+        ),
+    ),
 )
 
 
@@ -1799,6 +2155,66 @@ def _verify_schema_manifest(
                 ),
             }
         )
+    if schema_version >= 6:
+        expected_indexes.update(
+            {
+                ("people", "sqlite_autoindex_people_1", 1, "pk", 0),
+                ("people", "sqlite_autoindex_people_2", 1, "u", 0),
+                (
+                    "evidence_source_status",
+                    "sqlite_autoindex_evidence_source_status_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "evidence_source_status",
+                    "sqlite_autoindex_evidence_source_status_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                ("evidence_captures", "sqlite_autoindex_evidence_captures_1", 1, "pk", 0),
+                ("evidence_assertions", "sqlite_autoindex_evidence_assertions_1", 1, "pk", 0),
+                (
+                    "evidence_assertions",
+                    "evidence_assertions_subject_predicate_state",
+                    0,
+                    "c",
+                    0,
+                ),
+                (
+                    "evidence_cutoff_assessments",
+                    "sqlite_autoindex_evidence_cutoff_assessments_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "evidence_cutoff_assessments",
+                    "sqlite_autoindex_evidence_cutoff_assessments_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                ("evidence_conflicts", "sqlite_autoindex_evidence_conflicts_1", 1, "pk", 0),
+                ("evidence_conflicts", "sqlite_autoindex_evidence_conflicts_2", 1, "u", 0),
+                (
+                    "evidence_conflict_assertions",
+                    "sqlite_autoindex_evidence_conflict_assertions_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "evidence_conflict_resolutions",
+                    "sqlite_autoindex_evidence_conflict_resolutions_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -1837,6 +2253,14 @@ def _verify_schema_manifest(
         "matchweek_memberships",
         "matchweek_freeze_records",
         "post_cutoff_fixture_appendix",
+        "people",
+        "evidence_source_status",
+        "evidence_captures",
+        "evidence_assertions",
+        "evidence_cutoff_assessments",
+        "evidence_conflicts",
+        "evidence_conflict_assertions",
+        "evidence_conflict_resolutions",
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))
