@@ -2022,6 +2022,183 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=8,
+        name="frozen_evidence_states",
+        statements=(
+            """
+            CREATE TABLE evidence_states (
+                evidence_state_id TEXT PRIMARY KEY
+                    REFERENCES canonical_identifiers(canonical_id),
+                matchweek_id TEXT NOT NULL REFERENCES matchweeks(matchweek_id),
+                cutoff_id TEXT NOT NULL REFERENCES matchweek_research_cutoffs(cutoff_id),
+                target_fixture_id TEXT NOT NULL REFERENCES fixtures(fixture_id),
+                state_digest TEXT NOT NULL
+                    CHECK (length(state_digest) = 64 AND state_digest NOT GLOB '*[^0-9a-f]*'),
+                artifact_digest TEXT NOT NULL REFERENCES artifacts(digest),
+                manifest_digest TEXT NOT NULL REFERENCES artifacts(digest),
+                cutoff_utc TEXT NOT NULL,
+                frozen_at_utc TEXT NOT NULL,
+                catalog_name TEXT NOT NULL,
+                catalog_version TEXT NOT NULL,
+                catalog_digest TEXT NOT NULL
+                    CHECK (length(catalog_digest) = 64 AND catalog_digest NOT GLOB '*[^0-9a-f]*'),
+                feature_rules_name TEXT NOT NULL,
+                feature_rules_digest TEXT NOT NULL
+                    CHECK (
+                        length(feature_rules_digest) = 64
+                        AND feature_rules_digest NOT GLOB '*[^0-9a-f]*'
+                    ),
+                research_rules_name TEXT NOT NULL,
+                research_rules_digest TEXT NOT NULL
+                    CHECK (
+                        length(research_rules_digest) = 64
+                        AND research_rules_digest NOT GLOB '*[^0-9a-f]*'
+                    ),
+                research_status TEXT NOT NULL CHECK (
+                    research_status IN ('SUFFICIENT', 'INSUFFICIENT', 'MODEL_UNAVAILABLE')
+                ),
+                payload_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                UNIQUE (matchweek_id, target_fixture_id),
+                UNIQUE (state_digest)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_state_sources (
+                evidence_state_id TEXT NOT NULL REFERENCES evidence_states(evidence_state_id),
+                fact_id TEXT NOT NULL,
+                inclusion_state TEXT NOT NULL CHECK (
+                    inclusion_state IN ('CUTOFF_VALID', 'POST_CUTOFF', 'INDETERMINATE')
+                ),
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                PRIMARY KEY (evidence_state_id, fact_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_state_requirements (
+                evidence_state_id TEXT NOT NULL REFERENCES evidence_states(evidence_state_id),
+                family TEXT NOT NULL,
+                requirement_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                covered INTEGER NOT NULL CHECK (covered IN (0, 1)),
+                input_lineage_json TEXT NOT NULL,
+                PRIMARY KEY (evidence_state_id, family, requirement_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_state_features (
+                evidence_state_id TEXT NOT NULL REFERENCES evidence_states(evidence_state_id),
+                feature_id TEXT NOT NULL,
+                feature_digest TEXT NOT NULL
+                    CHECK (length(feature_digest) = 64 AND feature_digest NOT GLOB '*[^0-9a-f]*'),
+                PRIMARY KEY (evidence_state_id, feature_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_state_gaps (
+                evidence_state_id TEXT NOT NULL REFERENCES evidence_states(evidence_state_id),
+                gap_id TEXT NOT NULL,
+                PRIMARY KEY (evidence_state_id, gap_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_state_conflicts (
+                evidence_state_id TEXT NOT NULL REFERENCES evidence_states(evidence_state_id),
+                conflict_id TEXT NOT NULL,
+                PRIMARY KEY (evidence_state_id, conflict_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE evidence_state_corroboration (
+                evidence_state_id TEXT NOT NULL REFERENCES evidence_states(evidence_state_id),
+                corroboration_key TEXT NOT NULL,
+                PRIMARY KEY (evidence_state_id, corroboration_key)
+            ) STRICT
+            """,
+            """
+            CREATE TRIGGER evidence_states_typed_identifier
+            BEFORE INSERT ON evidence_states
+            WHEN NOT EXISTS (
+                SELECT 1 FROM canonical_identifiers
+                WHERE canonical_id = NEW.evidence_state_id AND entity_kind = 'evidence_state'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'evidence states require typed identifiers');
+            END
+            """,
+            """
+            CREATE TRIGGER evidence_states_no_update
+            BEFORE UPDATE ON evidence_states
+            BEGIN SELECT RAISE(ABORT, 'evidence states are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_states_no_delete
+            BEFORE DELETE ON evidence_states
+            BEGIN SELECT RAISE(ABORT, 'evidence states are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_sources_no_update
+            BEFORE UPDATE ON evidence_state_sources
+            BEGIN SELECT RAISE(ABORT, 'evidence state source links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_sources_no_delete
+            BEFORE DELETE ON evidence_state_sources
+            BEGIN SELECT RAISE(ABORT, 'evidence state source links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_requirements_no_update
+            BEFORE UPDATE ON evidence_state_requirements
+            BEGIN SELECT RAISE(ABORT, 'evidence state requirements are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_requirements_no_delete
+            BEFORE DELETE ON evidence_state_requirements
+            BEGIN SELECT RAISE(ABORT, 'evidence state requirements are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_features_no_update
+            BEFORE UPDATE ON evidence_state_features
+            BEGIN SELECT RAISE(ABORT, 'evidence state feature links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_features_no_delete
+            BEFORE DELETE ON evidence_state_features
+            BEGIN SELECT RAISE(ABORT, 'evidence state feature links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_gaps_no_update
+            BEFORE UPDATE ON evidence_state_gaps
+            BEGIN SELECT RAISE(ABORT, 'evidence state gap links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_gaps_no_delete
+            BEFORE DELETE ON evidence_state_gaps
+            BEGIN SELECT RAISE(ABORT, 'evidence state gap links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_conflicts_no_update
+            BEFORE UPDATE ON evidence_state_conflicts
+            BEGIN SELECT RAISE(ABORT, 'evidence state conflict links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_conflicts_no_delete
+            BEFORE DELETE ON evidence_state_conflicts
+            BEGIN SELECT RAISE(ABORT, 'evidence state conflict links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_corroboration_no_update
+            BEFORE UPDATE ON evidence_state_corroboration
+            BEGIN SELECT RAISE(ABORT, 'evidence state corroboration links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER evidence_state_corroboration_no_delete
+            BEFORE DELETE ON evidence_state_corroboration
+            BEGIN SELECT RAISE(ABORT, 'evidence state corroboration links are immutable'); END
+            """,
+        ),
+    ),
 )
 
 
@@ -2557,6 +2734,56 @@ def _verify_schema_manifest(
                 ),
             }
         )
+    if schema_version >= 8:
+        expected_indexes.update(
+            {
+                ("evidence_states", "sqlite_autoindex_evidence_states_1", 1, "pk", 0),
+                ("evidence_states", "sqlite_autoindex_evidence_states_2", 1, "u", 0),
+                ("evidence_states", "sqlite_autoindex_evidence_states_3", 1, "u", 0),
+                (
+                    "evidence_state_sources",
+                    "sqlite_autoindex_evidence_state_sources_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "evidence_state_requirements",
+                    "sqlite_autoindex_evidence_state_requirements_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "evidence_state_features",
+                    "sqlite_autoindex_evidence_state_features_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "evidence_state_gaps",
+                    "sqlite_autoindex_evidence_state_gaps_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "evidence_state_conflicts",
+                    "sqlite_autoindex_evidence_state_conflicts_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "evidence_state_corroboration",
+                    "sqlite_autoindex_evidence_state_corroboration_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -2608,6 +2835,13 @@ def _verify_schema_manifest(
         "weather_locations",
         "weather_captures",
         "weather_evidence",
+        "evidence_states",
+        "evidence_state_sources",
+        "evidence_state_requirements",
+        "evidence_state_features",
+        "evidence_state_gaps",
+        "evidence_state_conflicts",
+        "evidence_state_corroboration",
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))
