@@ -42,6 +42,10 @@ T16 publishes complete Matchweek Audits and concise deterministic Matchweek Repo
 all 37 preference evaluations, evidence and reproducibility metadata; the report is the concise
 production or explicitly `RESEARCH_ONLY` projection.
 
+T17 adds marker-gated Matchweek export and verified private recovery copies. Shared export and
+backup directories are never authoritative or executable state; restore activates only a new
+private target after every digest and SQLite integrity check passes.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:
@@ -59,6 +63,10 @@ Use the pinned native Termux packages and Python environment described in [the T
     .venv/bin/matchvet report --audit --json --store /path/to/matchvet.sqlite3
     .venv/bin/matchvet inspect FIXTURE_ID --json --store /path/to/matchvet.sqlite3
     .venv/bin/matchvet history --json --store /path/to/matchvet.sqlite3
+    .venv/bin/matchvet export --store /path/to/matchvet.sqlite3 --destination /shared/matchweek-export
+    .venv/bin/matchvet backup --store /path/to/matchvet.sqlite3 --destination /shared/matchvet-backup
+    .venv/bin/matchvet backup --verify /shared/matchvet-backup --json
+    .venv/bin/matchvet restore --source /shared/matchvet-backup --target /private/restored/matchvet.sqlite3
 
 To inspect a configured store without changing it:
 

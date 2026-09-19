@@ -24,6 +24,7 @@ from matchvet.runs import (
     build_local_input_contract,
 )
 from matchvet.store import MIGRATIONS, open_store
+from matchvet.t17 import OperationVerification, T17Error
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NETWORK_GUARD = PROJECT_ROOT / "tests" / "no_network"
@@ -238,6 +239,223 @@ def test_help_and_unknown_commands_follow_argparse_contract() -> None:
     assert "doctor" in help_result.stdout
     assert unknown_result.returncode == 2
     assert "invalid choice: 'not-a-command'" in unknown_result.stderr
+
+
+def test_t17_cli_commands_expose_operation_identity_and_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    monkeypatch.setattr(cli, "termux_private_root", lambda: private_root)
+    monkeypatch.setattr(cli, "default_database_path", lambda: database_path)
+
+    class FakeResult:
+        def __init__(self, payload: dict[str, object]) -> None:
+            self.payload = payload
+
+        def to_dict(self) -> dict[str, object]:
+            return self.payload
+
+    monkeypatch.setattr(
+        cli,
+        "export_matchweek",
+        lambda *args, **kwargs: FakeResult(
+            {
+                "operation": "export",
+                "status": "COMPLETE",
+                "source": str(database_path),
+                "destination": str(tmp_path / "shared" / "export"),
+                "manifest_digest": "a" * 64,
+                "verification": {"verified": True},
+            }
+        ),
+    )
+    assert (
+        cli.main(
+            [
+                "export",
+                "--store",
+                str(database_path),
+                "--destination",
+                str(tmp_path / "shared" / "export"),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    export_payload = json.loads(capsys.readouterr().out)
+    assert export_payload["status"] == "COMPLETE"
+    assert export_payload["manifest_digest"] == "a" * 64
+    assert export_payload["verification"]["verified"] is True
+
+    verification = OperationVerification(
+        operation="backup",
+        verified=True,
+        destination=tmp_path / "shared" / "backup",
+        manifest_digest="b" * 64,
+        completion_digest="c" * 64,
+        details={"object_count": 1},
+    )
+    monkeypatch.setattr(cli, "verify_backup", lambda path: verification)
+    assert cli.main(["backup", "--verify", str(tmp_path / "shared" / "backup"), "--json"]) == 0
+    verify_payload = json.loads(capsys.readouterr().out)
+    assert verify_payload["status"] == "VERIFIED"
+    assert verify_payload["manifest_digest"] == "b" * 64
+    assert verify_payload["verification"]["verified"] is True
+
+    monkeypatch.setattr(
+        cli,
+        "restore_backup",
+        lambda *args, **kwargs: FakeResult(
+            {
+                "operation": "restore",
+                "status": "COMPLETE",
+                "source": str(tmp_path / "shared" / "backup"),
+                "destination": str(private_root / "restored" / "matchvet.sqlite3"),
+                "manifest_digest": "d" * 64,
+                "verification": {"verified": True},
+            }
+        ),
+    )
+    assert (
+        cli.main(
+            [
+                "restore",
+                "--source",
+                str(tmp_path / "shared" / "backup"),
+                "--target",
+                str(private_root / "restored" / "matchvet.sqlite3"),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    restore_payload = json.loads(capsys.readouterr().out)
+    assert restore_payload["status"] == "COMPLETE"
+    assert restore_payload["destination"].endswith("restored/matchvet.sqlite3")
+
+
+def test_t17_cli_runs_real_export_backup_verify_and_restore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from test_t16 import _audit
+
+    private_root = tmp_path / "private"
+    database_path = private_root / "matchvet.sqlite3"
+    shared_root = tmp_path / "shared"
+    monkeypatch.setattr(cli, "termux_private_root", lambda: private_root)
+    monkeypatch.setattr(cli, "default_database_path", lambda: database_path)
+    with open_store(database_path, private_root=private_root) as store:
+        from matchvet.t16 import publish_matchweek_audit
+
+        publish_matchweek_audit(_audit(), store=store)
+
+    export_destination = shared_root / "export"
+    assert (
+        cli.main(
+            [
+                "export",
+                "--store",
+                str(database_path),
+                "--destination",
+                str(export_destination),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    export_payload = json.loads(capsys.readouterr().out)
+    assert export_payload["status"] == "COMPLETE"
+    assert export_payload["verification"]["verified"] is True
+
+    backup_destination = shared_root / "backup"
+    assert (
+        cli.main(
+            [
+                "backup",
+                "--store",
+                str(database_path),
+                "--destination",
+                str(backup_destination),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    backup_payload = json.loads(capsys.readouterr().out)
+    assert backup_payload["status"] == "COMPLETE"
+    assert backup_payload["verification"]["verified"] is True
+
+    assert cli.main(["backup", "--verify", str(backup_destination), "--json"]) == 0
+    verify_payload = json.loads(capsys.readouterr().out)
+    assert verify_payload["status"] == "VERIFIED"
+    assert verify_payload["verification"]["verified"] is True
+
+    restored_target = private_root / "restored" / "matchvet.sqlite3"
+    assert (
+        cli.main(
+            [
+                "restore",
+                "--source",
+                str(backup_destination),
+                "--target",
+                str(restored_target),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    restore_payload = json.loads(capsys.readouterr().out)
+    assert restore_payload["status"] == "COMPLETE"
+    assert restore_payload["verification"]["verified"] is True
+
+
+def test_t17_cli_errors_keep_stable_code_and_recovery_guidance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    monkeypatch.setattr(cli, "termux_private_root", lambda: private_root)
+    monkeypatch.setattr(cli, "default_database_path", lambda: database_path)
+
+    def fail_export(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise T17Error(
+            "MV-T17-EXPORT-INCOMPLETE",
+            "The associated run is incomplete.",
+            status="INCOMPLETE",
+            recovery_command="matchvet resume run-1",
+        )
+
+    monkeypatch.setattr(cli, "export_matchweek", fail_export)
+    result = cli.main(
+        [
+            "export",
+            "--store",
+            str(database_path),
+            "--destination",
+            str(tmp_path / "shared" / "export"),
+            "--json",
+        ]
+    )
+    assert result == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "INCOMPLETE"
+    assert payload["code"] == "MV-T17-EXPORT-INCOMPLETE"
+    assert payload["verification"] == "FAIL"
+    assert payload["recovery_command"] == "matchvet resume run-1"
+
+    assert cli.main(["backup", "--json"]) == 1
+    option_payload = json.loads(capsys.readouterr().out)
+    assert option_payload["code"] == "MV-T17-BACKUP-DESTINATION_REQUIRED"
 
 
 def test_normal_commands_work_with_live_network_sockets_denied() -> None:

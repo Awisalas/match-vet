@@ -40,6 +40,13 @@ from matchvet.t16 import (
 from matchvet.t16 import (
     history as read_history,
 )
+from matchvet.t17 import (
+    T17Error,
+    backup_store,
+    export_matchweek,
+    restore_backup,
+    verify_backup,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -132,6 +139,33 @@ def _parser() -> argparse.ArgumentParser:
         "history", help="list run, audit, grading, export, backup, and policy state"
     )
     _add_run_options(history_command)
+    export = commands.add_parser(
+        "export", help="publish a complete Matchweek copy to shared storage"
+    )
+    export.add_argument("--destination", type=Path, required=True, help="shared export directory")
+    export.add_argument(
+        "--matchweek", help="Matchweek ID; defaults to the latest complete publication"
+    )
+    export.add_argument(
+        "--include-raw-evidence",
+        "--raw-evidence",
+        action="store_true",
+        dest="include_raw_evidence",
+        help="copy only rights-safe reusable raw evidence",
+    )
+    _add_run_options(export)
+    backup = commands.add_parser("backup", help="create or verify a private recovery copy")
+    backup.add_argument("--destination", type=Path, help="shared backup directory")
+    backup.add_argument("--verify", type=Path, metavar="BUNDLE", help="verify an existing backup")
+    _add_run_options(backup)
+    restore = commands.add_parser(
+        "restore", help="restore a verified backup into a new private target"
+    )
+    restore.add_argument(
+        "--source", type=Path, required=True, help="verified shared backup directory"
+    )
+    restore.add_argument("--target", type=Path, required=True, help="new private database path")
+    restore.add_argument("--json", action="store_true", dest="as_json", help="print JSON")
     return parser
 
 
@@ -233,7 +267,214 @@ def main(arguments: Sequence[str] | None = None) -> int:
         )
     if parsed.command == "history":
         return _history_command(parsed.store, parsed.as_json)
+    if parsed.command == "export":
+        return _export_command(
+            parsed.matchweek,
+            parsed.store,
+            parsed.destination,
+            parsed.include_raw_evidence,
+            parsed.as_json,
+        )
+    if parsed.command == "backup":
+        return _backup_command(
+            parsed.store,
+            parsed.destination,
+            parsed.verify,
+            parsed.as_json,
+        )
+    if parsed.command == "restore":
+        return _restore_command(parsed.source, parsed.target, parsed.as_json)
     return _resume_command(parsed.run_id, parsed.store, parsed.as_json)
+
+
+def _export_command(
+    matchweek_id: str | None,
+    store_path: Path | None,
+    destination: Path,
+    include_raw_evidence: bool,
+    as_json: bool,
+) -> int:
+    database_path = store_path or default_database_path()
+    try:
+        result = export_matchweek(
+            database_path,
+            destination,
+            private_root=termux_private_root(),
+            matchweek_id=matchweek_id,
+            include_raw_evidence=include_raw_evidence,
+        )
+    except T17Error as error:
+        return _t17_error(error, as_json, "export")
+    except (OSError, RuntimeError, ValueError, sqlite3.DatabaseError) as error:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T17-EXPORT-CLI_FAILED",
+                "explanation": str(error),
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": (
+                    f"matchvet export --store {database_path} --destination {destination}"
+                ),
+            },
+            as_json,
+        )
+    return _print_t17_result(result.to_dict(), as_json, "MatchVet export")
+
+
+def _backup_command(
+    store_path: Path | None,
+    destination: Path | None,
+    verify_path: Path | None,
+    as_json: bool,
+) -> int:
+    if verify_path is not None and destination is not None:
+        return _t17_option_error(
+            "MV-T17-BACKUP-OPTIONS_INVALID",
+            "Use either --destination or --verify, not both.",
+            as_json,
+        )
+    if verify_path is not None:
+        try:
+            verification = verify_backup(verify_path)
+        except T17Error as error:
+            return _t17_error(
+                T17Error(
+                    error.code,
+                    error.message,
+                    status=error.status,
+                    recovery_command=error.recovery_command,
+                    source=verify_path,
+                    destination=error.destination or verify_path,
+                    manifest_digest=error.manifest_digest,
+                ),
+                as_json,
+                "backup",
+            )
+        except (OSError, RuntimeError, ValueError, sqlite3.DatabaseError) as error:
+            return _print_error(
+                {
+                    "status": "REFUSED",
+                    "code": "MV-T17-BACKUP-CLI_FAILED",
+                    "explanation": str(error),
+                    "last_checkpoint": "none",
+                    "reuse_state": "NONE",
+                    "recovery_command": f"matchvet backup --verify {verify_path}",
+                },
+                as_json,
+            )
+        payload: dict[str, object] = {
+            "operation": "backup_verify",
+            "status": "VERIFIED",
+            "source": str(verify_path),
+            "destination": str(verification.destination),
+            "manifest_digest": verification.manifest_digest,
+            "completion_digest": verification.completion_digest,
+            "verification": verification.to_dict(),
+        }
+        return _print_t17_result(payload, as_json, "MatchVet backup verify")
+    if destination is None:
+        return _t17_option_error(
+            "MV-T17-BACKUP-DESTINATION_REQUIRED",
+            "Backup creation requires --destination; use --verify BUNDLE to verify a copy.",
+            as_json,
+        )
+    database_path = store_path or default_database_path()
+    try:
+        result = backup_store(
+            database_path,
+            destination,
+            private_root=termux_private_root(),
+        )
+    except T17Error as error:
+        return _t17_error(error, as_json, "backup")
+    except (OSError, RuntimeError, ValueError, sqlite3.DatabaseError) as error:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T17-BACKUP-CLI_FAILED",
+                "explanation": str(error),
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": (
+                    f"matchvet backup --store {database_path} --destination {destination}"
+                ),
+            },
+            as_json,
+        )
+    return _print_t17_result(result.to_dict(), as_json, "MatchVet backup")
+
+
+def _restore_command(source: Path, target: Path, as_json: bool) -> int:
+    try:
+        result = restore_backup(
+            source,
+            target,
+            private_root=termux_private_root(),
+        )
+    except T17Error as error:
+        return _t17_error(error, as_json, "restore")
+    except (OSError, RuntimeError, ValueError, sqlite3.DatabaseError) as error:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T17-RESTORE-CLI_FAILED",
+                "explanation": str(error),
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": f"matchvet restore --source {source} --target {target}.new",
+            },
+            as_json,
+        )
+    return _print_t17_result(result.to_dict(), as_json, "MatchVet restore")
+
+
+def _t17_error(error: T17Error, as_json: bool, command: str) -> int:
+    payload = error.to_dict()
+    payload["last_checkpoint"] = "none"
+    payload["reuse_state"] = "BLOCKED" if "INTEGRITY" in error.code else "NONE"
+    if payload["recovery_command"] is None:
+        payload["recovery_command"] = f"matchvet {command}"
+    return _print_error(payload, as_json)
+
+
+def _t17_option_error(code: str, explanation: str, as_json: bool) -> int:
+    return _print_error(
+        {
+            "status": "REFUSED",
+            "code": code,
+            "explanation": explanation,
+            "last_checkpoint": "none",
+            "reuse_state": "NONE",
+            "recovery_command": "matchvet doctor",
+        },
+        as_json,
+    )
+
+
+def _print_t17_result(payload: dict[str, object], as_json: bool, heading: str) -> int:
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(heading)
+    print(f"Status: {payload.get('status', 'VERIFIED')}")
+    if payload.get("source") is not None:
+        print(f"Source: {payload['source']}")
+    if payload.get("destination") is not None:
+        print(f"Destination: {payload['destination']}")
+    if payload.get("manifest_digest") is not None:
+        print(f"Manifest: {payload['manifest_digest']}")
+    for label, key in (
+        ("Completion", "completion_digest"),
+        ("Audit", "audit_digest"),
+        ("Report", "report_digest"),
+        ("Database", "database_digest"),
+        ("Backup", "backup_id"),
+    ):
+        if payload.get(key) is not None:
+            print(f"{label}: {payload[key]}")
+    print("Verification: PASS")
+    return 0
 
 
 def _t16_error(error: Exception, database_path: Path, command: str, as_json: bool) -> int:
@@ -657,19 +898,24 @@ def _print_error(error: dict[str, object], as_json: bool) -> int:
     if as_json:
         print(json.dumps(error, indent=2, sort_keys=True))
     else:
-        print(
-            "\n".join(
-                (
-                    str(error["status"]),
-                    f"Code: {error['code']}",
-                    f"Explanation: {error['explanation']}",
-                    f"Last checkpoint: {error['last_checkpoint']}",
-                    f"Checkpoint time: {error.get('checkpoint_at_utc') or 'none'}",
-                    f"Reuse: {error['reuse_state']}",
-                    f"Recovery: {error['recovery_command']}",
-                )
-            )
-        )
+        lines = [
+            str(error["status"]),
+            f"Code: {error['code']}",
+            f"Explanation: {error['explanation']}",
+            f"Last checkpoint: {error['last_checkpoint']}",
+            f"Checkpoint time: {error.get('checkpoint_at_utc') or 'none'}",
+            f"Reuse: {error['reuse_state']}",
+        ]
+        if error.get("source") is not None:
+            lines.append(f"Source: {error['source']}")
+        if error.get("destination") is not None:
+            lines.append(f"Destination: {error['destination']}")
+        if error.get("manifest_digest") is not None:
+            lines.append(f"Manifest: {error['manifest_digest']}")
+        if error.get("verification") is not None:
+            lines.append(f"Verification: {error['verification']}")
+        lines.append(f"Recovery: {error['recovery_command']}")
+        print("\n".join(lines))
     return 1
 
 

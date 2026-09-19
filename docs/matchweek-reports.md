@@ -24,17 +24,32 @@ and the reproducibility record.
 
 ## CLI
 
-All readers are read-only and resolve only the final publication marker:
+Read-only readers resolve only the final publication marker:
 
     .venv/bin/matchvet report --store /path/to/matchvet.sqlite3
     .venv/bin/matchvet report --audit --json --store /path/to/matchvet.sqlite3
     .venv/bin/matchvet inspect FIXTURE_ID --json --store /path/to/matchvet.sqlite3
     .venv/bin/matchvet history --json --store /path/to/matchvet.sqlite3
 
+T17 operational copies are explicit mutating commands with their own marker and recovery
+verification contracts:
+
+    .venv/bin/matchvet export --store /path/to/matchvet.sqlite3 --destination /shared/export
+    .venv/bin/matchvet backup --store /path/to/matchvet.sqlite3 --destination /shared/backup
+    .venv/bin/matchvet backup --verify /shared/backup
+    .venv/bin/matchvet restore --source /shared/backup --target /private/restored/matchvet.sqlite3
+
 `report` renders deterministic Markdown by default. `--audit --json` exposes the complete
 schema-versioned audit. `inspect` exposes one Target Match, including all 37 preference results.
-`history` joins run, audit, grading, mode, and policy state; T17 export and backup state are
-reported as `OUT_OF_SCOPE` without implementing those capabilities.
+`history` joins run, audit, grading, mode, and policy state. T17 export and backup/restore status
+comes from the dedicated marker-gated operations, which return source/destination, manifest
+identity, digest verification, stable failure codes, and recovery guidance in JSON mode.
 
 Audit and report artifacts are written before a final complete-publication marker. Readers ignore
 unmarked artifacts, so an interrupted publication cannot appear as a completed report.
+
+T17 export applies the same visibility rule to shared Matchweek copies: the final directory is
+never considered publishable until `COMPLETE` verifies the manifest digest and every member. An
+incomplete run is refused before destination mutation. The report and audit are deterministic
+copies of the T16 publication; the manifest also records reproducibility/version metadata and
+rights-safe raw-evidence omissions.

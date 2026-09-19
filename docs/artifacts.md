@@ -43,7 +43,30 @@ Citation-only evidence is represented by a retention omission; it does not creat
 
 Inspection never deletes, repairs, or rewrites objects, manifests, or protected history. A missing or altered object fails the artifact-integrity doctor check. Orphans remain available for a later explicit retention operation. The artifact catalog and manifest memberships are append-only and protected by SQLite immutability triggers.
 
+## T17 operational export and recovery copies
+
+`matchvet export` is a marker-gated copy of a complete T16 publication. It writes deterministic
+`report.md`, `audit.json`, and `manifest.json` members, SHA-256 length/digest metadata, T16
+reproducibility and version identities, and a canonical `COMPLETE` marker. The private
+authoritative audit and artifact catalog are never replaced. A destination is first populated as
+`<destination>.partial`, read back and verified, then copied to its final directory; a directory
+without the marker is never a completed Matchweek export.
+
+Raw evidence is opt-in and is copied only when the capture is retained as `RETAIN_REUSABLE` and
+its source rights mark it redistributable. Restricted retained bytes and citation-only captures
+stay private; the export manifest records deterministic retention omissions. A backup is different:
+it is protected recovery material, not a redistribution bundle, and includes the SQLite online
+backup plus every catalogued content-addressed object needed by that database.
+
+`matchvet backup` verifies the source with full SQLite integrity and foreign-key checks, records
+the application/schema/migration identity, copies the database and all object digests through a
+`.partial` destination, verifies the destination, and writes `COMPLETE` last. `matchvet restore`
+accepts only such a verified bundle, stages it inside private storage, checks all compatibility,
+database, catalog, and object invariants again, and activates only a new private database target.
+Shared copies are never authoritative or executable state. Locks, WAL sidecars, caches, and
+operation staging debris are not part of a bundle.
+
 T04 uses the same artifact-first contract for an operational run-completion record. The artifact
 is published first, then its database reference and the run's `COMPLETE` state commit together.
 It is not a Matchweek Report, Matchweek Audit, PLAY, or AVOID MATCH decision. Evidence ingestion,
-model output, reports, exports, and backup/restore remain later work.
+model output and reports remain later work; T17 export and recovery copies are documented below.

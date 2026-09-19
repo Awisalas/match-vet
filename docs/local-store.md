@@ -74,12 +74,36 @@ T06 structured-ingestion records and append-only source assertions. Migration 5 
 Matchweek freeze records and cutoff membership. Migration 6 adds T07 contextual evidence
 records. Migration 7 adds T08 workload and weather evidence records. Migration 8 adds T09 frozen
 evidence states. Migration 9 adds the T10 append-only settlement evidence and grade records. A
-custom or
-unsupported migration plan remains refused until a later backup capability can provide the
-required recovery export.
+custom or unsupported migration plan remains refused; T17 backup accepts only stores matching
+the current application and migration identity.
 
 ## Recovery behavior
 
 Startup checks the application identity, required SQLite settings, `quick_check`, foreign keys, schema version, and migration checksums. Migrations also run full integrity checks before and after their transaction.
 
-Any failed requirement returns a store in `READ_ONLY_RECOVERY`. The public transaction API refuses writes in that mode. MatchVet preserves the database as found and does not run repair SQL, rewrite migration history, or delete records. Backup and restore arrive in later tickets.
+Any failed requirement returns a store in `READ_ONLY_RECOVERY`. The public transaction API refuses writes in that mode. MatchVet preserves the database as found and does not run repair SQL, rewrite migration history, or delete records. T17 backup and restore use the verified operational copies documented below.
+
+## T17 verified backup and restore
+
+`matchvet backup` is an operational recovery copy, not a second live store. It takes an SQLite
+online backup into private operation staging, performs full `integrity_check` and
+`foreign_key_check`, and records the current application ID, schema version, and exact migration
+checksums. Its canonical manifest lists `database.sqlite3` and every catalogued artifact under
+`objects/sha256/<prefix>/<digest>`, including protected evidence needed to make the backed-up
+database healthy again. Each member has a byte length and SHA-256 digest, and object metadata is
+matched against the copied artifact catalog.
+
+The shared destination is written as `<destination>.partial`, flushed, read back, and verified.
+Only after the complete database/object/manifest verification succeeds is the final `COMPLETE`
+marker written. Missing markers, partial bundles, changed manifests, incompatible migrations,
+SQLite integrity or foreign-key failures, missing objects, and digest mismatches are refused with
+stable `MV-T17-*` error codes. Shared storage contains no credentials, locks, WAL sidecars,
+caches, or executable authoritative state.
+
+`matchvet restore` verifies the complete bundle before creating a private target. It copies into
+private `.partial` staging, repeats compatibility, SQLite, catalog, and object checks, and then
+installs only into a new database path; an existing target is never overwritten. Object files are
+created only when their digest path is absent and are never replaced with different bytes. A
+failed activation removes only operation-owned target files/staging and leaves the current
+authoritative database, append-only records, frozen evidence, grades, policy, versions, and
+protected objects unchanged.
