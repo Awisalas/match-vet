@@ -37,6 +37,11 @@ T10 grades all 37 v1 Betting Preferences from recorded, approved Fixture evidenc
 keeps pending and VOID distinct, excludes extra time and shootouts, and appends corrections
 without rewriting frozen Matchweek state.
 
+T16 publishes complete Matchweek Audits and concise deterministic Matchweek Reports. See the
+[Matchweek report guide](docs/matchweek-reports.md). A complete audit retains every Target Match,
+all 37 preference evaluations, evidence and reproducibility metadata; the report is the concise
+production or explicitly `RESEARCH_ONLY` projection.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:
@@ -50,6 +55,10 @@ Use the pinned native Termux packages and Python environment described in [the T
     .venv/bin/matchvet ingest --season 2026-27 --history-season 2025-26 --json
     .venv/bin/matchvet freeze 2026-09-18 --season 2026-27 --json
     .venv/bin/matchvet grade --input /path/to/fixture-evidence.json --store /path/to/matchvet.sqlite3 --json
+    .venv/bin/matchvet report --store /path/to/matchvet.sqlite3
+    .venv/bin/matchvet report --audit --json --store /path/to/matchvet.sqlite3
+    .venv/bin/matchvet inspect FIXTURE_ID --json --store /path/to/matchvet.sqlite3
+    .venv/bin/matchvet history --json --store /path/to/matchvet.sqlite3
 
 To inspect a configured store without changing it:
 

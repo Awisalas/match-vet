@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from datetime import datetime, timedelta
@@ -26,6 +27,18 @@ from matchvet.store import (
     inspect_store,
     open_store,
     termux_private_root,
+)
+from matchvet.t16 import (
+    T16Error,
+    T16IntegrityError,
+    T16NotFoundError,
+    inspect_match,
+    read_audit,
+    read_report,
+    render_markdown_report,
+)
+from matchvet.t16 import (
+    history as read_history,
 )
 
 
@@ -99,6 +112,26 @@ def _parser() -> argparse.ArgumentParser:
         help="close unresolved evidence as VOID instead of leaving it pending",
     )
     _add_run_options(grade)
+    report = commands.add_parser("report", help="show the latest complete Matchweek Report")
+    report.add_argument("matchweek", nargs="?", help="Matchweek ID; defaults to the latest")
+    report.add_argument(
+        "--audit",
+        action="store_true",
+        help="show the complete schema-versioned audit instead of the concise report",
+    )
+    _add_run_options(report)
+    inspect_command = commands.add_parser(
+        "inspect", help="show the complete audit detail for one Target Match"
+    )
+    inspect_command.add_argument("match", help="fixture or Target Match ID")
+    inspect_command.add_argument(
+        "--matchweek", help="Matchweek ID; defaults to the latest complete publication"
+    )
+    _add_run_options(inspect_command)
+    history_command = commands.add_parser(
+        "history", help="list run, audit, grading, export, backup, and policy state"
+    )
+    _add_run_options(history_command)
     return parser
 
 
@@ -189,7 +222,130 @@ def main(arguments: Sequence[str] | None = None) -> int:
         return _grade_command(parsed.input_path, parsed.store, parsed.as_json, parsed.finalize)
     if parsed.command == "status":
         return _status_command(parsed.run_id, parsed.store, parsed.as_json)
+    if parsed.command == "report":
+        return _report_command(parsed.matchweek, parsed.store, parsed.as_json, parsed.audit)
+    if parsed.command == "inspect":
+        return _inspect_command(
+            parsed.match,
+            parsed.matchweek,
+            parsed.store,
+            parsed.as_json,
+        )
+    if parsed.command == "history":
+        return _history_command(parsed.store, parsed.as_json)
     return _resume_command(parsed.run_id, parsed.store, parsed.as_json)
+
+
+def _t16_error(error: Exception, database_path: Path, command: str, as_json: bool) -> int:
+    if isinstance(error, T16NotFoundError):
+        return _print_error(
+            {
+                "status": "INCOMPLETE",
+                "code": "MV-T16-AUDIT_UNAVAILABLE",
+                "explanation": str(error),
+                "last_checkpoint": "none",
+                "reuse_state": "NONE",
+                "recovery_command": f"matchvet status --store {database_path}",
+                "decision_state": "NO DECISION",
+            },
+            as_json,
+        )
+    code = (
+        "MV-T16-INTEGRITY_FAILED" if isinstance(error, T16IntegrityError) else "MV-T16-READ_FAILED"
+    )
+    return _print_error(
+        {
+            "status": "REFUSED",
+            "code": code,
+            "explanation": str(error),
+            "last_checkpoint": "none",
+            "reuse_state": "BLOCKED" if isinstance(error, T16IntegrityError) else "NONE",
+            "recovery_command": f"matchvet doctor --store {database_path}"
+            if isinstance(error, T16IntegrityError)
+            else f"matchvet {command} --store {database_path}",
+        },
+        as_json,
+    )
+
+
+def _report_command(
+    matchweek_id: str | None,
+    store_path: Path | None,
+    as_json: bool,
+    audit: bool,
+) -> int:
+    database_path = store_path or default_database_path()
+    try:
+        if audit:
+            payload = read_audit(
+                database_path,
+                private_root=termux_private_root(),
+                matchweek_id=matchweek_id,
+            ).to_dict()
+        else:
+            payload = read_report(
+                database_path,
+                private_root=termux_private_root(),
+                matchweek_id=matchweek_id,
+            )
+    except (T16Error, OSError, sqlite3.DatabaseError) as error:
+        return _t16_error(error, database_path, "report", as_json)
+    if as_json or audit:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        selected_audit = read_audit(
+            database_path,
+            private_root=termux_private_root(),
+            matchweek_id=matchweek_id,
+        )
+        print(render_markdown_report(selected_audit), end="")
+    return 0
+
+
+def _inspect_command(
+    match: str,
+    matchweek_id: str | None,
+    store_path: Path | None,
+    as_json: bool,
+) -> int:
+    database_path = store_path or default_database_path()
+    try:
+        payload = inspect_match(
+            database_path,
+            match,
+            private_root=termux_private_root(),
+            matchweek_id=matchweek_id,
+        )
+    except (T16Error, OSError, sqlite3.DatabaseError) as error:
+        return _t16_error(error, database_path, "inspect", as_json)
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"MatchVet inspect {match}")
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
+def _history_command(store_path: Path | None, as_json: bool) -> int:
+    database_path = store_path or default_database_path()
+    try:
+        payload = read_history(database_path, private_root=termux_private_root())
+    except (T16Error, OSError, sqlite3.DatabaseError) as error:
+        return _t16_error(error, database_path, "history", as_json)
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print("MatchVet history")
+        if not payload:
+            print("No runs or audits")
+        for item in payload:
+            print(
+                f"{item['matchweek_id']} run_id={item.get('run_id') or 'none'} "
+                f"state={item['run_state']} audit={item['audit_state']} "
+                f"grading={item['grading_state']} mode={item['mode']} "
+                f"policy={item['policy_state']}"
+            )
+    return 0
 
 
 def _grade_command(input_path: Path, store_path: Path | None, as_json: bool, finalize: bool) -> int:
