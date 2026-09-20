@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
+import os
 import sqlite3
+import tempfile
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 from matchvet.doctor import apply_runtime_limits, build_report, render_human_report
 from matchvet.runs import (
@@ -46,6 +51,15 @@ from matchvet.t17 import (
     export_matchweek,
     restore_backup,
     verify_backup,
+)
+from matchvet.t18 import (
+    EvaluationArtifact,
+    EvaluationError,
+    EvaluationRunner,
+    candidate_policy_from_mapping,
+    evaluate_policies,
+    evaluation_config_from_mapping,
+    historical_evaluation_from_mapping,
 )
 
 
@@ -166,6 +180,26 @@ def _parser() -> argparse.ArgumentParser:
     )
     restore.add_argument("--target", type=Path, required=True, help="new private database path")
     restore.add_argument("--json", action="store_true", dest="as_json", help="print JSON")
+    policy = commands.add_parser("policy", help="inspect or evaluate Selection Policies")
+    policy_commands = policy.add_subparsers(dest="policy_command", required=True)
+    policy_validate = policy_commands.add_parser(
+        "validate", help="evaluate research-only policy candidates chronologically"
+    )
+    policy_validate.add_argument(
+        "--input", type=Path, required=True, dest="input_path", help="local T18 corpus JSON"
+    )
+    policy_validate.add_argument(
+        "--output", type=Path, required=True, dest="output_path", help="evaluation artifact JSON"
+    )
+    policy_validate.add_argument(
+        "--checkpoint", type=Path, help="digest-bound evaluation checkpoint JSON"
+    )
+    policy_validate.add_argument(
+        "--resume", action="store_true", help="resume the identical checkpointed evaluation"
+    )
+    policy_validate.add_argument(
+        "--json", action="store_true", dest="as_json", help="print JSON summary"
+    )
     return parser
 
 
@@ -284,7 +318,144 @@ def main(arguments: Sequence[str] | None = None) -> int:
         )
     if parsed.command == "restore":
         return _restore_command(parsed.source, parsed.target, parsed.as_json)
+    if parsed.command == "policy":
+        return _policy_validate_command(
+            parsed.input_path,
+            parsed.output_path,
+            parsed.checkpoint,
+            parsed.resume,
+            parsed.as_json,
+        )
     return _resume_command(parsed.run_id, parsed.store, parsed.as_json)
+
+
+def _publish_evaluation_artifact(path: Path, artifact: EvaluationArtifact) -> None:
+    content = artifact.to_bytes()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        existing = path.read_bytes()
+        if existing == content:
+            EvaluationArtifact.from_bytes(existing)
+            return
+        raise EvaluationError("Evaluation output already exists with different content.")
+    descriptor, partial_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".partial",
+    )
+    partial = Path(partial_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if partial.read_bytes() != content:
+            raise EvaluationError("Evaluation artifact failed output read-back verification.")
+        EvaluationArtifact.from_bytes(content)
+        lock_path = path.with_name(f".{path.name}.publish.lock")
+        with lock_path.open("a+b") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            if path.exists():
+                existing = path.read_bytes()
+                if existing != content:
+                    raise EvaluationError(
+                        "Evaluation output was concurrently published with different content."
+                    )
+                EvaluationArtifact.from_bytes(existing)
+                partial.unlink()
+            else:
+                os.replace(partial, path)
+        directory_descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+        EvaluationArtifact.from_bytes(path.read_bytes())
+    except BaseException:
+        with suppress(OSError):
+            os.close(descriptor)
+        with suppress(OSError):
+            partial.unlink(missing_ok=True)
+        raise
+
+
+def _policy_validate_command(
+    input_path: Path,
+    output_path: Path,
+    checkpoint_path: Path | None,
+    resume: bool,
+    as_json: bool,
+) -> int:
+    try:
+        raw = json.loads(input_path.read_bytes())
+        if not isinstance(raw, Mapping):
+            raise EvaluationError("T18 input must be a JSON object.")
+        if raw.get("schema_version") != "matchvet.policy-evaluation-input.v1":
+            raise EvaluationError("Unsupported T18 input schema version.")
+        raw_observations = raw.get("observations")
+        raw_candidates = raw.get("candidates")
+        raw_config = raw.get("config")
+        if not isinstance(raw_observations, list) or not all(
+            isinstance(item, Mapping) for item in raw_observations
+        ):
+            raise EvaluationError("T18 observations must be an array of JSON objects.")
+        if not isinstance(raw_candidates, list) or not all(
+            isinstance(item, Mapping) for item in raw_candidates
+        ):
+            raise EvaluationError("T18 candidates must be an array of JSON objects.")
+        if not isinstance(raw_config, Mapping):
+            raise EvaluationError("T18 config must be a JSON object.")
+        observations = tuple(
+            historical_evaluation_from_mapping(cast(Mapping[str, object], item))
+            for item in raw_observations
+        )
+        candidates = tuple(
+            candidate_policy_from_mapping(cast(Mapping[str, object], item))
+            for item in raw_candidates
+        )
+        config = evaluation_config_from_mapping(cast(Mapping[str, object], raw_config))
+        if resume and checkpoint_path is None:
+            raise EvaluationError("T18 resume requires --checkpoint.")
+        if checkpoint_path is None:
+            artifact = evaluate_policies(observations, candidates, config)
+        else:
+            artifact = EvaluationRunner(checkpoint_path).run(
+                observations,
+                candidates,
+                config,
+                resume=resume,
+            )
+        _publish_evaluation_artifact(output_path, artifact)
+    except (EvaluationError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        return _print_error(
+            {
+                "status": "REFUSED",
+                "code": "MV-T18-EVALUATION_FAILED",
+                "explanation": str(error),
+                "last_checkpoint": str(checkpoint_path or "none"),
+                "reuse_state": "BLOCKED" if resume else "NONE",
+                "recovery_command": f"matchvet policy validate --input {input_path}",
+                "lifecycle_effect": "NONE",
+            },
+            as_json,
+        )
+    summary = {
+        "artifact_digest": artifact.digest,
+        "frozen_policy": dict(artifact.frozen_policy_identity),
+        "lifecycle_effect": artifact.lifecycle_effect,
+        "output": str(output_path),
+        "status": artifact.status,
+    }
+    if as_json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        print("MatchVet chronological policy evaluation")
+        print(f"Status: {artifact.status}")
+        print(f"Policy: {artifact.frozen_policy_identity['version']}")
+        print(f"Artifact: {artifact.digest}")
+        print(f"Output: {output_path}")
+        print("Lifecycle: EVALUATED_RESEARCH_ONLY")
+    return 0
 
 
 def _export_command(

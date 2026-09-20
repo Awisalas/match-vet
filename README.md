@@ -46,6 +46,10 @@ T17 adds marker-gated Matchweek export and verified private recovery copies. Sha
 backup directories are never authoritative or executable state; restore activates only a new
 private target after every digest and SQLite integrity check passes.
 
+T18 adds offline chronological Selection Policy evaluation. It selects candidates on Validation,
+judges only the frozen winner on a later untouched period, and emits digest-bound metrics and
+diagnostics without promoting the policy. See the [policy evaluation guide](docs/policy-evaluation.md).
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:
@@ -67,6 +71,7 @@ Use the pinned native Termux packages and Python environment described in [the T
     .venv/bin/matchvet backup --store /path/to/matchvet.sqlite3 --destination /shared/matchvet-backup
     .venv/bin/matchvet backup --verify /shared/matchvet-backup --json
     .venv/bin/matchvet restore --source /shared/matchvet-backup --target /private/restored/matchvet.sqlite3
+    .venv/bin/matchvet policy validate --input /private/evaluation-input.json --output /private/evaluation-artifact.json --checkpoint /private/evaluation-checkpoint.json --json
 
 To inspect a configured store without changing it:
 

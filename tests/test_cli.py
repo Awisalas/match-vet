@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -51,6 +52,149 @@ def run_matchvet(
         capture_output=True,
         text=True,
     )
+
+
+def _t18_cli_corpus() -> dict[str, object]:
+    def observation(
+        *,
+        match_id: str,
+        matchweek_id: str,
+        matchweek_start: str,
+        kickoff: str,
+        cutoff: str,
+        outcome_known: str,
+        settlement: str,
+    ) -> dict[str, object]:
+        fixture_revision = {"kickoff_at_utc": kickoff, "match_id": match_id}
+        fixture_revision_digest = hashlib.sha256(
+            json.dumps(fixture_revision, separators=(",", ":"), sort_keys=True).encode()
+        ).hexdigest()
+        membership_manifest = {
+            "fixture_revision_digests": [fixture_revision_digest],
+            "matchweek_id": matchweek_id,
+        }
+        membership_manifest_digest = hashlib.sha256(
+            json.dumps(membership_manifest, separators=(",", ":"), sort_keys=True).encode()
+        ).hexdigest()
+        return {
+            "baseline_probability": 0.5,
+            "baseline_digest": "f" * 64,
+            "baseline_structural_trivial": False,
+            "conservative_probability": 0.7,
+            "calibration_digest": "e" * 64,
+            "correlation_group": "match-result",
+            "estimated_probability": 0.8,
+            "evidence_digest": "c" * 64,
+            "exact_line": "Home",
+            "fixture_revision": fixture_revision,
+            "fixture_revision_digest": fixture_revision_digest,
+            "gates": {"G0": "PASS", "G4": "PASS"},
+            "input_digest": "d" * 64,
+            "input_observed_at_utc": {
+                "fixture_revision": cutoff,
+                "membership_manifest": cutoff,
+            },
+            "kickoff_at_utc": kickoff,
+            "league": "Premier League",
+            "match_id": match_id,
+            "matchweek_id": matchweek_id,
+            "matchweek_start_utc": matchweek_start,
+            "membership_manifest": membership_manifest,
+            "membership_manifest_digest": membership_manifest_digest,
+            "model_agreement": 0.8,
+            "model_digest": "b" * 64,
+            "model_version": "model-1",
+            "model_fitted_at_utc": matchweek_start,
+            "outcome_known_at_utc": outcome_known,
+            "outcome_use": "UNSEEN",
+            "policy_digest": "a" * 64,
+            "policy_version": "policy-a",
+            "prediction_created_at_utc": cutoff,
+            "preference_family": "Match Winner",
+            "preference_id": "match_winner_home",
+            "recommendation": "CANDIDATE",
+            "research_cutoff_at_utc": cutoff,
+            "selection_components": {"probability": 0.8},
+            "selection_strength": 0.8,
+            "settlement": settlement,
+            "structural_conditions": [],
+            "training_data_end_utc": matchweek_start,
+            "uncertainty_lower": 0.6,
+            "uncertainty_upper": 0.9,
+            "uncertainty_width": 0.3,
+        }
+
+    return {
+        "candidates": [
+            {
+                "development_data_end_utc": "2026-08-21T00:00:00+00:00",
+                "digest": "a" * 64,
+                "fold_parameters": {},
+                "frozen_at_utc": "2026-08-28T00:00:00+00:00",
+                "inspected_evaluation_digests": [],
+                "parameters": {"conservative_probability_min": 0.6},
+                "status": "RESEARCH_ONLY",
+                "version": "policy-a",
+            }
+        ],
+        "config": {
+            "calibration_bin_edges": [0.0, 0.5, 1.0],
+            "criteria": [
+                {
+                    "metric": "probability_quality.brier_score",
+                    "minimum_effective_sample": 1,
+                    "operator": "<=",
+                    "threshold": 0.1,
+                }
+            ],
+            "development": {
+                "end_utc": "2026-08-21T00:00:00+00:00",
+                "name": "DEVELOPMENT",
+                "start_utc": "2026-08-07T00:00:00+00:00",
+            },
+            "evaluation": {
+                "end_utc": "2026-09-11T00:00:00+00:00",
+                "name": "EVALUATION",
+                "start_utc": "2026-08-28T00:00:00+00:00",
+            },
+            "evaluation_minimum_recommendations": 1,
+            "minimum_development_matchweeks": 1,
+            "rolling_step_matchweeks": 1,
+            "rolling_validation_matchweeks": 1,
+            "seed": 17,
+            "selection_direction": "MINIMIZE",
+            "selection_metric": "probability_quality.brier_score",
+            "split_method": "CHRONOLOGICAL",
+            "subgroup_minimum_effective_samples": {"league": 1},
+            "uncertainty_nominal_coverage": 0.8,
+            "validation": {
+                "end_utc": "2026-08-28T00:00:00+00:00",
+                "name": "VALIDATION",
+                "start_utc": "2026-08-21T00:00:00+00:00",
+            },
+        },
+        "observations": [
+            observation(
+                match_id="validation-match",
+                matchweek_id="mw-validation",
+                matchweek_start="2026-08-21T00:00:00+00:00",
+                kickoff="2026-08-22T14:00:00+00:00",
+                cutoff="2026-08-22T08:00:00+00:00",
+                outcome_known="2026-08-22T18:00:00+00:00",
+                settlement="WIN",
+            ),
+            observation(
+                match_id="evaluation-match",
+                matchweek_id="mw-evaluation",
+                matchweek_start="2026-08-28T00:00:00+00:00",
+                kickoff="2026-08-29T14:00:00+00:00",
+                cutoff="2026-08-29T08:00:00+00:00",
+                outcome_known="2026-08-29T18:00:00+00:00",
+                settlement="WIN",
+            ),
+        ],
+        "schema_version": "matchvet.policy-evaluation-input.v1",
+    }
 
 
 def _safe_estimate() -> ResourceEstimate:
@@ -228,6 +372,115 @@ def test_doctor_failure_has_a_stable_code_and_recovery_command() -> None:
     assert any(
         check["id"] == "command:uv" and check["status"] == "FAIL" for check in report["checks"]
     )
+
+
+def test_policy_validate_writes_deterministic_research_only_artifact(tmp_path: Path) -> None:
+    input_path = tmp_path / "evaluation-input.json"
+    first_output = tmp_path / "first-artifact.json"
+    second_output = tmp_path / "second-artifact.json"
+    unrelated_partial = first_output.with_name(f"{first_output.name}.partial")
+    unrelated_partial.write_bytes(b"unrelated")
+    input_path.write_text(json.dumps(_t18_cli_corpus()), encoding="utf-8")
+
+    first = run_matchvet(
+        "policy",
+        "validate",
+        "--input",
+        str(input_path),
+        "--output",
+        str(first_output),
+        "--json",
+    )
+    second = run_matchvet(
+        "policy",
+        "validate",
+        "--input",
+        str(input_path),
+        "--output",
+        str(second_output),
+        "--json",
+    )
+
+    assert first.returncode == second.returncode == 0
+    assert first.stderr == second.stderr == ""
+    first_summary = json.loads(first.stdout)
+    second_summary = json.loads(second.stdout)
+    assert first_summary["status"] == "PASS"
+    assert first_summary["lifecycle_effect"] == "EVALUATED_RESEARCH_ONLY"
+    assert first_summary["frozen_policy"]["status"] == "RESEARCH_ONLY"
+    assert first_summary["artifact_digest"] == second_summary["artifact_digest"]
+    assert first_output.read_bytes() == second_output.read_bytes()
+    assert unrelated_partial.read_bytes() == b"unrelated"
+    assert not tuple(tmp_path.glob(f".{first_output.name}.*.partial"))
+
+
+def test_policy_validate_checkpoint_resume_reproduces_artifact(tmp_path: Path) -> None:
+    input_path = tmp_path / "evaluation-input.json"
+    first_output = tmp_path / "first-artifact.json"
+    replay_output = tmp_path / "replay-artifact.json"
+    checkpoint = tmp_path / "checkpoint.json"
+    input_path.write_text(json.dumps(_t18_cli_corpus()), encoding="utf-8")
+
+    first = run_matchvet(
+        "policy",
+        "validate",
+        "--input",
+        str(input_path),
+        "--output",
+        str(first_output),
+        "--checkpoint",
+        str(checkpoint),
+        "--json",
+    )
+    replay = run_matchvet(
+        "policy",
+        "validate",
+        "--input",
+        str(input_path),
+        "--output",
+        str(replay_output),
+        "--checkpoint",
+        str(checkpoint),
+        "--resume",
+        "--json",
+    )
+
+    assert first.returncode == replay.returncode == 0
+    assert first_output.read_bytes() == replay_output.read_bytes()
+    checkpoint_payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert checkpoint_payload["state"] == "COMPLETE"
+    assert checkpoint_payload["artifact_digest"] == json.loads(replay.stdout)["artifact_digest"]
+
+
+def test_policy_validate_future_cutoff_input_fails_without_output(tmp_path: Path) -> None:
+    corpus = _t18_cli_corpus()
+    observations = corpus["observations"]
+    assert isinstance(observations, list)
+    evaluation = observations[-1]
+    assert isinstance(evaluation, dict)
+    evaluation["input_observed_at_utc"] = {"confirmed_lineup": "2026-08-29T13:00:00+00:00"}
+    input_path = tmp_path / "leaking-input.json"
+    output_path = tmp_path / "artifact.json"
+    input_path.write_text(json.dumps(corpus), encoding="utf-8")
+
+    result = run_matchvet(
+        "policy",
+        "validate",
+        "--input",
+        str(input_path),
+        "--output",
+        str(output_path),
+        "--json",
+    )
+
+    assert result.returncode == 1
+    assert result.stderr == ""
+    error = json.loads(result.stdout)
+    assert error["status"] == "REFUSED"
+    assert error["code"] == "MV-T18-EVALUATION_FAILED"
+    assert "after the Research Cutoff" in error["explanation"]
+    assert error["recovery_command"] == f"matchvet policy validate --input {input_path}"
+    assert not output_path.exists()
 
 
 def test_help_and_unknown_commands_follow_argparse_contract() -> None:
