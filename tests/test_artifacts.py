@@ -90,6 +90,37 @@ def test_identical_content_deduplicates_and_changed_content_gets_new_digest(tmp_
         assert [path.name for path in objects] == sorted((first.digest, changed.digest))
 
 
+def test_artifact_and_manifest_identity_is_reproducible_across_clean_stores(
+    tmp_path: Path,
+) -> None:
+    published: list[tuple[str, str]] = []
+    for name in ("first", "second"):
+        private_root = tmp_path / name
+        private_root.mkdir()
+        with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+            artifacts = ArtifactStore(store)
+            artifact = artifacts.publish_artifact(b"same evidence", "application/json")
+            version = _version()
+            with store.transaction() as transaction:
+                transaction.add_version(version)
+            manifest = _manifest(
+                ManifestArtifact(
+                    artifact.artifact_id,
+                    artifact.digest,
+                    artifact.media_type,
+                    artifact.byte_length,
+                ),
+                version,
+            )
+            result = artifacts.publish_manifest(
+                manifest,
+                verified_at_utc=manifest.created_at_utc,
+            )
+            published.append((artifact.artifact_id.value, result.digest))
+
+    assert published[0] == published[1]
+
+
 def test_existing_content_addressed_object_cannot_be_overwritten_or_mutated(tmp_path: Path) -> None:
     private_root = tmp_path / "private"
     private_root.mkdir()

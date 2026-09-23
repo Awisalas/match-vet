@@ -1,0 +1,84 @@
+{
+  "schema": "matchvet.recorded-qualification-corpus.v1",
+  "season": "2026-27",
+  "matchweek_friday": "2026-09-18",
+  "captured_at_utc": "2026-09-17T12:00:00+00:00",
+  "rights": {
+    "classification": "SELF_AUTHORED_STRUCTURAL_EQUIVALENT",
+    "license": "CC0-1.0",
+    "redistributable": true,
+    "contains_third_party_raw_data": false
+  },
+  "scenarios": {
+    "conflict_league": "premier_league",
+    "fallback_league": "bundesliga",
+    "missing_corners_league": "bundesliga",
+    "unknown_context_league": "ligue_1",
+    "withdrawn_league": "belgian_pro_league"
+  },
+  "leagues": [
+    {
+      "league_key": "premier_league",
+      "source_mode": "FOOTBALL_DATA",
+      "team_prefix": "England",
+      "target_date": "18/09/2026",
+      "target_time": "20:00",
+      "history_results": [[2,1,1,0,6,4],[1,1,0,1,5,5],[0,2,0,1,3,7],[3,1,2,0,8,2],[1,0,0,0,4,3],[2,2,1,1,5,6]],
+      "settlement": [2,1,1,0,5,4]
+    },
+    {
+      "league_key": "serie_a",
+      "source_mode": "FOOTBALL_DATA",
+      "team_prefix": "Italy",
+      "target_date": "19/09/2026",
+      "target_time": "18:00",
+      "history_results": [[1,0,1,0,5,3],[2,2,1,1,6,6],[3,0,1,0,7,2],[0,1,0,0,4,5],[2,1,0,1,5,4],[1,1,0,0,3,3]],
+      "settlement": [1,1,0,0,4,4]
+    },
+    {
+      "league_key": "la_liga",
+      "source_mode": "FOOTBALL_DATA",
+      "team_prefix": "Spain",
+      "target_date": "19/09/2026",
+      "target_time": "21:00",
+      "history_results": [[2,0,1,0,7,2],[1,2,0,1,4,6],[1,0,0,0,5,4],[3,2,2,1,8,5],[0,0,0,0,3,3],[2,1,1,1,6,4]],
+      "settlement": [3,1,1,0,7,3]
+    },
+    {
+      "league_key": "bundesliga",
+      "source_mode": "OPENFOOTBALL_FALLBACK",
+      "team_prefix": "Germany",
+      "target_date": "20/09/2026",
+      "target_time": "17:30",
+      "history_results": [[3,1,2,0,null,null],[2,2,1,1,null,null],[1,0,0,0,null,null],[0,2,0,1,null,null],[2,1,1,0,null,null],[1,1,0,1,null,null]],
+      "settlement": [2,2,1,1,null,null]
+    },
+    {
+      "league_key": "ligue_1",
+      "source_mode": "FOOTBALL_DATA",
+      "team_prefix": "France",
+      "target_date": "20/09/2026",
+      "target_time": "20:00",
+      "history_results": [[1,0,null,null,5,4],[2,1,null,null,6,3],[0,0,null,null,4,4],[3,1,null,null,7,2],[1,2,null,null,3,6],[2,2,null,null,5,5]],
+      "settlement": [1,0,0,0,5,3]
+    },
+    {
+      "league_key": "liga_portugal",
+      "source_mode": "FOOTBALL_DATA",
+      "team_prefix": "Portugal",
+      "target_date": "21/09/2026",
+      "target_time": "19:00",
+      "history_results": [[2,0,1,0,6,2],[1,1,0,1,5,5],[0,1,0,0,3,4],[2,1,1,1,7,3],[3,0,2,0,8,2],[1,2,0,1,4,6]],
+      "settlement": [2,0,1,0,6,2]
+    },
+    {
+      "league_key": "belgian_pro_league",
+      "source_mode": "FOOTBALL_DATA",
+      "team_prefix": "Belgium",
+      "target_date": "21/09/2026",
+      "target_time": "20:00",
+      "history_results": [[2,1,1,0,null,null],[1,0,0,0,null,null],[0,2,0,1,null,null],[3,1,2,0,null,null],[1,1,0,1,null,null],[2,0,1,0,null,null]],
+      "settlement": [1,1,0,0,null,null]
+    }
+  ]
+}

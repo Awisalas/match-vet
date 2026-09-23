@@ -1553,6 +1553,7 @@ def freeze_matchweek(
     season: str = "2026-27",
     as_of_utc: str | datetime | None = None,
     created_at_utc: str | datetime | None = None,
+    manifest_verified_at_utc: str | None = None,
 ) -> MatchweekFreeze:
     """Freeze the T05 membership manifest once, idempotently, from T06 revisions."""
     if store.status.mode.value != "READ_WRITE":
@@ -1664,7 +1665,10 @@ def freeze_matchweek(
         completeness=ManifestCompleteness("COMPLETE"),
         created_at_utc=_canonical_utc(created_at_utc or cutoff.cutoff_utc),
     )
-    snapshot_artifact = artifacts.publish_manifest(manifest)
+    snapshot_artifact = artifacts.publish_manifest(
+        manifest,
+        verified_at_utc=manifest_verified_at_utc,
+    )
     frozen_at = _canonical_utc(created_at_utc or cutoff.cutoff_utc)
     _insert_freeze(
         store,

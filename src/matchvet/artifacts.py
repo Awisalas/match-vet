@@ -32,6 +32,12 @@ _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z")
 _MEDIA_TYPE_RE = re.compile(r"[^\x00-\x20\x7f]+")
 
 
+def _artifact_identifier(digest: str) -> CanonicalIdentifier:
+    return CanonicalIdentifier(
+        "artifact", str(uuid.uuid5(uuid.NAMESPACE_URL, f"matchvet:artifact:{digest}"))
+    )
+
+
 class ArtifactError(Exception):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -550,7 +556,7 @@ class ArtifactStore:
                 "Artifact content does not match the expected digest.",
             )
         record = ArtifactRecord(
-            artifact_id=CanonicalIdentifier.new("artifact"),
+            artifact_id=_artifact_identifier(digest),
             digest=digest,
             media_type=media_type,
             byte_length=len(content),
@@ -579,7 +585,12 @@ class ArtifactStore:
             ) from error
         return self._record_or_raise(digest)
 
-    def publish_manifest(self, manifest: SnapshotManifest) -> ArtifactRecord:
+    def publish_manifest(
+        self,
+        manifest: SnapshotManifest,
+        *,
+        verified_at_utc: str | None = None,
+    ) -> ArtifactRecord:
         self._ensure_writeable()
         if not isinstance(manifest, SnapshotManifest):
             raise ManifestError("MV-MANIFEST-MALFORMED", "A SnapshotManifest value is required.")
@@ -623,14 +634,16 @@ class ArtifactStore:
             # bounded transaction below will reject the unique snapshot identity and leave
             # only a detectable orphan object for inspection.
 
+        verification_time = verified_at_utc or _utc_now()
+        _require_utc_timestamp(verification_time, "manifest verification time")
         verified_manifest = replace(
             manifest,
             verification_state="VERIFIED",
-            verified_at_utc=_utc_now(),
+            verified_at_utc=verification_time,
         )
         content = verified_manifest.to_bytes()
         record = ArtifactRecord(
-            artifact_id=CanonicalIdentifier.new("artifact"),
+            artifact_id=_artifact_identifier(verified_manifest.digest),
             digest=verified_manifest.digest,
             media_type=MANIFEST_MEDIA_TYPE,
             byte_length=len(content),

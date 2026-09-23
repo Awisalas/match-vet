@@ -315,6 +315,51 @@ def test_valid_resume_reuses_only_completed_digest_matched_work(tmp_path: Path) 
     assert resumed.reuse_state == "REUSED"
 
 
+@pytest.mark.failure_injection
+@pytest.mark.parametrize("interrupted_phase", RUN_PHASES)
+def test_every_durable_phase_boundary_recovers_without_partial_publication(
+    tmp_path: Path, interrupted_phase: RunPhase
+) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+
+    with open_store(database_path, private_root=private_root) as store:
+        with pytest.raises(RunLifecycleError) as interrupted:
+            RunCoordinator(store).start(
+                matchweek="2026-09-18",
+                inputs=_inputs(),
+                estimate=_estimate(),
+                observation=_observation(),
+                executor=InterruptAt(interrupted_phase),
+            )
+        run_id = interrupted.value.run_id
+
+    boundary = RUN_PHASES.index(interrupted_phase)
+    incomplete = read_run_status(database_path, private_root, run_id)
+    assert incomplete.state is RunState.INCOMPLETE
+    assert incomplete.completed_work_units == boundary
+    assert incomplete.completion_publication_digest is None
+    assert incomplete.decision_state == "NO_DECISION"
+
+    recorder = RecordingExecutor()
+    with open_store(database_path, private_root=private_root) as store:
+        resumed = RunCoordinator(store).resume(
+            run_id,
+            inputs=_inputs(),
+            estimate=_estimate(),
+            observation=_observation(),
+            executor=recorder,
+        )
+
+    assert recorder.phases == list(RUN_PHASES[boundary:])
+    assert resumed.state is RunState.COMPLETE
+    assert resumed.completed_work_units == len(RUN_PHASES)
+    assert resumed.completion_publication_digest is not None
+    assert all(unit.attempt == 1 for unit in resumed.work_units[:boundary])
+    assert resumed.work_units[boundary].attempt == 2
+
+
 def test_compatible_run_lookup_ignores_newer_incompatible_runs(tmp_path: Path) -> None:
     private_root = tmp_path / "private"
     private_root.mkdir()

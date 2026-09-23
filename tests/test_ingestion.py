@@ -44,6 +44,19 @@ def test_target_league_set_and_primary_url_cover_exactly_seven_leagues() -> None
     )
 
 
+def test_refresh_policy_changes_the_t06_resume_identity() -> None:
+    from matchvet.ingestion import IngestionPlan, build_t06_input_contract
+
+    cached = IngestionPlan(current_season="2026-27", refresh_current=False)
+    refreshed = IngestionPlan(current_season="2026-27", refresh_current=True)
+
+    assert cached.plan_digest != refreshed.plan_digest
+    assert (
+        build_t06_input_contract(cached).aggregate_digest
+        != build_t06_input_contract(refreshed).aggregate_digest
+    )
+
+
 def test_football_data_parser_keeps_only_approved_fields_and_epistemic_states() -> None:
     dataset = FootballDataCSVParser().parse(
         FOOTBALL_DATA_SAMPLE.encode("latin-1"),

@@ -176,6 +176,17 @@ class FixtureProvenance:
         }
 
 
+def _provenance_sort_key(item: FixtureProvenance) -> tuple[str, str, str, bytes]:
+    # Distinct revisions can share a source, locator, and observation time.
+    # The complete record breaks ties independently of set/hash iteration order.
+    return (
+        item.observed_at_utc,
+        item.source_key,
+        item.locator,
+        _canonical_json(item.to_dict()),
+    )
+
+
 @dataclass(frozen=True)
 class CanonicalFixture:
     """One canonical fixture revision as observed by an approved source."""
@@ -498,11 +509,7 @@ def _select_canonical_views(
             provenance = tuple(
                 sorted(
                     {item for revision in revisions for item in revision.provenance},
-                    key=lambda item: (
-                        item.observed_at_utc,
-                        item.source_key,
-                        item.locator,
-                    ),
+                    key=_provenance_sort_key,
                 )
             )
             revision_views.append(
@@ -647,7 +654,7 @@ def _team_workload(
     provenance = tuple(
         sorted(
             {provenance for item in team_events for provenance in item.provenance},
-            key=lambda item: (item.observed_at_utc, item.source_key, item.locator),
+            key=_provenance_sort_key,
         )
     )
     state = WorkloadState.OBSERVED if not unknown_reasons else WorkloadState.UNKNOWN
@@ -699,7 +706,7 @@ class WorkloadCalculator:
                 {item for fixture in (target,) for item in fixture.provenance}
                 | set(home.source_provenance)
                 | set(away.source_provenance),
-                key=lambda item: (item.observed_at_utc, item.source_key, item.locator),
+                key=_provenance_sort_key,
             )
         )
         state = (
@@ -1029,7 +1036,7 @@ def load_canonical_fixture_history(
         provenance = tuple(
             sorted(
                 {*prior.provenance, *candidate.provenance},
-                key=lambda item: (item.observed_at_utc, item.source_key, item.locator),
+                key=_provenance_sort_key,
             )
         )
         merged[matching] = replace(candidate, provenance=provenance)

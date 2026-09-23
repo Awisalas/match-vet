@@ -5533,6 +5533,7 @@ class T09EvidenceBuilder:
         mandatory_research: tuple[ResearchAttempt, ...] | None = None,
         material_scenarios: Iterable[MaterialScenario] = (),
         model_availability: Mapping[str, bool] | None = None,
+        manifest_verified_at_utc: str | None = None,
         failure_hook: Callable[[int, FrozenMembership], None] | None = None,
     ) -> None:
         if store.status.mode.value != "READ_WRITE":
@@ -5555,6 +5556,7 @@ class T09EvidenceBuilder:
         self.mandatory_research = mandatory_research
         self.material_scenarios = tuple(material_scenarios)
         self.model_availability = dict(model_availability or {})
+        self.manifest_verified_at_utc = manifest_verified_at_utc
         self.failure_hook = failure_hook
         self.last_result: T09BuildResult | None = None
 
@@ -5689,7 +5691,10 @@ class T09EvidenceBuilder:
             ),
             created_at_utc=freeze.cutoff.cutoff_utc,
         )
-        manifest_record = ArtifactStore(self.store).publish_manifest(manifest)
+        manifest_record = ArtifactStore(self.store).publish_manifest(
+            manifest,
+            verified_at_utc=self.manifest_verified_at_utc,
+        )
         verified_manifest = ArtifactStore(self.store).verify_manifest(manifest_record.digest)
         recorder = FrozenEvidenceStateRecorder(self.store)
         frozen_states: list[FrozenEvidenceState] = []
@@ -5787,6 +5792,7 @@ def build_t09_input_contract(
     mandatory_research: tuple[ResearchAttempt, ...] | None = None,
     material_scenarios: Iterable[MaterialScenario] = (),
     model_availability: Mapping[str, bool] | None = None,
+    manifest_verified_at_utc: str | None = None,
 ) -> RunInputContract:
     freeze = read_frozen_matchweek(store, plan.friday, season=plan.season)
     selected_context = materialize_context(
@@ -5796,6 +5802,7 @@ def build_t09_input_contract(
     source_payload = {
         "contextual_assertions": _contract_value(selected_context),
         "mandatory_research": _contract_value(mandatory_research),
+        "manifest_verified_at_utc": manifest_verified_at_utc,
         "store_digest": _store_source_digest(store, freeze.cutoff.matchweek_id),
         "t08": _contract_value(t08_evidence),
         "weather_evidence": _contract_value(weather_evidence or supplied_weather),
@@ -5888,6 +5895,7 @@ class T09EvidenceRunner:
         mandatory_research: tuple[ResearchAttempt, ...] | None = None,
         material_scenarios: Iterable[MaterialScenario] = (),
         model_availability: Mapping[str, bool] | None = None,
+        manifest_verified_at_utc: str | None = None,
         progress: Callable[[RunStatus], None] | None = None,
         failure_hook: Callable[[int, FrozenMembership], None] | None = None,
     ) -> RunStatus:
@@ -5912,6 +5920,7 @@ class T09EvidenceRunner:
                 mandatory_research=mandatory_research,
                 material_scenarios=scenarios,
                 model_availability=model_availability,
+                manifest_verified_at_utc=manifest_verified_at_utc,
             ),
             estimate=self._estimate(plan),
             observation=observation,
@@ -5926,6 +5935,7 @@ class T09EvidenceRunner:
                 mandatory_research=mandatory_research,
                 material_scenarios=scenarios,
                 model_availability=model_availability,
+                manifest_verified_at_utc=manifest_verified_at_utc,
                 failure_hook=failure_hook,
             ),
             progress=progress,
@@ -5954,6 +5964,7 @@ class T09EvidenceRunner:
         mandatory_research: tuple[ResearchAttempt, ...] | None = None,
         material_scenarios: Iterable[MaterialScenario] = (),
         model_availability: Mapping[str, bool] | None = None,
+        manifest_verified_at_utc: str | None = None,
         progress: Callable[[RunStatus], None] | None = None,
         failure_hook: Callable[[int, FrozenMembership], None] | None = None,
     ) -> RunStatus:
@@ -5978,6 +5989,7 @@ class T09EvidenceRunner:
                 mandatory_research=mandatory_research,
                 material_scenarios=scenarios,
                 model_availability=model_availability,
+                manifest_verified_at_utc=manifest_verified_at_utc,
             ),
             estimate=self._estimate(plan),
             observation=observation,
@@ -5992,6 +6004,7 @@ class T09EvidenceRunner:
                 mandatory_research=mandatory_research,
                 material_scenarios=scenarios,
                 model_availability=model_availability,
+                manifest_verified_at_utc=manifest_verified_at_utc,
                 failure_hook=failure_hook,
             ),
             progress=progress,
@@ -6028,6 +6041,7 @@ class T09EvidenceRunner:
         mandatory_research: tuple[ResearchAttempt, ...] | None,
         material_scenarios: tuple[MaterialScenario, ...],
         model_availability: Mapping[str, bool] | None,
+        manifest_verified_at_utc: str | None,
         failure_hook: Callable[[int, FrozenMembership], None] | None,
     ) -> WorkResult:
         if context.phase is not RunPhase.EVIDENCE_ACQUISITION:
@@ -6045,6 +6059,7 @@ class T09EvidenceRunner:
             mandatory_research=mandatory_research,
             material_scenarios=material_scenarios,
             model_availability=model_availability,
+            manifest_verified_at_utc=manifest_verified_at_utc,
             failure_hook=failure_hook,
         ).build(freeze)
         self.last_result = result

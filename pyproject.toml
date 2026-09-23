@@ -37,6 +37,10 @@ python-downloads = "never"
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+markers = [
+  "failure_injection: representative durable-boundary failure and recovery checks",
+  "recorded_e2e: rights-safe recorded-data end-to-end replay",
+]
 
 [tool.ruff]
 target-version = "py314"

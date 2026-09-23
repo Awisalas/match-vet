@@ -256,6 +256,7 @@ def build_t08_input_contract(
     *,
     context_fixtures: Iterable[CanonicalFixture] = (),
     locations: Mapping[str, VenueLocation] | Iterable[VenueLocation] = (),
+    refresh_weather: bool = False,
 ) -> RunInputContract:
     """Build the exact T04 identity contract for T08 start/resume."""
 
@@ -272,7 +273,7 @@ def build_t08_input_contract(
                 f"{freeze.revision_snapshot_digest}"
             ),
             "preference_set": "T08:NOT_APPLICABLE",
-            "policy": "T08:OPEN_METEO_ONLY_CUTOFF_VALID",
+            "policy": (f"T08:OPEN_METEO_ONLY_CUTOFF_VALID:REFRESH_WEATHER:{int(refresh_weather)}"),
             "model": "OPEN_METEO:best_match:hourly",
             "feature": (
                 f"T08:WORKLOAD_WEATHER:{plan.workload_rules.digest}:"
@@ -423,6 +424,7 @@ class T08EvidenceRunner:
                 plan,
                 context_fixtures=context,
                 locations=locations,
+                refresh_weather=refresh_weather,
             ),
             estimate=self._estimate(plan),
             observation=observation,
@@ -461,6 +463,7 @@ class T08EvidenceRunner:
                 plan,
                 context_fixtures=context,
                 locations=locations,
+                refresh_weather=refresh_weather,
             ),
             estimate=self._estimate(plan),
             observation=observation,

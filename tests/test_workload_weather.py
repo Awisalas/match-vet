@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -115,6 +116,38 @@ def test_workload_uses_canonical_revision_once_and_includes_cross_competition_co
     assert len(result.home.turnaround_periods) == 2
     assert len(result.home.congestion_windows) == 1
     assert result.home.unique_fixture_count_before_target == 2
+
+
+def test_workload_provenance_order_is_stable_when_revision_sort_fields_tie() -> None:
+    from matchvet.workload import FixtureProvenance, WorkloadCalculator
+
+    common = {
+        "source_key": "shared-source",
+        "locator": "https://example.test/history",
+        "observed_at_utc": "2026-09-11T12:00:00+00:00",
+    }
+    first_revision = FixtureProvenance(**common, revision_id="a", revision_digest="a" * 64)
+    second_revision = FixtureProvenance(**common, revision_id="b", revision_digest="b" * 64)
+    history = _fixture("history", "home", "other", "2026-09-10T20:00:00+00:00")
+    target = _fixture(
+        "target",
+        "home",
+        "away",
+        "2026-09-13T20:00:00+00:00",
+        status="SCHEDULED",
+    )
+    cutoff = "2026-09-13T12:00:00+00:00"
+    forward = WorkloadCalculator(
+        (replace(history, provenance=(first_revision, second_revision)),),
+        cutoff_utc=cutoff,
+    ).calculate(target)
+    reverse = WorkloadCalculator(
+        (replace(history, provenance=(second_revision, first_revision)),),
+        cutoff_utc=cutoff,
+    ).calculate(target)
+
+    assert forward.digest == reverse.digest
+    assert tuple(item.revision_id for item in forward.home.source_provenance)[:2] == ("a", "b")
 
 
 def test_rescheduled_fixture_is_counted_once_before_cutoff() -> None:
@@ -364,6 +397,19 @@ def _frozen_store(tmp_path: Path) -> tuple[Store, MatchweekFreeze]:
         created_at_utc="2026-09-17T12:00:00+00:00",
     )
     return store, freeze
+
+
+def test_weather_refresh_policy_changes_the_t08_resume_identity(tmp_path: Path) -> None:
+    from matchvet.t08 import T08Plan, build_t08_input_contract
+
+    store, _freeze = _frozen_store(tmp_path)
+    plan = T08Plan("2026-09-18")
+
+    cached = build_t08_input_contract(store, plan, refresh_weather=False)
+    refreshed = build_t08_input_contract(store, plan, refresh_weather=True)
+
+    assert cached.aggregate_digest != refreshed.aggregate_digest
+    store.close()
 
 
 def test_workload_schedule_context_is_idempotent_and_transactional(tmp_path: Path) -> None:

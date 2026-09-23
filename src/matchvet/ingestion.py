@@ -2199,6 +2199,7 @@ class IngestionPlan:
                     "current_season": self.current_season,
                     "historical_seasons": self.historical_seasons,
                     "leagues": [league.key for league in self.leagues],
+                    "refresh_current": self.refresh_current,
                     "source_policy": "t06-source-policy-v1",
                     "use_openfootball_fallback": self.use_openfootball_fallback,
                 }

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from matchvet.artifacts import ArtifactRecord, ArtifactStore
 from matchvet.matchweek import AppendixDisposition, MembershipState
 from matchvet.store import open_store
 from matchvet.t10 import DEFAULT_PREFERENCE_CATALOG, BettingPreference
@@ -591,6 +592,52 @@ def test_publish_inspect_and_history_use_complete_publication_marker(tmp_path: P
     assert entries[0]["grading_state"] == "NOT_STARTED"
     assert entries[0]["export_state"] == "OUT_OF_SCOPE"
     assert entries[0]["backup_state"] == "OUT_OF_SCOPE"
+
+
+@pytest.mark.failure_injection
+def test_interrupted_audit_publication_stays_invisible_until_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from matchvet.t16 import T16Error, history, publish_matchweek_audit, read_audit
+
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    original = ArtifactStore.publish_artifact
+    calls = 0
+
+    def interrupt_before_marker(
+        self: ArtifactStore,
+        content: bytes,
+        media_type: str,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OSError("injected interruption before complete marker")
+        return original(
+            self,
+            content,
+            media_type,
+            expected_digest=expected_digest,
+            retention_class=retention_class,
+        )
+
+    audit = _audit()
+    with open_store(database_path, private_root=private_root) as store:
+        monkeypatch.setattr(ArtifactStore, "publish_artifact", interrupt_before_marker)
+        with pytest.raises(T16Error, match="Atomic T16 publication failed"):
+            publish_matchweek_audit(audit, store=store)
+        assert history(database_path, private_root=private_root) == []
+        monkeypatch.setattr(ArtifactStore, "publish_artifact", original)
+        publication = publish_matchweek_audit(audit, store=store)
+
+    assert publication.audit_digest == audit.audit_digest
+    assert read_audit(database_path, private_root=private_root).audit_digest == audit.audit_digest
+    assert len(history(database_path, private_root=private_root)) == 1
 
 
 def test_history_is_empty_without_publications_and_does_not_mutate_store(tmp_path: Path) -> None:

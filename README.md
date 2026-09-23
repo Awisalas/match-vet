@@ -50,6 +50,11 @@ T18 adds offline chronological Selection Policy evaluation. It selects candidate
 judges only the frozen winner on a later untouched period, and emits digest-bound metrics and
 diagnostics without promoting the policy. See the [policy evaluation guide](docs/policy-evaluation.md).
 
+T19 evaluates the integrated software for a `RESEARCH_ONLY` release on the supported Termux
+device. The [release qualification record](docs/research-only-release-qualification.md) identifies
+the checked commit, seven-league replay, offline rebuild, recovery checks, and measured budgets.
+It does not establish predictive reliability or Production Promotion.
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:
@@ -85,3 +90,8 @@ To inspect a configured store without changing it:
     .venv/bin/pytest
 
 The default test suite is deterministic and does not use the internet.
+
+Run the recorded seven-league release checks with
+`scripts/qualify-research-release.sh OUTPUT_DIR`. Use a new output directory outside the
+repository. The command retains gate logs, replay and resource records, an offline recovery
+bundle, and `qualification.json`; it exits nonzero unless every software gate passes.
