@@ -352,7 +352,7 @@ Use free, open, or official football data and infrastructure that requires no pa
 Do not start any U01-U06 ticket unless P02 records a successful V2 Production Promotion. FAILED or INCONCLUSIVE leaves all commercial tickets blocked.
 
 ### U01 Define subscription plans and entitlements
-- **Goal:** Define account states and subscription entitlements only after successful V2 Production Promotion, without changing the research or recommendation contracts.
+- **Goal:** Design subscriptions for multiple countries and regions, including Nigeria. Keep pricing and entitlements independent of any one country or currency, make country availability configurable, and map one MatchVet Pro entitlement to localized storefront pricing. Start only after successful V2 Production Promotion, without changing the research or recommendation contracts.
 - **Blocked by:** P02 successful promotion.
 - **Size:** S.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`.
@@ -387,7 +387,7 @@ Do not start any U01-U06 ticket unless P02 records a successful V2 Production Pr
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### U06 Launch subscriptions
-- **Goal:** Release the approved subscription plans across supported clients only after successful V2 Production Promotion and completed billing and entitlement flows.
+- **Goal:** Launch only where MatchVet can legally and commercially offer the subscription. Treat Nigeria as an intended launch market. Check app-store and payment-provider availability and applicable local restrictions before enabling each market. Support additional countries without changing prediction logic or account architecture. Launch only after successful V2 Production Promotion and completed billing and entitlement flows.
 - **Blocked by:** P02 successful promotion, U03, U04, U05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$blast-radius`, `$interrogate`.
