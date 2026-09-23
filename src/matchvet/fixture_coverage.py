@@ -12,8 +12,8 @@ from matchvet.ingestion import TARGET_LEAGUES
 from matchvet.matchweek import MatchweekWindow
 
 _TARGET_LEAGUE_KEYS = tuple(league.key for league in TARGET_LEAGUES)
-FIXTURE_COVERAGE_CONTRACT_VERSION = "fixture-coverage-v2-v1"
-FIXTURE_COVERAGE_SCHEMA_VERSION = 1
+FIXTURE_COVERAGE_CONTRACT_VERSION = "fixture-coverage-v2-v2"
+FIXTURE_COVERAGE_SCHEMA_VERSION = 2
 
 
 class ProviderAttemptState(StrEnum):
@@ -279,6 +279,15 @@ class CoverageFreshnessResult:
         _canonical_utc(self.evaluated_at_utc)
 
 
+def _single_freshness_policy_id(
+    freshness_results: tuple[CoverageFreshnessResult, ...],
+) -> str | None:
+    policy_ids = {result.policy_id for result in freshness_results}
+    if len(policy_ids) > 1:
+        raise ValueError("Fixture Coverage Assessment requires a single freshness policy.")
+    return next(iter(policy_ids), None)
+
+
 @dataclass(frozen=True)
 class FixtureScopeAssessment:
     scope: FixtureScope
@@ -296,6 +305,7 @@ class FixtureScopeAssessment:
 class FixtureCoverageAssessment:
     contract_version: str
     schema_version: int
+    freshness_policy_id: str | None
     scope_assessments: tuple[FixtureScopeAssessment, ...]
     provider_attempts: tuple[ProviderAttempt, ...]
     coverage_evidence: tuple[ProviderCoverageEvidence, ...]
@@ -306,6 +316,10 @@ class FixtureCoverageAssessment:
     digest: str = ""
 
     def __post_init__(self) -> None:
+        if self.freshness_policy_id != _single_freshness_policy_id(self.freshness_results):
+            raise ValueError(
+                "Fixture Coverage Assessment freshness policy identity must match its results."
+            )
         expected = _assessment_digest(self)
         if self.digest and self.digest != expected:
             raise ValueError("Fixture Coverage Assessment digest does not match its contents.")
@@ -421,6 +435,7 @@ def assess_fixture_coverage(
     freshness_results: tuple[CoverageFreshnessResult, ...],
 ) -> FixtureCoverageAssessment:
     """Assess all seven scopes, treating an omitted requested scope as unknown."""
+    freshness_policy_id = _single_freshness_policy_id(freshness_results)
     if not scopes:
         raise ValueError("Fixture Coverage Assessment requires at least one Fixture Scope.")
     provided_league_keys = tuple(scope.league_key for scope in scopes)
@@ -646,6 +661,7 @@ def assess_fixture_coverage(
     return FixtureCoverageAssessment(
         contract_version=FIXTURE_COVERAGE_CONTRACT_VERSION,
         schema_version=FIXTURE_COVERAGE_SCHEMA_VERSION,
+        freshness_policy_id=freshness_policy_id,
         scope_assessments=tuple(scope_assessments),
         provider_attempts=tuple(
             sorted(provider_attempts, key=lambda item: (item.scope_id, item.attempt_id))

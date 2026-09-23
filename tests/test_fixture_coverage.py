@@ -310,8 +310,8 @@ def test_current_full_scope_evidence_for_all_seven_leagues_is_complete_and_deter
     assert all(
         item.coverage_state is ScopeCoverageState.COMPLETE for item in assessment.scope_assessments
     )
-    assert assessment.contract_version == "fixture-coverage-v2-v1"
-    assert assessment.schema_version == 1
+    assert assessment.contract_version == "fixture-coverage-v2-v2"
+    assert assessment.schema_version == 2
     assert assessment.digest.startswith("sha256:")
     assert replay.digest == assessment.digest
 
@@ -454,6 +454,7 @@ def test_stale_only_scope_retains_evidence_and_does_not_count_as_current() -> No
     premier = assessment.scope_assessments[0]
 
     assert premier.coverage_state is ScopeCoverageState.STALE
+    assert assessment.freshness_policy_id == row[4].policy_id
     assert premier.current_coverage_evidence_ids == ()
     assert premier.stale_coverage_evidence_ids == (row[1].evidence_id,)
     assert assessment.coverage_evidence == (row[1],)
@@ -486,10 +487,41 @@ def test_complementary_current_provider_ranges_combine_to_full_scope() -> None:
 
     premier = assessment.scope_assessments[0]
     assert premier.coverage_state is ScopeCoverageState.COMPLETE
+    assert assessment.freshness_policy_id == first[4].policy_id
     assert premier.current_coverage_evidence_ids == (
         first[1].evidence_id,
         second[1].evidence_id,
     )
+
+
+def test_complementary_provider_ranges_with_different_freshness_policies_are_rejected() -> None:
+    split = "2026-09-19T23:00:00.000000+00:00"
+    first = _complete_scope_inputs(
+        PREMIER_SCOPE,
+        suffix="provider-first-freshness-policy",
+        bounds=CoverageBounds(PREMIER_SCOPE.window_start_utc, split),
+    )
+    second = _complete_scope_inputs(
+        PREMIER_SCOPE,
+        suffix="provider-second-freshness-policy",
+        bounds=CoverageBounds(split, PREMIER_SCOPE.window_end_utc),
+    )
+    second_freshness = CoverageFreshnessResult(
+        evidence_id=second[4].evidence_id,
+        policy_id="freshness-policy-v2",
+        evaluated_at_utc=second[4].evaluated_at_utc,
+        is_current=True,
+    )
+
+    with pytest.raises(ValueError, match="single freshness policy"):
+        assess_fixture_coverage(
+            scopes=SCOPES,
+            provider_attempts=(first[0], second[0]),
+            coverage_evidence=(first[1], second[1]),
+            fixture_revisions=(first[2],),
+            identity_resolutions=(first[3],),
+            freshness_results=(first[4], second_freshness),
+        )
 
 
 def test_overlapping_duplicate_fixture_rows_do_not_change_coverage_state() -> None:
