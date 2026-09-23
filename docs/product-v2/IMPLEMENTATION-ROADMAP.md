@@ -46,14 +46,14 @@ Use free, open, or official football data and infrastructure that requires no pa
 - **Blocked by:** F03, F05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`, `$tdd`.
-- **Model:** Escalation to GPT-6 Astra is justified for temporal and migration review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### F07 Persist per-match Match Evidence Cutoff
 - **Goal:** Add an immutable cutoff for each frozen match, tied to its fixture revision and a versioned policy. Leave the numeric lead time undecided.
 - **Blocked by:** F06.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$tdd`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for temporal-leakage review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### F08 Inventory no-cost contextual sources
 - **Goal:** Map the current enabled preferences to free, open, or official contextual sources and their permitted use.
@@ -95,14 +95,14 @@ Use free, open, or official football data and infrastructure that requires no pa
 - **Blocked by:** F07, F10, F11.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$tdd`, `$interrogate`.
-- **Model:** Escalation to GPT-6 Astra is justified for calibration and time-leakage review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### F14 Add the V2 Preference Profile and decision result
 - **Goal:** Snapshot the founder's allowed preferences separately from engine market capability. Add no markets. Exclude Unders, cards, Over 0.5, Under 0.5, and trivial selections. Vet every enabled preference and return one strongest justified recommendation or AVOID MATCH, labeled RESEARCH_ONLY, before lineups and without odds-based ranking.
 - **Blocked by:** F10, F13.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`, `$tdd`.
-- **Model:** Escalation to GPT-6 Astra is justified for policy review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### F15 Add the internal AnalyzeMatchweek use case
 - **Goal:** Define the application-service request, durable progress, and resume entry points used by the CLI.
@@ -116,14 +116,14 @@ Use free, open, or official football data and infrastructure that requires no pa
 - **Blocked by:** F11, F12, F13, F14, F15.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for cross-module orchestration review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### F17 Gate publication and recovery
 - **Goal:** Publish the transparent, immutable MatchVet record only after fixture coverage and every eligible match's terminal decision are complete. Include evidence provenance, preference results, uncertainty, decision reason, and RESEARCH_ONLY status. Resume from matching immutable inputs and outputs.
 - **Blocked by:** F16.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for recovery and audit review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### F18 Wire `matchvet run` to the real pipeline
 - **Goal:** Route `run` and `resume` through AnalyzeMatchweek and remove lifecycle success that does not represent completed analysis work.
@@ -151,7 +151,7 @@ Use free, open, or official football data and infrastructure that requires no pa
 - **Blocked by:** F18, F20.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`, `$tdd`.
-- **Model:** Escalation to GPT-6 Astra is justified for evidence-lineage review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ## 2. Architecture cleanup
 
@@ -218,14 +218,14 @@ Use free, open, or official football data and infrastructure that requires no pa
 - **Blocked by:** I01.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$research`, `$architect`, `$tdd`, `$interrogate`.
-- **Model:** Escalation to GPT-6 Astra is justified for comparison and leakage review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### I04 Add Regime Intelligence
 - **Goal:** Add Regime Intelligence as a separately versioned input with its own immutable evidence references.
 - **Blocked by:** I01.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$research`, `$domain-modeling`, `$interrogate`.
-- **Model:** Escalation to GPT-6 Astra is justified for regime and drift review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### I05 Add Failure Pattern Intelligence
 - **Goal:** Add Failure Pattern Intelligence as a separately versioned input with source-linked failure records.
@@ -241,42 +241,42 @@ Use free, open, or official football data and infrastructure that requires no pa
 - **Blocked by:** F21, I01.
 - **Size:** S.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$research`, `$interrogate`.
-- **Model:** Escalation to GPT-6 Astra is justified for evaluation-design review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### E02 Evaluate Trend Intelligence on unseen evidence
 - **Goal:** Measure Trend Intelligence's predictive contribution on later unseen chronological evidence.
 - **Blocked by:** E01, I02.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$research`, `$interrogate`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for statistical review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### E03 Evaluate Comparable Match Intelligence on unseen evidence
 - **Goal:** Measure Comparable Match Intelligence's predictive contribution on later unseen chronological evidence.
 - **Blocked by:** E01, I03.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$research`, `$interrogate`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for leakage and statistical review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### E04 Evaluate Regime Intelligence on unseen evidence
 - **Goal:** Measure Regime Intelligence's predictive contribution on later unseen chronological evidence.
 - **Blocked by:** E01, I04.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$research`, `$interrogate`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for drift and statistical review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### E05 Evaluate Failure Pattern Intelligence on unseen evidence
 - **Goal:** Measure Failure Pattern Intelligence's predictive contribution on later unseen chronological evidence.
 - **Blocked by:** E01, I05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$research`, `$interrogate`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for bias and statistical review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### E06 Freeze intelligence changes and revalidate V2
 - **Goal:** Freeze the planned intelligence versions, then run final V2 revalidation after the evidence sufficiency rule passes.
 - **Blocked by:** E02, E03, E04, E05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$research`, `$interrogate`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for the final evaluation review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ## 5. External service and app layer
 
@@ -285,32 +285,32 @@ Use free, open, or official football data and infrastructure that requires no pa
 - **Blocked by:** E06.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$domain-modeling`, `$interrogate`.
-- **Model:** Escalation to GPT-6 Astra is justified for API and data-boundary review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### X02 Expose AnalyzeMatchweek through the service
 - **Goal:** Add the external service adapter for matchweek submission, progress, and immutable reports over the existing internal application service.
 - **Blocked by:** X01.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for authorization and recovery review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
-### X03 Build the Android client
-- **Goal:** Let Android users view MatchVet records and manage their Preference Profile through the external service.
+### X03 Scaffold the shared Expo client
+- **Goal:** Scaffold the shared Expo and React Native client with typed service integration for Android, iOS, and web.
 - **Blocked by:** X02.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
-### X04 Build the iOS client
-- **Goal:** Let iOS users view MatchVet records and manage their Preference Profile through the external service.
-- **Blocked by:** X02.
+### X04 Build Matchweek Home and Match Intelligence
+- **Goal:** Build Matchweek Home and Match Intelligence with typed service data. Keep prediction and model logic in the service.
+- **Blocked by:** X03.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
-### X05 Build the web client
-- **Goal:** Let web users view MatchVet records and manage their Preference Profile through the external service.
-- **Blocked by:** X02.
+### X05 Build the remaining shared client views
+- **Goal:** Build Trend Intelligence, MatchVet Record, and Preference Profile views from typed service data, then verify the shared client on Android, iOS, and web. Keep prediction and model logic in the service.
+- **Blocked by:** X04.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`.
 - **Model:** GPT-6 Luna Max is sufficient.
@@ -318,68 +318,77 @@ Use free, open, or official football data and infrastructure that requires no pa
 ## 6. Beta
 
 ### B01 Prepare an invite-only RESEARCH_ONLY beta
-- **Goal:** Release the validated service and clients to an invite-only cohort with production PLAY output disabled.
+- **Goal:** Release the validated service and clients to a free, invite-only cohort with production PLAY output disabled.
 - **Blocked by:** X03, X04, X05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$blast-radius`, `$interrogate`.
+- **Model:** GPT-6 Luna Max is sufficient.
+
+### B02 Publish the performance record and evidence-led content
+- **Goal:** Publish the transparent MatchVet performance record and evidence-led Matchweek marketing content. Never hide losses or claim guaranteed wins. Keep RESEARCH_ONLY wording until Production Promotion succeeds.
+- **Blocked by:** B01.
+- **Size:** M.
+- **Recommended Matt Pocock skills:** `$research`, `$technical-writing`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ## 7. Production Promotion
 
 ### P01 Version T20 qualification for V2
 - **Goal:** Define T20 qualification against V2 freezes, per-match cutoffs, immutable decisions, and genuine chronological evidence while preserving V1 results.
-- **Blocked by:** E06, B01.
+- **Blocked by:** E06, B02.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$research`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for promotion-gate review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### P02 Apply the T20 Production Promotion gate
-- **Goal:** Keep T20 deferred until the live pipeline works, genuine chronological evidence is sufficient, and final V2 revalidation passes. Then record the V2 promotion decision.
+- **Goal:** Keep T20 deferred until the live pipeline works, genuine chronological evidence is sufficient, and final V2 revalidation passes. Record a successful promotion only when these gates pass; otherwise close as FAILED or INCONCLUSIVE. FAILED or INCONCLUSIVE does not unlock subscriptions or paid recommendation launch.
 - **Blocked by:** P01.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$research`, `$interrogate`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for the production decision review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ## 8. Subscriptions and launch
 
+Do not start any U01-U06 ticket unless P02 records a successful V2 Production Promotion. FAILED or INCONCLUSIVE leaves all commercial tickets blocked.
+
 ### U01 Define subscription plans and entitlements
-- **Goal:** Define account states and subscription entitlements after Production Promotion, without changing the research or recommendation contracts.
-- **Blocked by:** P02.
+- **Goal:** Define account states and subscription entitlements only after successful V2 Production Promotion, without changing the research or recommendation contracts.
+- **Blocked by:** P02 successful promotion.
 - **Size:** S.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### U02 Enforce entitlements in the service
-- **Goal:** Enforce server-side entitlements for protected service operations.
-- **Blocked by:** U01, X02.
+- **Goal:** Enforce server-side entitlements for protected service operations after successful V2 Production Promotion.
+- **Blocked by:** P02 successful promotion, U01, X02.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`, `$blast-radius`.
-- **Model:** Escalation to GPT-6 Astra is justified for payment and authorization review.
+- **Model:** GPT-6 Luna Max is sufficient.
 
 ### U03 Add Android subscriptions
-- **Goal:** Connect Android subscription purchases to server-verified entitlements.
-- **Blocked by:** U02, X03.
+- **Goal:** Connect Android subscription purchases to server-verified entitlements after successful V2 Production Promotion.
+- **Blocked by:** P02 successful promotion, U02, X05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### U04 Add iOS subscriptions
-- **Goal:** Connect iOS subscription purchases to server-verified entitlements.
-- **Blocked by:** U02, X04.
+- **Goal:** Connect iOS subscription purchases to server-verified entitlements after successful V2 Production Promotion.
+- **Blocked by:** P02 successful promotion, U02, X05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### U05 Add web subscriptions
-- **Goal:** Connect web subscription purchases to server-verified entitlements.
-- **Blocked by:** U02, X05.
+- **Goal:** Connect web subscription purchases to server-verified entitlements after successful V2 Production Promotion.
+- **Blocked by:** P02 successful promotion, U02, X05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### U06 Launch subscriptions
-- **Goal:** Release the approved subscription plans across the supported clients after billing and entitlement flows are ready.
-- **Blocked by:** U03, U04, U05.
+- **Goal:** Release the approved subscription plans across supported clients only after successful V2 Production Promotion and completed billing and entitlement flows.
+- **Blocked by:** P02 successful promotion, U03, U04, U05.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$blast-radius`, `$interrogate`.
 - **Model:** GPT-6 Luna Max is sufficient.
