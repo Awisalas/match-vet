@@ -12,15 +12,15 @@ The CLI translates operator input into an internal application request. The same
 
 ```python
 result = analyze_matchweek.execute(
-	AnalyzeMatchweekRequest(
-		matchweek=matchweek_key,
-		scope_version=scope_version,
-		membership_policy_version=membership_policy_version,
-		evidence_cutoff_policy_version=evidence_cutoff_policy_version,
-		preference_profile_version=preference_profile_version,
-		decision_policy_version=decision_policy_version,
-		mode="RESEARCH_ONLY",
-	)
+    AnalyzeMatchweekRequest(
+        matchweek=matchweek_key,
+        scope_version=scope_version,
+        membership_policy_version=membership_policy_version,
+        evidence_cutoff_policy_version=evidence_cutoff_policy_version,
+        preference_profile_version=preference_profile_version,
+        decision_policy_version=decision_policy_version,
+        mode="RESEARCH_ONLY",
+    )
 )
 
 progress = analyze_matchweek.resume(result.run_id)
