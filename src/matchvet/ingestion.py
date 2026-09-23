@@ -22,7 +22,7 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -44,6 +44,13 @@ from matchvet.runs import (
 )
 from matchvet.store import MIGRATIONS, CanonicalIdentifier, Store, StoreTransaction
 
+if TYPE_CHECKING:
+    from matchvet.fixture_coverage import (
+        FixtureCoverageAssessment,
+        ProviderAttempt,
+        ProviderAttemptState,
+    )
+
 
 class EvidenceState(StrEnum):
     OBSERVED = "OBSERVED"
@@ -59,12 +66,18 @@ UNKNOWN = EvidenceState.UNKNOWN
 class SourceKind(StrEnum):
     FOOTBALL_DATA = "FOOTBALL_DATA"
     OPENFOOTBALL = "OPENFOOTBALL"
+    OPENFOOTBALL_TEXT = "OPENFOOTBALL_TEXT"
 
 
 class MappingState(StrEnum):
     CONFIRMED = "CONFIRMED"
     AMBIGUOUS = "AMBIGUOUS"
     UNKNOWN = "UNKNOWN"
+
+
+class TeamIdentityPolicy(StrEnum):
+    REGISTER_UNKNOWN = "REGISTER_UNKNOWN"
+    KNOWN_ONLY = "KNOWN_ONLY"
 
 
 class IngestionError(Exception):
@@ -81,6 +94,12 @@ class SourcePolicyError(IngestionError):
 
 class SourceUnavailable(IngestionError):
     """An approved source could not be retrieved."""
+
+    def __init__(self, message: str, *, http_status: int | None = None) -> None:
+        super().__init__(message)
+        if http_status is not None and not 100 <= http_status <= 599:
+            raise ValueError("SourceUnavailable HTTP status must be between 100 and 599.")
+        self.http_status = http_status
 
 
 @dataclass(frozen=True)
@@ -116,6 +135,16 @@ TARGET_LEAGUES: tuple[LeagueConfig, ...] = (
 
 _LEAGUES_BY_KEY = MappingProxyType({league.key: league for league in TARGET_LEAGUES})
 _LEAGUES_BY_NAME = MappingProxyType({league.name.casefold(): league for league in TARGET_LEAGUES})
+_OPENFOOTBALL_TEXT_PATHS: Mapping[str, str] = MappingProxyType(
+    {
+        "premier_league": "england/master/{season}/1-premierleague.txt",
+        "serie_a": "italy/master/{season}/1-seriea.txt",
+        "la_liga": "espana/master/{season}/1-liga.txt",
+        "bundesliga": "deutschland/master/{season}/1-bundesliga.txt",
+        "ligue_1": "europe/master/france/{season}_fr1.txt",
+        "liga_portugal": "europe/master/portugal/{season}_pt1.txt",
+    }
+)
 _SOURCE_NAMESPACE = uuid.UUID("f4d7e4fc-0f4e-5a1a-9d89-06f8cae63c9b")
 _SEASON_PATTERN = re.compile(r"^(?P<start>20\d{2})-(?P<end>\d{2})$")
 _INTEGER_PATTERN = re.compile(r"^\d+$")
@@ -161,6 +190,17 @@ def openfootball_url(league: LeagueConfig, season: str) -> str:
         "https://raw.githubusercontent.com/openfootball/football.json/master/"
         f"{season}/{league.openfootball_code}.json"
     )
+
+
+def openfootball_text_url(league: LeagueConfig, season: str) -> str:
+    """Return the upstream OpenFootball.TXT schedule feed for a supported league."""
+    path = _OPENFOOTBALL_TEXT_PATHS.get(league.key)
+    if path is None or not league.openfootball_supported:
+        raise SourcePolicyError(
+            f"OpenFootball has no permitted schedule fallback for {league.name}."
+        )
+    season_code(season)
+    return f"https://raw.githubusercontent.com/openfootball/{path.format(season=season)}"
 
 
 def canonical_key(value: str) -> str:
@@ -606,6 +646,124 @@ class OpenFootballJSONParser:
         )
 
 
+class OpenFootballTextParser:
+    """Parse the CC0 upstream Football.TXT schedule format used by OpenFootball."""
+
+    _DATE_LINE = re.compile(
+        r"^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+)?"
+        r"(?P<month>[A-Z][a-z]{2})\s+(?P<day>\d{1,2})(?:\s+(?P<year>\d{4}))?$"
+    )
+    _TIME_PREFIX = re.compile(r"^(?P<time>\d{1,2}:\d{2})\s+(?P<fixture>.+)$")
+    _SCORE_SUFFIX = re.compile(
+        r"^(?P<teams>.+?)\s+(?P<home>\d{1,2})-(?P<away>\d{1,2})"
+        r"(?:\s+\(\d{1,2}-\d{1,2}\))?$"
+    )
+    _MATCHDAY = re.compile(r"^(?:▪\s*)?(?:Matchday|Regular Season)\s*[- ]?\s*(.+)$")
+
+    def parse(
+        self,
+        content: bytes | str,
+        *,
+        league: LeagueConfig,
+        season: str,
+    ) -> ParsedDataset:
+        if not league.openfootball_supported:
+            raise SourcePolicyError(
+                f"OpenFootball has no permitted schedule fallback for {league.name}."
+            )
+        season_match = _SEASON_PATTERN.fullmatch(season)
+        if season_match is None:
+            raise ValueError("Season must use YYYY-YY form, for example 2026-27.")
+        start_year = int(season_match.group("start"))
+        end_year = start_year + 1
+        try:
+            text = content.decode("utf-8-sig") if isinstance(content, bytes) else content
+        except UnicodeDecodeError as error:
+            raise SourceParseError("OpenFootball Football.TXT is not UTF-8.") from error
+        lines = text.splitlines()
+        first_content = next((line.strip() for line in lines if line.strip()), "")
+        if not first_content.startswith("="):
+            raise SourceParseError("OpenFootball Football.TXT must start with a title line.")
+
+        rows: list[ParsedRow] = []
+        active_date: date | None = None
+        source_round: str | None = None
+        recognized_match_line = False
+        for line_number, raw_line in enumerate(lines, start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("="):
+                continue
+            matchday = self._MATCHDAY.fullmatch(line)
+            if matchday is not None:
+                source_round = matchday.group(1).strip() or None
+                continue
+            date_match = self._DATE_LINE.fullmatch(line)
+            if date_match is not None:
+                try:
+                    month = datetime.strptime(date_match.group("month"), "%b").month
+                    year = int(date_match.group("year") or (start_year if month >= 7 else end_year))
+                    active_date = date(year, month, int(date_match.group("day")))
+                except ValueError as error:
+                    raise SourceParseError(
+                        f"OpenFootball Football.TXT line {line_number} has an invalid date."
+                    ) from error
+                continue
+
+            time_match = self._TIME_PREFIX.fullmatch(line)
+            time_text = time_match.group("time") if time_match is not None else None
+            fixture_text = time_match.group("fixture") if time_match is not None else line
+            if " v " not in fixture_text:
+                continue
+            recognized_match_line = True
+            if active_date is None:
+                raise SourceParseError(
+                    f"OpenFootball Football.TXT line {line_number} has no preceding date."
+                )
+            home, away = (part.strip() for part in fixture_text.split(" v ", maxsplit=1))
+            score: dict[object, object] = {}
+            score_match = self._SCORE_SUFFIX.fullmatch(away)
+            if score_match is not None:
+                away = score_match.group("teams").strip()
+                score["ft"] = [int(score_match.group("home")), int(score_match.group("away"))]
+            if not home or not away:
+                raise SourceParseError(
+                    f"OpenFootball Football.TXT line {line_number} has an empty team name."
+                )
+            kickoff, local_date, local_text, precision, warnings = _kickoff(
+                league, active_date.isoformat(), time_text
+            )
+            rows.append(
+                ParsedRow(
+                    source_row_key=f"line-{line_number}",
+                    home_team=home,
+                    away_team=away,
+                    kickoff_utc=kickoff,
+                    kickoff_local_date=local_date,
+                    kickoff_local_text=local_text,
+                    kickoff_precision=precision,
+                    fields=MappingProxyType(_openfootball_fields(score)),
+                    raw_fields=MappingProxyType(
+                        {
+                            "date": active_date.isoformat(),
+                            "time": time_text or "",
+                            "team1": home,
+                            "team2": away,
+                            "score": _json_scalar(score) if score else "{}",
+                        }
+                    ),
+                    source_round=source_round,
+                    parse_warnings=warnings,
+                )
+            )
+        if not rows and recognized_match_line:
+            raise SourceParseError("OpenFootball Football.TXT contains no valid fixture rows.")
+        return ParsedDataset(
+            SourceKind.OPENFOOTBALL_TEXT, league, season, tuple(rows), "openfootball-footballtxt"
+        )
+
+
 def _openfootball_team(value: object) -> str:
     if isinstance(value, str):
         return value.strip()
@@ -701,6 +859,12 @@ class TeamCanonicalizer:
         for alias in (canonical_name, *aliases):
             self.register_alias(league, alias, team_id)
         return team_id
+
+    def register_existing_team(
+        self, league: LeagueConfig, team_id: str, canonical_name: str
+    ) -> None:
+        self._canonical_names[(league.key, team_id)] = (team_id, canonical_name)
+        self.register_alias(league, canonical_name, team_id)
 
     def register_alias(self, league: LeagueConfig, alias: str, canonical_team_id: str) -> None:
         key = (league.key, canonical_key(alias))
@@ -856,6 +1020,19 @@ class ImportResult:
 
 
 @dataclass(frozen=True)
+class FixtureCaptureObservation:
+    source_row_key: str
+    fixture_id: str | None
+    revision_id: str | None
+    revision_digest: str | None
+    kickoff_utc: str | None
+    kickoff_local_date: date | None
+    source_assertion_ids: tuple[str, ...]
+    identity_state: MappingState
+    reason_code: str | None = None
+
+
+@dataclass(frozen=True)
 class _SourceRights:
     source_key: str
     canonical_name: str
@@ -894,6 +1071,19 @@ _SOURCE_RIGHTS: Mapping[SourceKind, _SourceRights] = MappingProxyType(
             source_class="OPEN_DATASET",
             access_method="DIRECT_RAW_JSON",
             base_locator="https://raw.githubusercontent.com/openfootball/football.json/",
+            allowed_use="CC0",
+            retention_status="RETAIN_REUSABLE",
+            redistributable=True,
+            terms_reference="https://creativecommons.org/publicdomain/zero/1.0/",
+            artifact_retention_class="REUSABLE",
+        ),
+        SourceKind.OPENFOOTBALL_TEXT: _SourceRights(
+            source_key="openfootball-footballtxt",
+            canonical_name="OpenFootball Football.TXT",
+            owner="OpenFootball",
+            source_class="OPEN_DATASET",
+            access_method="DIRECT_RAW_TEXT",
+            base_locator="https://raw.githubusercontent.com/openfootball/",
             allowed_use="CC0",
             retention_status="RETAIN_REUSABLE",
             redistributable=True,
@@ -943,6 +1133,7 @@ class FixtureHistoryImporter:
         self._private_root = private_root.resolve()
         self._teams = team_canonicalizer or TeamCanonicalizer()
         self._artifacts = ArtifactStore(store)
+        self._load_known_team_mappings()
 
     def import_dataset(
         self,
@@ -950,6 +1141,7 @@ class FixtureHistoryImporter:
         content: bytes,
         capture: SourceCaptureInput,
         *,
+        identity_policy: TeamIdentityPolicy = TeamIdentityPolicy.REGISTER_UNKNOWN,
         failure_hook: Callable[[int], None] | None = None,
     ) -> ImportResult:
         if not isinstance(content, bytes):
@@ -966,18 +1158,19 @@ class FixtureHistoryImporter:
         existing = self._existing_capture(source_id, cache_key, digest, captured_at)
         if existing is not None:
             return ImportResult(
-                existing.capture_id,
-                digest,
-                dataset.league.key,
-                dataset.season,
-                len(dataset.rows),
-                0,
-                0,
-                0,
-                0,
-                len(dataset.rows),
-                0,
-                True,
+                source_capture_id=existing.capture_id,
+                source_digest=digest,
+                league_key=dataset.league.key,
+                season=dataset.season,
+                fixtures_seen=len(dataset.rows),
+                fixtures_imported=0,
+                revisions_appended=0,
+                statistics_imported=0,
+                unknown_fields=0,
+                duplicate_rows=len(dataset.rows),
+                unresolved_rows=0,
+                conflicts=0,
+                from_existing_capture=True,
             )
         if (
             dataset.source_kind is SourceKind.FOOTBALL_DATA
@@ -1095,6 +1288,7 @@ class FixtureHistoryImporter:
                     origin_id,
                     captured_at,
                     counters,
+                    identity_policy,
                 )
         conflict_count = self._count_conflicts_for_dataset(dataset, league_id, season_id)
         return ImportResult(
@@ -1111,6 +1305,124 @@ class FixtureHistoryImporter:
             counters["unresolved_rows"],
             conflict_count,
         )
+
+    def retain_capture(
+        self,
+        *,
+        source_kind: SourceKind,
+        league: LeagueConfig,
+        season: str,
+        content: bytes,
+        capture: SourceCaptureInput,
+    ) -> SourceCaptureRecord:
+        """Retain source bytes and rights metadata without parsing source rows."""
+        result = self.import_dataset(
+            ParsedDataset(source_kind, league, season, (), "capture-only"),
+            content,
+            capture,
+        )
+        record = next(
+            item for item in self.source_captures() if item.capture_id == result.source_capture_id
+        )
+        return record
+
+    def observations_for_capture(self, capture_id: str) -> tuple[FixtureCaptureObservation, ...]:
+        """Return only fixture rows and revisions linked to one source capture."""
+        connection = self._store._connection_for_repository()
+        resolved_rows = connection.execute(
+            """
+            SELECT sa.source_row_key, f.fixture_id, fr.revision_id, fr.revision_digest,
+                   fr.kickoff_utc, fr.kickoff_local_text,
+                   group_concat(DISTINCT sa.assertion_id)
+            FROM source_assertions AS sa
+            JOIN fixture_revision_assertions AS fra ON fra.assertion_id = sa.assertion_id
+            JOIN fixture_revisions AS fr ON fr.revision_id = fra.revision_id
+            JOIN fixtures AS f ON f.fixture_id = fr.fixture_id
+            WHERE sa.capture_id = ? AND sa.predicate IN ('kickoff', 'home_team', 'away_team')
+            GROUP BY sa.source_row_key, f.fixture_id, fr.revision_id, fr.revision_digest,
+                     fr.kickoff_utc, fr.kickoff_local_text
+            ORDER BY sa.source_row_key, fr.revision_id
+            """,
+            (capture_id,),
+        ).fetchall()
+        unresolved_rows = connection.execute(
+            """
+            SELECT u.source_row_key, u.reason,
+                   max(CASE WHEN sa.predicate = 'kickoff' THEN sa.normalized_value_json END),
+                   group_concat(DISTINCT sa.assertion_id)
+            FROM unresolved_fixture_rows AS u
+            JOIN source_assertions AS sa
+              ON sa.capture_id = u.capture_id AND sa.source_row_key = u.source_row_key
+            WHERE u.capture_id = ? AND sa.predicate IN ('kickoff', 'home_team', 'away_team')
+            GROUP BY u.source_row_key, u.reason
+            ORDER BY u.source_row_key
+            """,
+            (capture_id,),
+        ).fetchall()
+        observations: list[FixtureCaptureObservation] = [
+            FixtureCaptureObservation(
+                source_row_key=str(row[0]),
+                fixture_id=str(row[1]),
+                revision_id=str(row[2]),
+                revision_digest=str(row[3]),
+                kickoff_utc=str(row[4]) if row[4] is not None else None,
+                kickoff_local_date=_parse_date(str(row[5])) if row[5] is not None else None,
+                source_assertion_ids=tuple(sorted(str(row[6]).split(","))),
+                identity_state=MappingState.CONFIRMED,
+            )
+            for row in resolved_rows
+        ]
+        for row in unresolved_rows:
+            kickoff_utc: str | None = None
+            kickoff_local_date: date | None = None
+            try:
+                normalized_kickoff = json.loads(str(row[2])) if row[2] is not None else None
+            except json.JSONDecodeError:
+                normalized_kickoff = None
+            if isinstance(normalized_kickoff, str):
+                if "T" in normalized_kickoff:
+                    try:
+                        parsed_kickoff = datetime.fromisoformat(
+                            normalized_kickoff.replace("Z", "+00:00")
+                        )
+                        if parsed_kickoff.tzinfo is not None:
+                            kickoff_utc = parsed_kickoff.astimezone(UTC).isoformat()
+                    except ValueError:
+                        kickoff_utc = None
+                else:
+                    kickoff_local_date = _parse_date(normalized_kickoff)
+            observations.append(
+                FixtureCaptureObservation(
+                    source_row_key=str(row[0]),
+                    fixture_id=None,
+                    revision_id=None,
+                    revision_digest=None,
+                    kickoff_utc=kickoff_utc,
+                    kickoff_local_date=kickoff_local_date,
+                    source_assertion_ids=tuple(sorted(str(row[3]).split(","))),
+                    identity_state=MappingState.UNKNOWN,
+                    reason_code=str(row[1]),
+                )
+            )
+        return tuple(sorted(observations, key=lambda item: item.source_row_key))
+
+    def _load_known_team_mappings(self) -> None:
+        connection = self._store._connection_for_repository()
+        rows = connection.execute(
+            """
+            SELECT l.league_key, t.team_id, t.canonical_name, a.alias_name
+            FROM teams AS t
+            JOIN target_leagues AS l ON l.league_id = t.league_id
+            LEFT JOIN team_aliases AS a ON a.team_id = t.team_id
+            ORDER BY l.league_key, t.team_id, a.alias_name
+            """
+        ).fetchall()
+        for row in rows:
+            league = league_by_key(str(row[0]))
+            team_id = str(row[1])
+            self._teams.register_existing_team(league, team_id, str(row[2]))
+            if row[3] is not None:
+                self._teams.register_alias(league, str(row[3]), team_id)
 
     def fixtures(self) -> tuple[FixtureRecord, ...]:
         connection = self._store._connection_for_repository()
@@ -1405,9 +1717,13 @@ class FixtureHistoryImporter:
         source_id: str,
         league_id: str,
         captured_at: str,
+        identity_policy: TeamIdentityPolicy,
     ) -> TeamResolution:
         resolution = self._teams.resolve(league, source_name)
-        if resolution.state is MappingState.UNKNOWN:
+        if (
+            resolution.state is MappingState.UNKNOWN
+            and identity_policy is TeamIdentityPolicy.REGISTER_UNKNOWN
+        ):
             resolution = self._teams.resolve_or_register(league, source_name)
         if resolution.state is not MappingState.CONFIRMED:
             self._insert_source_team_mapping(
@@ -1541,12 +1857,13 @@ class FixtureHistoryImporter:
         origin_id: str,
         captured_at: str,
         counters: dict[str, int],
+        identity_policy: TeamIdentityPolicy,
     ) -> None:
         home = self._resolve_team(
-            tx, dataset.league, row.home_team, source_id, league_id, captured_at
+            tx, dataset.league, row.home_team, source_id, league_id, captured_at, identity_policy
         )
         away = self._resolve_team(
-            tx, dataset.league, row.away_team, source_id, league_id, captured_at
+            tx, dataset.league, row.away_team, source_id, league_id, captured_at, identity_policy
         )
         resolved = home.state is MappingState.CONFIRMED and away.state is MappingState.CONFIRMED
         if resolved:
@@ -1915,6 +2232,49 @@ def _canonical_utc(value: str) -> str:
     return parsed.astimezone(UTC).isoformat()
 
 
+def _canonical_f01_utc(value: str) -> str:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("Provider attempt timestamps must include a timezone offset.")
+    return parsed.astimezone(UTC).isoformat(timespec="microseconds")
+
+
+def _scheduled_provider_attempt(
+    *,
+    scope_id: str,
+    provider_id: str,
+    state: ProviderAttemptState,
+    attempted_at_utc: str,
+    http_status: int | None,
+    capture_id: str | None,
+    capture_digest: str | None,
+) -> ProviderAttempt:
+    from matchvet.fixture_coverage import ProviderAttempt
+
+    identity = ":".join(
+        (
+            scope_id,
+            provider_id,
+            state.value,
+            attempted_at_utc,
+            str(http_status) if http_status is not None else "",
+            capture_id or "",
+            capture_digest or "",
+        )
+    )
+    return ProviderAttempt(
+        attempt_id=deterministic_identifier("provider_attempt", identity),
+        scope_id=scope_id,
+        provider_id=provider_id,
+        capability_id="scheduled-fixtures",
+        state=state,
+        retrieved_at_utc=attempted_at_utc,
+        http_status=http_status,
+        capture_id=capture_id,
+        capture_digest=capture_digest,
+    )
+
+
 def _optional_utc(value: str | None) -> str | None:
     return _canonical_utc(value) if value is not None else None
 
@@ -2045,13 +2405,21 @@ class ResumableSourceDownloader:
             return cached
         part_path = self.cache_root / f"{cache_stem}.part"
         offset = part_path.stat().st_size if part_path.exists() else 0
-        headers = {"User-Agent": "MatchVet-T06/1.0", "Accept": "text/csv,application/json"}
+        headers = {
+            "User-Agent": "MatchVet-T06/1.0",
+            "Accept": "application/json,text/plain;q=0.9,text/csv;q=0.8",
+        }
         if offset:
             headers["Range"] = f"bytes={offset}-"
         request = Request(url, headers=headers, method="GET")
         try:
             response = urlopen(request, timeout=self.timeout_seconds)
-        except (HTTPError, URLError, OSError) as error:
+        except HTTPError as error:
+            raise SourceUnavailable(
+                f"Approved source retrieval failed for {url}: {error}",
+                http_status=error.code,
+            ) from error
+        except (URLError, OSError) as error:
             raise SourceUnavailable(
                 f"Approved source retrieval failed for {url}: {error}"
             ) from error
@@ -2068,7 +2436,9 @@ class ResumableSourceDownloader:
         )[0]
         if status not in {200, 206}:
             response.close()
-            raise SourceUnavailable(f"Approved source returned HTTP {status} for {url}.")
+            raise SourceUnavailable(
+                f"Approved source returned HTTP {status} for {url}.", http_status=status
+            )
         append = offset > 0 and status == 206
         bytes_downloaded = 0
         cache_bytes = self._cache_size() - (offset if not append else 0)
@@ -2083,23 +2453,29 @@ class ResumableSourceDownloader:
                     bytes_downloaded += len(chunk)
                     if bytes_downloaded + (offset if append else 0) > self.max_source_bytes:
                         raise SourceUnavailable(
-                            f"Source exceeded the {self.max_source_bytes}-byte limit."
+                            f"Source exceeded the {self.max_source_bytes}-byte limit.",
+                            http_status=status,
                         )
                     if self.network_bytes + bytes_downloaded > self.network_cap_bytes:
                         raise SourceUnavailable(
-                            "Historical download session exceeded its network cap."
+                            "Historical download session exceeded its network cap.",
+                            http_status=status,
                         )
                     if cache_bytes + len(chunk) > self.cache_storage_cap_bytes:
                         raise SourceUnavailable(
-                            "Private T06 cache would exceed its managed-storage budget."
+                            "Private T06 cache would exceed its managed-storage budget.",
+                            http_status=status,
                         )
                     target.write(chunk)
                     cache_bytes += len(chunk)
                 target.flush()
                 os.fsync(target.fileno())
-        except OSError, SourceUnavailable:
-            response.close()
+        except SourceUnavailable:
             raise
+        except OSError as error:
+            raise SourceUnavailable(
+                f"Approved source transfer failed for {url}: {error}", http_status=status
+            ) from error
         finally:
             response.close()
         self.network_bytes += bytes_downloaded
@@ -2175,6 +2551,7 @@ class IngestionPlan:
     leagues: tuple[LeagueConfig, ...] = TARGET_LEAGUES
     use_openfootball_fallback: bool = True
     refresh_current: bool = False
+    matchweek_friday: str | None = None
 
     def __post_init__(self) -> None:
         season_code(self.current_season)
@@ -2186,6 +2563,12 @@ class IngestionPlan:
             raise ValueError(
                 "Ingestion plan contains a league outside the configured Target League Set."
             )
+        if self.matchweek_friday is not None:
+            from matchvet.matchweek import MatchweekWindow
+
+            window = MatchweekWindow.for_friday(self.matchweek_friday)
+            if window.friday_local.isoformat() != self.matchweek_friday:
+                raise ValueError("Matchweek Friday must use YYYY-MM-DD.")
 
     @property
     def seasons(self) -> tuple[str, ...]:
@@ -2193,18 +2576,18 @@ class IngestionPlan:
 
     @property
     def plan_digest(self) -> str:
-        return sha256_bytes(
-            _canonical_json(
-                {
-                    "current_season": self.current_season,
-                    "historical_seasons": self.historical_seasons,
-                    "leagues": [league.key for league in self.leagues],
-                    "refresh_current": self.refresh_current,
-                    "source_policy": "t06-source-policy-v1",
-                    "use_openfootball_fallback": self.use_openfootball_fallback,
-                }
-            )
-        )
+        payload: dict[str, object] = {
+            "current_season": self.current_season,
+            "historical_seasons": self.historical_seasons,
+            "leagues": [league.key for league in self.leagues],
+            "refresh_current": self.refresh_current,
+            "source_policy": "t06-source-policy-v1",
+            "use_openfootball_fallback": self.use_openfootball_fallback,
+        }
+        if self.matchweek_friday is not None:
+            payload["matchweek_friday"] = self.matchweek_friday
+            payload["scheduled_fixture_capability"] = "openfootball-json-and-text-schedule-v1"
+        return sha256_bytes(_canonical_json(payload))
 
     @property
     def run_key(self) -> str:
@@ -2212,7 +2595,11 @@ class IngestionPlan:
 
     @property
     def expected_network_bytes(self) -> int:
-        return max(1, len(self.seasons) * len(self.leagues) * 2 * 1024 * 1024)
+        expected = len(self.seasons) * len(self.leagues) * 2 * 1024 * 1024
+        if self.matchweek_friday is not None:
+            supported_count = sum(league.openfootball_supported for league in self.leagues)
+            expected += supported_count * 4 * 1024 * 1024
+        return max(1, expected)
 
 
 @dataclass(frozen=True)
@@ -2233,6 +2620,7 @@ class AcquisitionReport:
     bytes_downloaded: int
     cache_hits: int
     fallback_imports: int
+    scheduled_fixtures: ScheduledFixtureAcquisition | None = None
 
     @property
     def source_capture_ids(self) -> tuple[str, ...]:
@@ -2271,6 +2659,15 @@ class AcquisitionReport:
         )
 
 
+@dataclass(frozen=True)
+class ScheduledFixtureAcquisition:
+    imports: tuple[ImportResult, ...]
+    diagnostics: tuple[str, ...]
+    assessment: FixtureCoverageAssessment
+    bytes_downloaded: int
+    cache_hits: int
+
+
 class FixtureHistoryAcquirer:
     """Acquire primary files and permitted fallback files for an IngestionPlan."""
 
@@ -2278,11 +2675,15 @@ class FixtureHistoryAcquirer:
         self,
         importer: FixtureHistoryImporter,
         fetcher: SourceFetcher,
+        *,
+        attempted_at: Callable[[], str] = _utc_now_text,
     ) -> None:
         self.importer = importer
         self.fetcher = fetcher
+        self.attempted_at = attempted_at
         self.football_data_parser = FootballDataCSVParser()
         self.openfootball_parser = OpenFootballJSONParser()
+        self.openfootball_text_parser = OpenFootballTextParser()
 
     def acquire(self, plan: IngestionPlan) -> AcquisitionReport:
         configure = getattr(self.fetcher, "configure_for_plan", None)
@@ -2293,6 +2694,7 @@ class FixtureHistoryAcquirer:
         bytes_downloaded = 0
         cache_hits = 0
         fallback_imports = 0
+        deferred_current_fallbacks: list[tuple[LeagueConfig, str, SourceUnavailable]] = []
         for season in plan.seasons:
             for league in plan.leagues:
                 primary_url = football_data_url(league, season)
@@ -2304,6 +2706,14 @@ class FixtureHistoryAcquirer:
                         refresh=refresh,
                     )
                 except SourceUnavailable as primary_error:
+                    if (
+                        plan.matchweek_friday is not None
+                        and season == plan.current_season
+                        and plan.use_openfootball_fallback
+                        and league.openfootball_supported
+                    ):
+                        deferred_current_fallbacks.append((league, primary_url, primary_error))
+                        continue
                     if not plan.use_openfootball_fallback or not league.openfootball_supported:
                         issues.append(
                             AcquisitionIssue(
@@ -2355,9 +2765,26 @@ class FixtureHistoryAcquirer:
                     bytes_downloaded += downloaded.bytes_downloaded
                     cache_hits += int(downloaded.from_cache)
                     continue
-                dataset = self.football_data_parser.parse(
-                    downloaded.content, league=league, season=season
-                )
+                try:
+                    dataset = self.football_data_parser.parse(
+                        downloaded.content, league=league, season=season
+                    )
+                except SourceParseError as error:
+                    if plan.matchweek_friday is None:
+                        raise
+                    issues.append(
+                        AcquisitionIssue(
+                            SourceKind.FOOTBALL_DATA,
+                            league.key,
+                            season,
+                            primary_url,
+                            str(error),
+                            False,
+                        )
+                    )
+                    bytes_downloaded += downloaded.bytes_downloaded
+                    cache_hits += int(downloaded.from_cache)
+                    continue
                 result = self.importer.import_dataset(
                     dataset,
                     downloaded.content,
@@ -2375,6 +2802,66 @@ class FixtureHistoryAcquirer:
                 imports.append(result)
                 bytes_downloaded += downloaded.bytes_downloaded
                 cache_hits += int(downloaded.from_cache)
+        scheduled_fixtures: ScheduledFixtureAcquisition | None = None
+        scheduled_downloads: dict[str, DownloadedSource] = {}
+        if plan.matchweek_friday is not None:
+            scheduled_fixtures, scheduled_downloads = self._acquire_scheduled_fixtures(plan)
+            for league, _primary_url, result_source_error in deferred_current_fallbacks:
+                fallback_url = openfootball_url(league, plan.current_season)
+                downloaded_fallback = scheduled_downloads.get(league.key)
+                if downloaded_fallback is None:
+                    try:
+                        downloaded_fallback = self.fetcher.fetch(
+                            fallback_url,
+                            cache_key=f"openfootball:{league.key}:{plan.current_season}",
+                            refresh=plan.refresh_current,
+                        )
+                    except SourceUnavailable as fallback_error:
+                        issues.append(
+                            AcquisitionIssue(
+                                SourceKind.OPENFOOTBALL,
+                                league.key,
+                                plan.current_season,
+                                fallback_url,
+                                f"{result_source_error}; {fallback_error}",
+                                True,
+                            )
+                        )
+                        continue
+                    bytes_downloaded += downloaded_fallback.bytes_downloaded
+                    cache_hits += int(downloaded_fallback.from_cache)
+                try:
+                    dataset = self.openfootball_parser.parse(
+                        downloaded_fallback.content,
+                        league=league,
+                        season=plan.current_season,
+                    )
+                except SourceParseError as error:
+                    issues.append(
+                        AcquisitionIssue(
+                            SourceKind.OPENFOOTBALL,
+                            league.key,
+                            plan.current_season,
+                            fallback_url,
+                            str(error),
+                            True,
+                        )
+                    )
+                    continue
+                result = self.importer.import_dataset(
+                    dataset,
+                    downloaded_fallback.content,
+                    SourceCaptureInput(
+                        source_url=fallback_url,
+                        retrieved_at_utc=downloaded_fallback.retrieved_at_utc,
+                        response_status=downloaded_fallback.response_status,
+                        content_type=downloaded_fallback.content_type,
+                        observed_terms="OpenFootball CC0",
+                        cache_key=f"openfootball:{league.key}:{plan.current_season}",
+                    ),
+                )
+                imports.append(result)
+                fallback_imports += 1
         return AcquisitionReport(
             plan.plan_digest,
             tuple(imports),
@@ -2382,6 +2869,292 @@ class FixtureHistoryAcquirer:
             bytes_downloaded,
             cache_hits,
             fallback_imports,
+            scheduled_fixtures,
+        )
+
+    def acquire_scheduled_fixtures(self, plan: IngestionPlan) -> ScheduledFixtureAcquisition:
+        """Acquire and assess the requested Matchweek's independent schedule feeds."""
+        if plan.matchweek_friday is None:
+            raise ValueError("Scheduled fixture acquisition requires matchweek_friday.")
+        configure = getattr(self.fetcher, "configure_for_plan", None)
+        if callable(configure):
+            configure(historical=bool(plan.historical_seasons))
+        scheduled, _downloads = self._acquire_scheduled_fixtures(plan)
+        return scheduled
+
+    def _capture_scheduled_feed(
+        self,
+        *,
+        plan: IngestionPlan,
+        league: LeagueConfig,
+        scope_id: str,
+        source_url: str,
+        cache_key: str,
+        provider_id: str,
+        source_kind: SourceKind,
+        parser: OpenFootballJSONParser | OpenFootballTextParser,
+    ) -> tuple[ProviderAttempt, ImportResult | None, DownloadedSource | None, str | None]:
+        from matchvet.fixture_coverage import ProviderAttemptState
+
+        try:
+            downloaded = self.fetcher.fetch(
+                source_url,
+                cache_key=cache_key,
+                refresh=plan.refresh_current,
+            )
+        except SourceUnavailable as error:
+            attempt = _scheduled_provider_attempt(
+                scope_id=scope_id,
+                provider_id=provider_id,
+                state=ProviderAttemptState.UNAVAILABLE,
+                attempted_at_utc=_canonical_f01_utc(self.attempted_at()),
+                http_status=error.http_status,
+                capture_id=None,
+                capture_digest=None,
+            )
+            return attempt, None, None, str(error)
+
+        capture = SourceCaptureInput(
+            source_url=source_url,
+            retrieved_at_utc=downloaded.retrieved_at_utc,
+            response_status=downloaded.response_status,
+            content_type=downloaded.content_type,
+            observed_terms="OpenFootball CC0",
+            cache_key=cache_key,
+        )
+        try:
+            dataset = parser.parse(downloaded.content, league=league, season=plan.current_season)
+        except SourceParseError as error:
+            retained = self.importer.retain_capture(
+                source_kind=source_kind,
+                league=league,
+                season=plan.current_season,
+                content=downloaded.content,
+                capture=capture,
+            )
+            attempt = _scheduled_provider_attempt(
+                scope_id=scope_id,
+                provider_id=provider_id,
+                state=ProviderAttemptState.MALFORMED,
+                attempted_at_utc=_canonical_f01_utc(downloaded.retrieved_at_utc),
+                http_status=downloaded.response_status,
+                capture_id=retained.capture_id,
+                capture_digest=retained.content_sha256,
+            )
+            return attempt, None, downloaded, str(error)
+
+        scheduled_dataset = replace(
+            dataset,
+            rows=tuple(row for row in dataset.rows if _fixture_status(row) != "COMPLETED"),
+        )
+        result = self.importer.import_dataset(
+            scheduled_dataset,
+            downloaded.content,
+            capture,
+            identity_policy=TeamIdentityPolicy.KNOWN_ONLY,
+        )
+        attempt = _scheduled_provider_attempt(
+            scope_id=scope_id,
+            provider_id=provider_id,
+            state=ProviderAttemptState.CAPTURED,
+            attempted_at_utc=_canonical_f01_utc(downloaded.retrieved_at_utc),
+            http_status=downloaded.response_status,
+            capture_id=result.source_capture_id,
+            capture_digest=result.source_digest,
+        )
+        return attempt, result, downloaded, None
+
+    def _acquire_scheduled_fixtures(
+        self, plan: IngestionPlan
+    ) -> tuple[ScheduledFixtureAcquisition, dict[str, DownloadedSource]]:
+        from matchvet.fixture_coverage import (
+            FixtureIdentityResolution,
+            FixtureIdentityState,
+            FixtureRevisionReference,
+            ProviderAttemptState,
+            assess_fixture_coverage,
+            fixture_scopes_for_matchweek,
+        )
+        from matchvet.matchweek import MatchweekWindow
+
+        assert plan.matchweek_friday is not None
+        scopes = fixture_scopes_for_matchweek(plan.matchweek_friday, season=plan.current_season)
+        scopes_by_league = {scope.league_key: scope for scope in scopes}
+        attempts: list[ProviderAttempt] = []
+        imports: list[ImportResult] = []
+        diagnostics = ["belgian_pro_league: no approved schedule source configured"]
+        downloads: dict[str, DownloadedSource] = {}
+        capture_scopes: dict[str, str] = {}
+        bytes_downloaded = 0
+        cache_hits = 0
+
+        for league in plan.leagues:
+            if not league.openfootball_supported:
+                continue
+            scope = scopes_by_league[league.key]
+            feed_specs = (
+                (
+                    openfootball_url(league, plan.current_season),
+                    f"openfootball-schedule-json:{league.key}:{plan.current_season}",
+                    "openfootball-json",
+                    SourceKind.OPENFOOTBALL,
+                    self.openfootball_parser,
+                ),
+                (
+                    openfootball_text_url(league, plan.current_season),
+                    f"openfootball-schedule-text:{league.key}:{plan.current_season}",
+                    "openfootball-footballtxt",
+                    SourceKind.OPENFOOTBALL_TEXT,
+                    self.openfootball_text_parser,
+                ),
+            )
+            for source_url, cache_key, provider_id, source_kind, source_parser in feed_specs:
+                attempt, result, downloaded, diagnostic = self._capture_scheduled_feed(
+                    plan=plan,
+                    league=league,
+                    scope_id=scope.scope_id,
+                    source_url=source_url,
+                    cache_key=cache_key,
+                    provider_id=provider_id,
+                    source_kind=source_kind,
+                    parser=source_parser,
+                )
+                attempts.append(attempt)
+                if downloaded is not None:
+                    bytes_downloaded += downloaded.bytes_downloaded
+                    cache_hits += int(downloaded.from_cache)
+                    if provider_id == "openfootball-json":
+                        downloads[league.key] = downloaded
+                if attempt.capture_id is not None:
+                    capture_scopes[attempt.capture_id] = scope.scope_id
+                if result is not None:
+                    imports.append(result)
+                if diagnostic is not None:
+                    kind = (
+                        "unavailable"
+                        if attempt.state is ProviderAttemptState.UNAVAILABLE
+                        else "malformed"
+                    )
+                    diagnostics.append(f"{league.key}: {provider_id} {kind}: {diagnostic}")
+
+        window = MatchweekWindow.for_friday(plan.matchweek_friday)
+        revisions_by_id: dict[str, FixtureRevisionReference] = {}
+        fixture_revisions: dict[tuple[str, str], set[str]] = {}
+        fixture_assertions: dict[tuple[str, str], set[str]] = {}
+        unresolved_identities: list[FixtureIdentityResolution] = []
+        for capture_id, scope_id in capture_scopes.items():
+            scope = next(scope for scope in scopes if scope.scope_id == scope_id)
+            scope_start_utc = datetime.fromisoformat(scope.window_start_utc)
+            scope_end_utc = datetime.fromisoformat(scope.window_end_utc)
+            league = _LEAGUES_BY_KEY[scope.league_key]
+            for observation in self.importer.observations_for_capture(capture_id):
+                if observation.kickoff_utc is not None:
+                    in_scope = window.contains(observation.kickoff_utc)
+                elif observation.kickoff_local_date is not None:
+                    local_date = observation.kickoff_local_date
+                    day_start_utc = datetime.combine(
+                        local_date, time.min, _source_timezone(league.timezone, local_date)
+                    ).astimezone(UTC)
+                    following_date = local_date + timedelta(days=1)
+                    day_end_utc = datetime.combine(
+                        following_date,
+                        time.min,
+                        _source_timezone(league.timezone, following_date),
+                    ).astimezone(UTC)
+                    # An unknown kickoff is assignable only when its whole local day fits F01's
+                    # window. A boundary overlap leaves scope membership uncertain.
+                    in_scope = day_start_utc >= scope_start_utc and day_end_utc <= scope_end_utc
+                else:
+                    in_scope = False
+                if not in_scope:
+                    continue
+                if observation.fixture_id is None:
+                    unresolved_identities.append(
+                        FixtureIdentityResolution(
+                            candidate_id=deterministic_identifier(
+                                "fixture_candidate", f"{capture_id}:{observation.source_row_key}"
+                            ),
+                            scope_id=scope.scope_id,
+                            state=FixtureIdentityState.UNRESOLVED_FIXTURE_IDENTITY,
+                            reason_code=observation.reason_code or "TEAM_MAPPING_UNRESOLVED",
+                            source_capture_ids=(capture_id,),
+                            source_assertion_ids=observation.source_assertion_ids,
+                        )
+                    )
+                    continue
+                assert observation.revision_id is not None
+                assert observation.revision_digest is not None
+                reference = FixtureRevisionReference(
+                    scope_id=scope.scope_id,
+                    fixture_id=observation.fixture_id,
+                    revision_id=observation.revision_id,
+                    revision_digest=observation.revision_digest,
+                    source_capture_ids=(capture_id,),
+                    source_assertion_ids=observation.source_assertion_ids,
+                )
+                existing_reference = revisions_by_id.get(observation.revision_id)
+                if existing_reference is not None:
+                    reference = FixtureRevisionReference(
+                        scope_id=scope.scope_id,
+                        fixture_id=observation.fixture_id,
+                        revision_id=observation.revision_id,
+                        revision_digest=observation.revision_digest,
+                        source_capture_ids=tuple(
+                            sorted(set(existing_reference.source_capture_ids) | {capture_id})
+                        ),
+                        source_assertion_ids=tuple(
+                            sorted(
+                                set(existing_reference.source_assertion_ids)
+                                | set(observation.source_assertion_ids)
+                            )
+                        ),
+                    )
+                revisions_by_id[observation.revision_id] = reference
+                fixture_key = (scope.scope_id, observation.fixture_id)
+                fixture_revisions.setdefault(fixture_key, set()).add(observation.revision_id)
+                fixture_assertions.setdefault(fixture_key, set()).update(
+                    observation.source_assertion_ids
+                )
+
+        resolved_identities = [
+            FixtureIdentityResolution(
+                candidate_id=deterministic_identifier(
+                    "fixture_candidate", f"{scope_id}:{fixture_id}"
+                ),
+                scope_id=scope_id,
+                state=FixtureIdentityState.RESOLVED,
+                canonical_fixture_id=fixture_id,
+                revision_ids=tuple(sorted(revision_ids)),
+                source_capture_ids=tuple(
+                    sorted(
+                        {
+                            capture_id
+                            for revision_id in revision_ids
+                            for capture_id in revisions_by_id[revision_id].source_capture_ids
+                        }
+                    )
+                ),
+                source_assertion_ids=tuple(sorted(fixture_assertions[(scope_id, fixture_id)])),
+            )
+            for (scope_id, fixture_id), revision_ids in fixture_revisions.items()
+        ]
+        assessment = assess_fixture_coverage(
+            scopes=scopes,
+            provider_attempts=tuple(attempts),
+            coverage_evidence=(),
+            fixture_revisions=tuple(revisions_by_id.values()),
+            identity_resolutions=tuple(resolved_identities + unresolved_identities),
+            freshness_results=(),
+        )
+        return (
+            ScheduledFixtureAcquisition(
+                imports=tuple(imports),
+                diagnostics=tuple(diagnostics),
+                assessment=assessment,
+                bytes_downloaded=bytes_downloaded,
+                cache_hits=cache_hits,
+            ),
+            downloads,
         )
 
 

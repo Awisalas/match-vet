@@ -105,6 +105,10 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="refresh the current-season cache instead of reusing it",
     )
+    ingest.add_argument(
+        "--matchweek-friday",
+        help="schedule window in YYYY-MM-DD form; defaults to the upcoming Friday",
+    )
     _add_run_options(ingest)
     freeze = commands.add_parser(
         "freeze", help="freeze T05 Matchweek membership from acquired Fixture Revisions"
@@ -276,6 +280,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             parsed.as_json,
             parsed.resume_run_id,
             parsed.refresh_current,
+            parsed.matchweek_friday,
         )
     if parsed.command == "freeze":
         return _freeze_command(
@@ -1110,6 +1115,7 @@ def _ingest_command(
     as_json: bool,
     resume_run_id: str | None,
     refresh_current: bool,
+    matchweek_friday: str | None = None,
 ) -> int:
     from matchvet.ingestion import (
         FixtureHistoryAcquirer,
@@ -1126,6 +1132,7 @@ def _ingest_command(
             current_season=season,
             historical_seasons=historical_seasons,
             refresh_current=refresh_current,
+            matchweek_friday=_matchweek_key(matchweek_friday),
         )
         private_root = termux_private_root()
         with open_store(database_path, private_root=private_root) as store:
@@ -1199,6 +1206,29 @@ def _ingest_command(
             "imports": [asdict(item) for item in report.imports],
             "issues": [asdict(item) for item in report.issues],
             "plan_digest": report.plan_digest,
+            "scheduled_fixtures": (
+                None
+                if report.scheduled_fixtures is None
+                else {
+                    "assessment_digest": report.scheduled_fixtures.assessment.digest,
+                    "attempts": [
+                        asdict(item)
+                        for item in report.scheduled_fixtures.assessment.provider_attempts
+                    ],
+                    "bytes_downloaded": report.scheduled_fixtures.bytes_downloaded,
+                    "cache_hits": report.scheduled_fixtures.cache_hits,
+                    "diagnostics": list(report.scheduled_fixtures.diagnostics),
+                    "imports": [asdict(item) for item in report.scheduled_fixtures.imports],
+                    "schedule_state": report.scheduled_fixtures.assessment.schedule_state.value,
+                    "scope_states": [
+                        {
+                            "league": item.scope.league_key,
+                            "coverage_state": item.coverage_state.value,
+                        }
+                        for item in report.scheduled_fixtures.assessment.scope_assessments
+                    ],
+                }
+            ),
         }
     if as_json:
         print(
@@ -1217,6 +1247,16 @@ def _ingest_command(
                 f"cache_hits={report.cache_hits}; bytes={report.bytes_downloaded}; "
                 f"issues={len(report.issues)}"
             )
+            if report.scheduled_fixtures is not None:
+                print(
+                    "Schedules: "
+                    f"attempts={len(report.scheduled_fixtures.assessment.provider_attempts)}; "
+                    f"state={report.scheduled_fixtures.assessment.schedule_state.value}; "
+                    f"imports={len(report.scheduled_fixtures.imports)}; "
+                    f"bytes={report.scheduled_fixtures.bytes_downloaded}; "
+                    f"cache_hits={report.scheduled_fixtures.cache_hits}; "
+                    f"diagnostics={len(report.scheduled_fixtures.diagnostics)}"
+                )
     return 0
 
 
