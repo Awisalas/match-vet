@@ -488,6 +488,110 @@ def test_successful_results_acquisition_does_not_suppress_schedule_acquisition(
             scheduled.assessment.scope_assessments[0].coverage_state is ScopeCoverageState.UNKNOWN
         )
         assert scheduled.assessment.schedule_state is MatchweekScheduleState.UNKNOWN
+        from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+
+        assert FixtureCoverageRepository(store).get(scheduled.assessment.digest) == (
+            scheduled.assessment
+        )
+
+
+def test_public_scheduled_acquisition_persists_exact_unknown_f01_value(tmp_path: Path) -> None:
+    from matchvet.fixture_coverage import MatchweekScheduleState
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.ingestion import (
+        FixtureHistoryAcquirer,
+        FixtureHistoryImporter,
+        IngestionPlan,
+        StaticSourceFetcher,
+        openfootball_url,
+    )
+    from matchvet.store import open_store
+
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    league = league_by_key("premier_league")
+    schedule = (
+        b'{"matches":[{"date":"2026-09-25","time":"20:00",'
+        b'"team1":"Arsenal","team2":"Coventry","score":{}}]}'
+    )
+    fetcher = StaticSourceFetcher({openfootball_url(league, "2026-27"): schedule})
+    plan = IngestionPlan(
+        current_season="2026-27",
+        leagues=(league,),
+        matchweek_friday="2026-09-25",
+    )
+
+    with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        acquired = FixtureHistoryAcquirer(importer, fetcher).acquire_scheduled_fixtures(plan)
+
+        assert FixtureCoverageRepository(store).get(acquired.assessment.digest) == (
+            acquired.assessment
+        )
+        assert acquired.assessment.coverage_evidence == ()
+        assert acquired.assessment.freshness_policy_id is None
+        assert acquired.assessment.freshness_results == ()
+        assert acquired.assessment.schedule_state is MatchweekScheduleState.UNKNOWN
+        assert len(acquired.assessment.scope_assessments) == 7
+
+
+@pytest.mark.parametrize("entrypoint", ("scheduled", "t06"))
+def test_assessment_persistence_failure_blocks_successful_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    from matchvet.fixture_coverage_repository import (
+        FixtureCoveragePersistenceError,
+        FixtureCoverageRepository,
+    )
+    from matchvet.ingestion import (
+        FixtureHistoryAcquirer,
+        FixtureHistoryImporter,
+        IngestionPlan,
+        StaticSourceFetcher,
+        T06AcquisitionRunner,
+        openfootball_url,
+    )
+    from matchvet.runs import GIB, ResourceObservation, RunLifecycleError
+    from matchvet.store import open_store
+
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    league = league_by_key("premier_league")
+    schedule = b'{"matches":[]}'
+    fetcher = StaticSourceFetcher({openfootball_url(league, "2026-27"): schedule})
+    plan = IngestionPlan(
+        current_season="2026-27",
+        leagues=(league,),
+        matchweek_friday="2026-09-25",
+    )
+
+    def fail_persist(self: FixtureCoverageRepository, assessment: object) -> str:
+        del self, assessment
+        raise OSError("injected assessment persistence failure")
+
+    monkeypatch.setattr(FixtureCoverageRepository, "persist", fail_persist)
+
+    with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        acquirer = FixtureHistoryAcquirer(importer, fetcher)
+        if entrypoint == "scheduled":
+            with pytest.raises(FixtureCoveragePersistenceError):
+                acquirer.acquire_scheduled_fixtures(plan)
+        else:
+            runner = T06AcquisitionRunner(store, acquirer)
+            with pytest.raises(RunLifecycleError):
+                runner.start(
+                    plan,
+                    observation=ResourceObservation(0, 5 * GIB, 2 * GIB, 3, False, False, 0),
+                )
+            assert runner.last_report is None
+        assert importer.source_captures()
+        assert not any(
+            item.media_type == "application/vnd.matchvet.t06-acquisition+json"
+            for item in store.artifact_catalog()
+        )
 
 
 def test_acquirer_requests_all_six_schedule_feeds_and_keeps_belgium_unknown(
@@ -1428,7 +1532,12 @@ def test_t06_runner_resumes_from_t04_checkpoint(tmp_path: Path) -> None:
         StaticSourceFetcher,
         T06AcquisitionRunner,
     )
-    from matchvet.runs import GIB, ResourceObservation, RunLifecycleError, WorkInterrupted
+    from matchvet.runs import (
+        GIB,
+        ResourceObservation,
+        RunLifecycleError,
+        WorkInterrupted,
+    )
     from matchvet.store import open_store
 
     class InterruptingAcquirer(FixtureHistoryAcquirer):
@@ -1469,10 +1578,68 @@ def test_t06_runner_resumes_from_t04_checkpoint(tmp_path: Path) -> None:
         assert len(importer.source_captures()) == 1
 
 
+def test_t06_old_migration_identity_checkpoint_is_refused_without_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from matchvet import ingestion
+    from matchvet.ingestion import (
+        AcquisitionReport,
+        FixtureHistoryAcquirer,
+        FixtureHistoryImporter,
+        IngestionPlan,
+        StaticSourceFetcher,
+        T06AcquisitionRunner,
+    )
+    from matchvet.runs import (
+        GIB,
+        ResourceObservation,
+        RunLifecycleError,
+        WorkInterrupted,
+        read_run_status,
+    )
+    from matchvet.store import MIGRATIONS, open_store
+
+    class InterruptedAcquirer(FixtureHistoryAcquirer):
+        def acquire(self, plan: IngestionPlan) -> AcquisitionReport:
+            del plan
+            raise WorkInterrupted("preserve an old schema identity checkpoint")
+
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
+    league = league_by_key("premier_league")
+    plan = IngestionPlan(current_season="2026-27", leagues=(league,))
+    observation = ResourceObservation(0, 5 * GIB, 2 * GIB, 3, False, False, 0)
+
+    monkeypatch.setattr(ingestion, "MIGRATIONS", MIGRATIONS[:9])
+    with open_store(database_path, private_root=private_root, migrations=MIGRATIONS[:9]) as store:
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        runner = T06AcquisitionRunner(store, InterruptedAcquirer(importer, StaticSourceFetcher({})))
+        with pytest.raises(RunLifecycleError) as interrupted:
+            runner.start(plan, observation=observation)
+        run_id = interrupted.value.run_id
+
+    monkeypatch.setattr(ingestion, "MIGRATIONS", MIGRATIONS)
+    with open_store(database_path, private_root=private_root) as store:
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        runner = T06AcquisitionRunner(
+            store, FixtureHistoryAcquirer(importer, StaticSourceFetcher({}))
+        )
+        with pytest.raises(RunLifecycleError) as refused:
+            runner.resume(run_id, plan, observation=observation)
+
+    assert refused.value.error.code == "MV-RESUME-DIGEST_MISMATCH"
+    assert "schema" in refused.value.error.explanation
+    status = read_run_status(database_path, private_root, run_id)
+    assert status.state.value == "INCOMPLETE"
+
+
 def test_t06_keeps_fixture_coverage_assessment_out_of_durable_artifact(tmp_path: Path) -> None:
     import json
+    from dataclasses import replace
 
     from matchvet.artifacts import ArtifactStore
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
     from matchvet.ingestion import (
         FixtureHistoryAcquirer,
         FixtureHistoryImporter,
@@ -1514,6 +1681,11 @@ def test_t06_keeps_fixture_coverage_assessment_out_of_durable_artifact(tmp_path:
         assert status.state.value == "COMPLETE"
         assert runner.last_report is not None
         assert runner.last_report.scheduled_fixtures is not None
+        assessment = runner.last_report.scheduled_fixtures.assessment
+        assert FixtureCoverageRepository(store).get(assessment.digest) == assessment
+        assert (
+            runner.last_report.digest == replace(runner.last_report, scheduled_fixtures=None).digest
+        )
         artifact = next(
             item
             for item in store.artifact_catalog()
@@ -1521,6 +1693,16 @@ def test_t06_keeps_fixture_coverage_assessment_out_of_durable_artifact(tmp_path:
         )
         payload = json.loads(ArtifactStore(store).read_artifact(artifact.digest))
         assert payload["schema_version"] == 1
+        assert set(payload) == {
+            "bytes_downloaded",
+            "cache_hits",
+            "fallback_imports",
+            "imports",
+            "issues",
+            "plan_digest",
+            "report_digest",
+            "schema_version",
+        }
         assert "scheduled_fixtures" not in payload
         assert "assessment_digest" not in payload
         assert payload["report_digest"] == runner.last_report.digest

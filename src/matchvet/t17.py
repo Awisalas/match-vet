@@ -35,6 +35,7 @@ from matchvet.store import (
     MIGRATIONS,
     InspectionStatus,
     inspect_store,
+    open_store,
     termux_private_root,
 )
 from matchvet.t16 import (
@@ -1245,6 +1246,53 @@ def restore_backup(
         )
         _verify_backup_contents(private_stage, manifest, readback=True)
 
+        manifest_schema_version = cast(int, manifest.payload["schema_version_authoritative"])
+        staged_database = private_stage / BACKUP_DATABASE_NAME
+        if manifest_schema_version < len(MIGRATIONS):
+            try:
+                with open_store(staged_database, private_root=root) as staged_store:
+                    if staged_store.status.mode.value != "READ_WRITE":
+                        raise T17Error(
+                            "MV-T17-RESTORE-MIGRATION_FAILED",
+                            "The staged backup did not migrate to a writable current store.",
+                            source=source_path,
+                            destination=target,
+                            manifest_digest=manifest.digest,
+                        )
+            except T17Error:
+                raise
+            except Exception as error:
+                raise T17Error(
+                    "MV-T17-RESTORE-MIGRATION_FAILED",
+                    "The staged backup could not be forward-migrated to the current schema.",
+                    source=source_path,
+                    destination=target,
+                    manifest_digest=manifest.digest,
+                    recovery_command=f"matchvet backup --verify {source_path}",
+                ) from error
+
+        staged_inspection = inspect_store(staged_database, private_root=root)
+        if staged_inspection.status is not InspectionStatus.HEALTHY:
+            issue = staged_inspection.issues[0] if staged_inspection.issues else None
+            message = (
+                issue.message if issue is not None else "Staged store failed current verification."
+            )
+            raise T17Error(
+                "MV-T17-RESTORE-STORE_VERIFICATION_FAILED",
+                message,
+                source=source_path,
+                destination=target,
+                manifest_digest=manifest.digest,
+                recovery_command=f"matchvet doctor --store {staged_database}",
+            )
+        current_manifest = _current_schema_backup_manifest(private_stage, staged_database, manifest)
+        staged_details = _verify_backup_contents(
+            private_stage,
+            current_manifest,
+            readback=False,
+            database_path_override=staged_database,
+        )
+
         _ensure_directory(target.parent, root)
         object_members = manifest.payload.get("objects")
         assert isinstance(object_members, list)
@@ -1280,18 +1328,18 @@ def restore_backup(
                 error_code="MV-T17-RESTORE-ACTIVATION_FAILED",
             )
 
-        database_member = cast(Mapping[str, object], manifest.payload["database"])
         created_target = True
+        staged_length, staged_digest = digest_file(staged_database)
         _copy_file_verified(
-            private_stage / BACKUP_DATABASE_NAME,
+            staged_database,
             target,
-            _member_length(database_member),
-            str(database_member["sha256"]),
+            staged_length,
+            staged_digest,
             error_code="MV-T17-RESTORE-ACTIVATION_FAILED",
         )
         target_details = _verify_backup_contents(
             target.parent,
-            manifest,
+            current_manifest,
             readback=False,
             database_path_override=target,
         )
@@ -1309,6 +1357,7 @@ def restore_backup(
                 manifest_digest=manifest.digest,
                 recovery_command=f"matchvet doctor --store {target}",
             )
+        target_details = {**staged_details, **target_details}
     except BaseException as error:
         _cleanup_restore_failure(
             private_stage,
@@ -1451,7 +1500,8 @@ def _verify_sqlite_database(
             schema_version_row = connection.execute("PRAGMA user_version").fetchone()
             journal_mode_row = connection.execute("PRAGMA journal_mode").fetchone()
             migration_rows = connection.execute(
-                "SELECT migration_number, name, checksum "
+                "SELECT migration_number, name, checksum, canonical_contract_version, "
+                "minimum_application_version, maximum_application_version, result "
                 "FROM schema_migrations ORDER BY migration_number"
             ).fetchall()
         except sqlite3.DatabaseError as error:
@@ -1490,10 +1540,35 @@ def _verify_sqlite_database(
         schema_version = int(schema_version_row[0]) if schema_version_row is not None else 0
         migration_numbers = tuple(int(row[0]) for row in migration_rows)
         migration_checksums = tuple(str(row[2]) for row in migration_rows)
+        expected_plan = MIGRATIONS[:expected_schema_version]
+        actual_plan = tuple(
+            (
+                str(row[1]),
+                str(row[2]),
+                int(row[3]),
+                str(row[4]),
+                str(row[5]),
+                str(row[6]),
+            )
+            for row in migration_rows
+        )
+        known_plan = tuple(
+            (
+                migration.name,
+                migration.checksum,
+                migration.canonical_contract_version,
+                migration.minimum_application_version,
+                migration.maximum_application_version,
+                "COMPLETED",
+            )
+            for migration in expected_plan
+        )
         if (
             schema_version != expected_schema_version
             or migration_numbers != tuple(range(1, expected_schema_version + 1))
             or migration_checksums != expected_migrations
+            or expected_migrations != tuple(migration.checksum for migration in expected_plan)
+            or actual_plan != known_plan
             or str(journal_mode_row[0]).lower() != "wal"
         ):
             raise T17Error(
@@ -1524,20 +1599,21 @@ def _validate_backup_compatibility(manifest: BackupManifest, destination: Path) 
             manifest_digest=manifest.digest,
             recovery_command=f"matchvet backup --destination {destination}.new",
         )
-    if manifest.payload.get("schema_version_authoritative") != len(MIGRATIONS):
+    schema_version = manifest.payload.get("schema_version_authoritative")
+    if type(schema_version) is not int or schema_version < 1 or schema_version > len(MIGRATIONS):
         raise T17Error(
             "MV-T17-BACKUP-INCOMPATIBLE",
-            "The backup authoritative schema version is incompatible with this MatchVet build.",
+            "The backup schema version is not a supported migration-history prefix.",
             destination=destination,
             manifest_digest=manifest.digest,
             recovery_command=f"matchvet backup --destination {destination}.new",
         )
     checksums = manifest.payload.get("migration_checksums")
-    expected = [migration.checksum for migration in MIGRATIONS]
+    expected = [migration.checksum for migration in MIGRATIONS[:schema_version]]
     if checksums != expected:
         raise T17Error(
             "MV-T17-BACKUP-INCOMPATIBLE",
-            "The backup migration checksums are incompatible with this MatchVet build.",
+            "The backup migration checksums are not a known valid prefix.",
             destination=destination,
             manifest_digest=manifest.digest,
             recovery_command=f"matchvet backup --destination {destination}.new",
@@ -1600,8 +1676,8 @@ def _verify_backup_contents(
     database_details = _verify_sqlite_database(
         database_path,
         operation="BACKUP",
-        expected_schema_version=len(MIGRATIONS),
-        expected_migrations=tuple(migration.checksum for migration in MIGRATIONS),
+        expected_schema_version=cast(int, manifest.payload["schema_version_authoritative"]),
+        expected_migrations=tuple(cast(list[str], manifest.payload["migration_checksums"])),
         destination=root,
     )
 
@@ -1680,6 +1756,33 @@ def _verify_backup_contents(
         "object_count": len(seen_digests),
         "state": "COMPLETE",
     }
+
+
+def _current_schema_backup_manifest(
+    root: Path, database_path: Path, source_manifest: BackupManifest
+) -> BackupManifest:
+    database_member = cast(Mapping[str, object], source_manifest.payload["database"])
+    byte_length, sha256 = digest_file(database_path)
+    current_database_member = {
+        **dict(database_member),
+        "byte_length": byte_length,
+        "sha256": sha256,
+    }
+    raw_objects = source_manifest.payload.get("objects")
+    if not isinstance(raw_objects, list):
+        raise T17Error(
+            "MV-T17-BACKUP-MANIFEST_INVALID",
+            "Backup object members are invalid.",
+            destination=root,
+            manifest_digest=source_manifest.digest,
+        )
+    object_members = [dict(cast(Mapping[str, object], item)) for item in raw_objects]
+    return _build_backup_manifest(
+        current_database_member,
+        object_members,
+        schema_version=len(MIGRATIONS),
+        migration_checksums=tuple(migration.checksum for migration in MIGRATIONS),
+    )
 
 
 def _online_backup(source: Path, target: Path) -> None:

@@ -2339,6 +2339,178 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=10,
+        name="fixture_coverage_assessment_persistence",
+        statements=(
+            """
+            CREATE TABLE fixture_coverage_assessments (
+                assessment_digest TEXT PRIMARY KEY
+                    CHECK (
+                        length(assessment_digest) = 71
+                        AND substr(assessment_digest, 1, 7) = 'sha256:'
+                        AND substr(assessment_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                assessment_json TEXT NOT NULL
+                    CHECK (
+                        json_valid(assessment_json)
+                        AND json_type(assessment_json, '$') = 'object'
+                        AND json_type(assessment_json, '$.scope_assessments') = 'array'
+                        AND json_type(assessment_json, '$.provider_attempts') = 'array'
+                        AND json_type(assessment_json, '$.coverage_evidence') = 'array'
+                        AND json_type(assessment_json, '$.fixture_revisions') = 'array'
+                        AND json_type(assessment_json, '$.identity_resolutions') = 'array'
+                        AND json_type(assessment_json, '$.freshness_results') = 'array'
+                        AND json_extract(assessment_json, '$.digest') = assessment_digest
+                    ),
+                contract_version TEXT NOT NULL CHECK (length(contract_version) > 0),
+                assessment_schema_version INTEGER NOT NULL
+                    CHECK (assessment_schema_version >= 1),
+                season TEXT NOT NULL CHECK (length(season) > 0),
+                matchweek_friday TEXT NOT NULL
+                    CHECK (
+                        length(matchweek_friday) = 10
+                        AND matchweek_friday GLOB
+                            '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                    ),
+                schedule_state TEXT NOT NULL
+                    CHECK (
+                        schedule_state IN (
+                            'COMPLETE', 'CONFIRMED_EMPTY', 'PARTIAL', 'UNKNOWN', 'STALE'
+                        )
+                    ),
+                freshness_policy_id TEXT,
+                first_persisted_at_utc TEXT NOT NULL,
+                CHECK (freshness_policy_id IS NULL OR length(freshness_policy_id) > 0)
+            ) STRICT
+            """,
+            """
+            CREATE INDEX fixture_coverage_assessments_matchweek_history
+            ON fixture_coverage_assessments (
+                season, matchweek_friday, first_persisted_at_utc, assessment_digest
+            )
+            """,
+            """
+            CREATE TABLE fixture_coverage_assessment_revisions (
+                assessment_digest TEXT NOT NULL
+                    REFERENCES fixture_coverage_assessments(assessment_digest),
+                scope_id TEXT NOT NULL CHECK (length(scope_id) > 0),
+                fixture_id TEXT NOT NULL REFERENCES fixtures(fixture_id),
+                revision_id TEXT NOT NULL REFERENCES fixture_revisions(revision_id),
+                expected_revision_digest TEXT NOT NULL
+                    CHECK (
+                        length(expected_revision_digest) = 64
+                        AND expected_revision_digest NOT GLOB '*[^0-9a-f]*'
+                    ),
+                PRIMARY KEY (assessment_digest, revision_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE fixture_coverage_assessment_captures (
+                assessment_digest TEXT NOT NULL
+                    REFERENCES fixture_coverage_assessments(assessment_digest),
+                capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
+                expected_content_sha256 TEXT NOT NULL
+                    CHECK (
+                        length(expected_content_sha256) = 64
+                        AND expected_content_sha256 NOT GLOB '*[^0-9a-f]*'
+                    ),
+                PRIMARY KEY (assessment_digest, capture_id)
+            ) STRICT
+            """,
+            """
+            CREATE TABLE fixture_coverage_assessment_assertions (
+                assessment_digest TEXT NOT NULL
+                    REFERENCES fixture_coverage_assessments(assessment_digest),
+                assertion_id TEXT NOT NULL REFERENCES source_assertions(assertion_id),
+                source_capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
+                PRIMARY KEY (assessment_digest, assertion_id, source_capture_id),
+                FOREIGN KEY (assessment_digest, source_capture_id)
+                    REFERENCES fixture_coverage_assessment_captures(
+                        assessment_digest, capture_id
+                    )
+            ) STRICT
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_revisions_match_v1
+            BEFORE INSERT ON fixture_coverage_assessment_revisions
+            WHEN NOT EXISTS (
+                SELECT 1 FROM fixture_revisions
+                WHERE revision_id = NEW.revision_id
+                  AND fixture_id = NEW.fixture_id
+                  AND revision_digest = NEW.expected_revision_digest
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'fixture coverage revision link does not match V1');
+            END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_captures_match_v1
+            BEFORE INSERT ON fixture_coverage_assessment_captures
+            WHEN NOT EXISTS (
+                SELECT 1 FROM source_captures
+                WHERE capture_id = NEW.capture_id
+                  AND content_sha256 = NEW.expected_content_sha256
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'fixture coverage capture link does not match V1');
+            END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_assertions_capture_matches
+            BEFORE INSERT ON fixture_coverage_assessment_assertions
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM source_assertions
+                WHERE assertion_id = NEW.assertion_id
+                  AND capture_id = NEW.source_capture_id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'fixture coverage assertion capture does not match');
+            END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessments_no_update
+            BEFORE UPDATE ON fixture_coverage_assessments
+            BEGIN SELECT RAISE(ABORT, 'fixture coverage assessments are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessments_no_delete
+            BEFORE DELETE ON fixture_coverage_assessments
+            BEGIN SELECT RAISE(ABORT, 'fixture coverage assessments are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_revisions_no_update
+            BEFORE UPDATE ON fixture_coverage_assessment_revisions
+            BEGIN SELECT RAISE(ABORT, 'fixture coverage revision links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_revisions_no_delete
+            BEFORE DELETE ON fixture_coverage_assessment_revisions
+            BEGIN SELECT RAISE(ABORT, 'fixture coverage revision links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_captures_no_update
+            BEFORE UPDATE ON fixture_coverage_assessment_captures
+            BEGIN SELECT RAISE(ABORT, 'fixture coverage capture links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_captures_no_delete
+            BEFORE DELETE ON fixture_coverage_assessment_captures
+            BEGIN SELECT RAISE(ABORT, 'fixture coverage capture links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_assertions_no_update
+            BEFORE UPDATE ON fixture_coverage_assessment_assertions
+            BEGIN SELECT RAISE(ABORT, 'fixture coverage assertion links are immutable'); END
+            """,
+            """
+            CREATE TRIGGER fixture_coverage_assessment_assertions_no_delete
+            BEFORE DELETE ON fixture_coverage_assessment_assertions
+            BEGIN SELECT RAISE(ABORT, 'fixture coverage assertion links are immutable'); END
+            """,
+        ),
+    ),
 )
 
 

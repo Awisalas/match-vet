@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +13,13 @@ from test_t16 import _audit
 
 from matchvet.artifacts import ArtifactStore
 from matchvet.runs import GIB, MIB, ResourceEstimate, ResourceObservation
-from matchvet.store import CanonicalIdentifier, InspectionStatus, inspect_store, open_store
+from matchvet.store import (
+    MIGRATIONS,
+    CanonicalIdentifier,
+    InspectionStatus,
+    inspect_store,
+    open_store,
+)
 from matchvet.t16 import build_matchweek_audit, publish_matchweek_audit
 from matchvet.t17 import (
     BACKUP_SCHEMA,
@@ -732,6 +739,220 @@ def test_restore_verifies_then_activates_a_new_private_target(tmp_path: Path) ->
     assert digest_file(target) == digest_file(source / "database.sqlite3")
     assert inspect_store(target, private_root=private_root).status is InspectionStatus.HEALTHY
     assert database_path.is_file()
+
+
+def _make_schema_nine_backup(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
+    import matchvet.t17 as t17
+    from matchvet.ingestion import (
+        FixtureHistoryImporter,
+        FootballDataCSVParser,
+        SourceCaptureInput,
+        league_by_key,
+    )
+
+    private_root, database_path = _private_store(tmp_path)
+    content = (
+        b"Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HTHG,HTAG,HC,AC,HS,AS,HY,AY,HR,AR\n"
+        b"E0,21/08/2026,20:00,Arsenal,Coventry,3,0,H,2,0,8,2,20,4,1,1,0,0\n"
+    )
+    league = league_by_key("premier_league")
+    with open_store(database_path, private_root=private_root, migrations=MIGRATIONS[:9]) as store:
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        importer.import_dataset(
+            FootballDataCSVParser().parse(content, league=league, season="2026-27"),
+            content,
+            SourceCaptureInput(
+                source_url="https://example.test/E0.csv",
+                retrieved_at_utc="2026-09-13T12:00:00+00:00",
+                observed_terms="restricted private schema-nine capture",
+            ),
+        )
+        fixture_id = importer.fixtures()[0].fixture_id
+        revision = importer.revisions(fixture_id)[0]
+        capture_ids = tuple(capture.capture_id for capture in importer.source_captures())
+        objects = store.artifact_catalog()
+
+    source = tmp_path / "shared" / "schema-nine-backup"
+    source.mkdir(parents=True)
+    staged_database = source / "database.sqlite3"
+    t17._online_backup(database_path, staged_database)
+    object_members: list[dict[str, object]] = []
+    for item in objects:
+        object_path = source / item.relative_path
+        object_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(private_root / item.relative_path, object_path)
+        object_members.append(
+            {
+                "path": item.relative_path,
+                "kind": "ARTIFACT",
+                "artifact_id": item.artifact_id.value,
+                "media_type": item.media_type,
+                "byte_length": item.byte_length,
+                "sha256": item.digest,
+                "relative_path": item.relative_path,
+                "created_at_utc": item.created_at_utc,
+                "retention_class": item.retention_class,
+            }
+        )
+    object_members.sort(key=lambda member: str(member["sha256"]))
+    database_length, database_digest = digest_file(staged_database)
+    manifest = t17._build_backup_manifest(
+        {
+            "path": "database.sqlite3",
+            "kind": "DATABASE",
+            "media_type": "application/vnd.sqlite3",
+            "byte_length": database_length,
+            "sha256": database_digest,
+        },
+        object_members,
+        schema_version=9,
+        migration_checksums=tuple(migration.checksum for migration in MIGRATIONS[:9]),
+    )
+    (source / "manifest.json").write_bytes(manifest.to_bytes())
+    (source / "COMPLETE").write_bytes(
+        CompletionMarker.from_payload(
+            {
+                "schema": "matchvet.t17.completion",
+                "schema_version": T17_SCHEMA_VERSION,
+                "kind": "BACKUP",
+                "state": "COMPLETE",
+                "manifest_digest": manifest.digest,
+                "identity": manifest.identity,
+            }
+        ).to_bytes()
+    )
+    expected: dict[str, object] = {
+        "fixture_id": fixture_id,
+        "revision_id": revision.revision_id,
+        "revision_digest": revision.revision_digest,
+        "capture_ids": capture_ids,
+    }
+    return private_root, source, expected
+
+
+def test_schema_nine_backup_restores_through_staged_forward_migration(
+    tmp_path: Path,
+) -> None:
+    from matchvet.ingestion import FixtureHistoryImporter
+
+    private_root, source, expected = _make_schema_nine_backup(tmp_path)
+    original_bundle = {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    }
+    verification = verify_backup(source)
+    assert verification.details["schema_version"] == 9
+
+    target = private_root / "restored-schema-nine" / "matchvet.sqlite3"
+    restored = restore_backup(
+        source,
+        target,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+
+    assert restored.status == "COMPLETE"
+    assert inspect_store(target, private_root=private_root).schema_version == len(MIGRATIONS)
+    with open_store(target, private_root=private_root) as store:
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        assert importer.fixtures()[0].fixture_id == expected["fixture_id"]
+        revision = importer.revisions(str(expected["fixture_id"]))[0]
+        assert revision.revision_id == expected["revision_id"]
+        assert revision.revision_digest == expected["revision_digest"]
+        assert tuple(capture.capture_id for capture in importer.source_captures()) == cast(
+            tuple[str, ...], expected["capture_ids"]
+        )
+    assert {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    } == original_bundle
+
+
+def test_schema_ten_backup_restore_preserves_f03_assessment(tmp_path: Path) -> None:
+    from test_fixture_coverage_repository import _unknown_assessment
+
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+
+    private_root, database_path = _private_store(tmp_path)
+    assessment = _unknown_assessment()
+    with open_store(database_path, private_root=private_root) as store:
+        FixtureCoverageRepository(store).persist(assessment)
+
+    source = tmp_path / "shared" / "schema-ten-backup"
+    backup_store(
+        database_path,
+        source,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+    original_bundle = {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    }
+    assert verify_backup(source).details["schema_version"] == len(MIGRATIONS)
+
+    target = private_root / "restored-schema-ten" / "matchvet.sqlite3"
+    restore_backup(
+        source,
+        target,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+    with open_store(target, private_root=private_root) as store:
+        assert FixtureCoverageRepository(store).get(assessment.digest) == assessment
+    assert {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    } == original_bundle
+
+
+@pytest.mark.parametrize("history_kind", ("unknown", "non_prefix", "newer"))
+def test_backup_rejects_unsupported_migration_history_prefixes(
+    tmp_path: Path, history_kind: str
+) -> None:
+    import matchvet.t17 as t17
+
+    _, _, source, _ = _make_backup(tmp_path)
+    original = BackupManifest.from_bytes((source / "manifest.json").read_bytes())
+    database = cast(dict[str, object], original.payload["database"])
+    objects = cast(list[dict[str, object]], original.payload["objects"])
+    checksums = [migration.checksum for migration in MIGRATIONS]
+    schema_version = len(MIGRATIONS)
+    if history_kind == "unknown":
+        checksums[0] = "0" * 64
+    elif history_kind == "non_prefix":
+        checksums[0], checksums[1] = checksums[1], checksums[0]
+    else:
+        schema_version += 1
+        checksums.append("f" * 64)
+    manifest = t17._build_backup_manifest(
+        database,
+        objects,
+        schema_version=schema_version,
+        migration_checksums=tuple(checksums),
+    )
+    (source / "manifest.json").write_bytes(manifest.to_bytes())
+    (source / "COMPLETE").write_bytes(
+        CompletionMarker.from_payload(
+            {
+                "schema": "matchvet.t17.completion",
+                "schema_version": T17_SCHEMA_VERSION,
+                "kind": "BACKUP",
+                "state": "COMPLETE",
+                "manifest_digest": manifest.digest,
+                "identity": manifest.identity,
+            }
+        ).to_bytes()
+    )
+
+    with pytest.raises(T17Error) as rejected:
+        verify_backup(source)
+
+    assert rejected.value.code == "MV-T17-BACKUP-INCOMPATIBLE"
 
 
 def test_restore_rejects_tampered_backup_and_leaves_authoritative_state_untouched(

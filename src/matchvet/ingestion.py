@@ -3146,6 +3146,17 @@ class FixtureHistoryAcquirer:
             identity_resolutions=tuple(resolved_identities + unresolved_identities),
             freshness_results=(),
         )
+        from matchvet.fixture_coverage_repository import (
+            FixtureCoveragePersistenceError,
+            FixtureCoverageRepository,
+        )
+
+        try:
+            FixtureCoverageRepository(self.importer._store).persist(assessment)
+        except Exception as error:
+            raise FixtureCoveragePersistenceError(
+                "The F01 Fixture Coverage Assessment could not be persisted."
+            ) from error
         return (
             ScheduledFixtureAcquisition(
                 imports=tuple(imports),

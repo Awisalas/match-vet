@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import cast
 
 from matchvet.ingestion import TARGET_LEAGUES
 from matchvet.matchweek import MatchweekWindow
@@ -388,6 +390,388 @@ def _assessment_digest(assessment: FixtureCoverageAssessment) -> str:
     }
     encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     return f"sha256:{hashlib.sha256(encoded.encode('utf-8')).hexdigest()}"
+
+
+class FixtureCoveragePayloadError(ValueError):
+    """A stored F01 assessment is malformed, unsupported, or not canonical."""
+
+
+def fixture_coverage_assessment_to_canonical_json(
+    assessment: FixtureCoverageAssessment,
+) -> str:
+    """Return the complete F01 value using the F01 digest's canonical JSON rules."""
+    _require_supported_assessment_versions(assessment.contract_version, assessment.schema_version)
+    return json.dumps(
+        _json_value(assessment),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+        allow_nan=False,
+    )
+
+
+def fixture_coverage_assessment_from_canonical_json(encoded: str) -> FixtureCoverageAssessment:
+    """Rebuild an F01 value without reassessing or deriving any coverage state."""
+    try:
+        raw = json.loads(encoded)
+        if not isinstance(raw, dict):
+            raise FixtureCoveragePayloadError("Fixture Coverage payload root must be an object.")
+        canonical = json.dumps(
+            raw,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+            allow_nan=False,
+        )
+        if canonical != encoded:
+            raise FixtureCoveragePayloadError("Fixture Coverage payload is not canonical JSON.")
+        root = _payload_object(
+            raw,
+            (
+                "contract_version",
+                "schema_version",
+                "freshness_policy_id",
+                "scope_assessments",
+                "provider_attempts",
+                "coverage_evidence",
+                "fixture_revisions",
+                "identity_resolutions",
+                "freshness_results",
+                "schedule_state",
+                "digest",
+            ),
+            "Fixture Coverage Assessment",
+        )
+        contract_version = _payload_string(root["contract_version"], "contract_version")
+        schema_version = _payload_int(root["schema_version"], "schema_version")
+        _require_supported_assessment_versions(contract_version, schema_version)
+        scope_assessments = tuple(
+            _scope_assessment_from_json(item)
+            for item in _payload_list(root["scope_assessments"], "scope_assessments")
+        )
+        provider_attempts = tuple(
+            _provider_attempt_from_json(item)
+            for item in _payload_list(root["provider_attempts"], "provider_attempts")
+        )
+        coverage_evidence = tuple(
+            _coverage_evidence_from_json(item)
+            for item in _payload_list(root["coverage_evidence"], "coverage_evidence")
+        )
+        fixture_revisions = tuple(
+            _revision_reference_from_json(item)
+            for item in _payload_list(root["fixture_revisions"], "fixture_revisions")
+        )
+        identity_resolutions = tuple(
+            _identity_resolution_from_json(item)
+            for item in _payload_list(root["identity_resolutions"], "identity_resolutions")
+        )
+        freshness_results = tuple(
+            _freshness_result_from_json(item)
+            for item in _payload_list(root["freshness_results"], "freshness_results")
+        )
+        assessment = FixtureCoverageAssessment(
+            contract_version=contract_version,
+            schema_version=schema_version,
+            freshness_policy_id=_payload_optional_string(
+                root["freshness_policy_id"], "freshness_policy_id"
+            ),
+            scope_assessments=scope_assessments,
+            provider_attempts=provider_attempts,
+            coverage_evidence=coverage_evidence,
+            fixture_revisions=fixture_revisions,
+            identity_resolutions=identity_resolutions,
+            freshness_results=freshness_results,
+            schedule_state=MatchweekScheduleState(
+                _payload_string(root["schedule_state"], "schedule_state")
+            ),
+            digest=_payload_string(root["digest"], "digest"),
+        )
+        if fixture_coverage_assessment_to_canonical_json(assessment) != encoded:
+            raise FixtureCoveragePayloadError(
+                "Fixture Coverage payload changes when reconstructed from its canonical value."
+            )
+        return assessment
+    except FixtureCoveragePayloadError:
+        raise
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise FixtureCoveragePayloadError("Fixture Coverage payload is invalid.") from error
+
+
+def _require_supported_assessment_versions(contract_version: str, schema_version: int) -> None:
+    if (
+        contract_version != FIXTURE_COVERAGE_CONTRACT_VERSION
+        or type(schema_version) is not int
+        or schema_version != FIXTURE_COVERAGE_SCHEMA_VERSION
+    ):
+        raise FixtureCoveragePayloadError("Fixture Coverage payload uses unsupported F01 versions.")
+
+
+def _payload_object(
+    value: object, expected_keys: tuple[str, ...], label: str
+) -> Mapping[str, object]:
+    if not isinstance(value, dict) or set(value) != set(expected_keys):
+        raise FixtureCoveragePayloadError(f"{label} has an invalid shape.")
+    return cast(Mapping[str, object], value)
+
+
+def _payload_string(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise FixtureCoveragePayloadError(f"{label} must be a string.")
+    return value
+
+
+def _payload_optional_string(value: object, label: str) -> str | None:
+    if value is not None and not isinstance(value, str):
+        raise FixtureCoveragePayloadError(f"{label} must be a string or null.")
+    return value
+
+
+def _payload_bool(value: object, label: str) -> bool:
+    if type(value) is not bool:
+        raise FixtureCoveragePayloadError(f"{label} must be a boolean.")
+    return value
+
+
+def _payload_int(value: object, label: str) -> int:
+    if type(value) is not int:
+        raise FixtureCoveragePayloadError(f"{label} must be an integer.")
+    return value
+
+
+def _payload_list(value: object, label: str) -> list[object]:
+    if not isinstance(value, list):
+        raise FixtureCoveragePayloadError(f"{label} must be an array.")
+    return value
+
+
+def _payload_string_tuple(value: object, label: str) -> tuple[str, ...]:
+    return tuple(_payload_string(item, label) for item in _payload_list(value, label))
+
+
+def _scope_from_json(value: object) -> FixtureScope:
+    item = _payload_object(value, ("league_key", "season", "matchweek_friday"), "Fixture Scope")
+    return FixtureScope(
+        league_key=_payload_string(item["league_key"], "league_key"),
+        season=_payload_string(item["season"], "season"),
+        matchweek_friday=_payload_string(item["matchweek_friday"], "matchweek_friday"),
+    )
+
+
+def _coverage_basis_from_json(value: object) -> CoverageBasis | None:
+    if value is None:
+        return None
+    item = _payload_object(value, ("kind", "reference_id", "version"), "Coverage Basis")
+    return CoverageBasis(
+        kind=CoverageBasisKind(_payload_string(item["kind"], "kind")),
+        reference_id=_payload_string(item["reference_id"], "reference_id"),
+        version=_payload_optional_string(item["version"], "version"),
+    )
+
+
+def _coverage_bounds_from_json(value: object) -> CoverageBounds | None:
+    if value is None:
+        return None
+    item = _payload_object(value, ("start_utc", "end_utc"), "Coverage Bounds")
+    return CoverageBounds(
+        start_utc=_payload_string(item["start_utc"], "start_utc"),
+        end_utc=_payload_string(item["end_utc"], "end_utc"),
+    )
+
+
+def _provider_attempt_from_json(value: object) -> ProviderAttempt:
+    item = _payload_object(
+        value,
+        (
+            "attempt_id",
+            "scope_id",
+            "provider_id",
+            "capability_id",
+            "state",
+            "retrieved_at_utc",
+            "http_status",
+            "capture_id",
+            "capture_digest",
+        ),
+        "Provider Attempt",
+    )
+    http_status = item["http_status"]
+    return ProviderAttempt(
+        attempt_id=_payload_string(item["attempt_id"], "attempt_id"),
+        scope_id=_payload_string(item["scope_id"], "scope_id"),
+        provider_id=_payload_string(item["provider_id"], "provider_id"),
+        capability_id=_payload_string(item["capability_id"], "capability_id"),
+        state=ProviderAttemptState(_payload_string(item["state"], "state")),
+        retrieved_at_utc=_payload_string(item["retrieved_at_utc"], "retrieved_at_utc"),
+        http_status=None if http_status is None else _payload_int(http_status, "http_status"),
+        capture_id=_payload_optional_string(item["capture_id"], "capture_id"),
+        capture_digest=_payload_optional_string(item["capture_digest"], "capture_digest"),
+    )
+
+
+def _coverage_evidence_from_json(value: object) -> ProviderCoverageEvidence:
+    item = _payload_object(
+        value,
+        (
+            "evidence_id",
+            "attempt_id",
+            "scope_id",
+            "provider_competition_key",
+            "provider_season",
+            "capture_id",
+            "capture_digest",
+            "coverage_basis",
+            "bounds",
+            "provider_use_policy_id",
+            "permitted_for_use",
+            "required_partition_ids",
+            "accounted_partition_ids",
+            "pagination_exhausted",
+            "affirmatively_empty",
+        ),
+        "Provider Coverage Evidence",
+    )
+    return ProviderCoverageEvidence(
+        evidence_id=_payload_string(item["evidence_id"], "evidence_id"),
+        attempt_id=_payload_string(item["attempt_id"], "attempt_id"),
+        scope_id=_payload_string(item["scope_id"], "scope_id"),
+        provider_competition_key=_payload_string(
+            item["provider_competition_key"], "provider_competition_key"
+        ),
+        provider_season=_payload_string(item["provider_season"], "provider_season"),
+        capture_id=_payload_string(item["capture_id"], "capture_id"),
+        capture_digest=_payload_string(item["capture_digest"], "capture_digest"),
+        coverage_basis=_coverage_basis_from_json(item["coverage_basis"]),
+        bounds=_coverage_bounds_from_json(item["bounds"]),
+        provider_use_policy_id=_payload_optional_string(
+            item["provider_use_policy_id"], "provider_use_policy_id"
+        ),
+        permitted_for_use=_payload_bool(item["permitted_for_use"], "permitted_for_use"),
+        required_partition_ids=_payload_string_tuple(
+            item["required_partition_ids"], "required_partition_ids"
+        ),
+        accounted_partition_ids=_payload_string_tuple(
+            item["accounted_partition_ids"], "accounted_partition_ids"
+        ),
+        pagination_exhausted=_payload_bool(item["pagination_exhausted"], "pagination_exhausted"),
+        affirmatively_empty=_payload_bool(item["affirmatively_empty"], "affirmatively_empty"),
+    )
+
+
+def _revision_reference_from_json(value: object) -> FixtureRevisionReference:
+    item = _payload_object(
+        value,
+        (
+            "scope_id",
+            "fixture_id",
+            "revision_id",
+            "revision_digest",
+            "source_capture_ids",
+            "source_assertion_ids",
+        ),
+        "Fixture Revision Reference",
+    )
+    return FixtureRevisionReference(
+        scope_id=_payload_string(item["scope_id"], "scope_id"),
+        fixture_id=_payload_string(item["fixture_id"], "fixture_id"),
+        revision_id=_payload_string(item["revision_id"], "revision_id"),
+        revision_digest=_payload_string(item["revision_digest"], "revision_digest"),
+        source_capture_ids=_payload_string_tuple(item["source_capture_ids"], "source_capture_ids"),
+        source_assertion_ids=_payload_string_tuple(
+            item["source_assertion_ids"], "source_assertion_ids"
+        ),
+    )
+
+
+def _identity_resolution_from_json(value: object) -> FixtureIdentityResolution:
+    item = _payload_object(
+        value,
+        (
+            "candidate_id",
+            "scope_id",
+            "state",
+            "canonical_fixture_id",
+            "revision_ids",
+            "reason_code",
+            "source_capture_ids",
+            "source_assertion_ids",
+        ),
+        "Fixture Identity Resolution",
+    )
+    return FixtureIdentityResolution(
+        candidate_id=_payload_string(item["candidate_id"], "candidate_id"),
+        scope_id=_payload_string(item["scope_id"], "scope_id"),
+        state=FixtureIdentityState(_payload_string(item["state"], "state")),
+        canonical_fixture_id=_payload_optional_string(
+            item["canonical_fixture_id"], "canonical_fixture_id"
+        ),
+        revision_ids=_payload_string_tuple(item["revision_ids"], "revision_ids"),
+        reason_code=_payload_optional_string(item["reason_code"], "reason_code"),
+        source_capture_ids=_payload_string_tuple(item["source_capture_ids"], "source_capture_ids"),
+        source_assertion_ids=_payload_string_tuple(
+            item["source_assertion_ids"], "source_assertion_ids"
+        ),
+    )
+
+
+def _freshness_result_from_json(value: object) -> CoverageFreshnessResult:
+    item = _payload_object(
+        value,
+        ("evidence_id", "policy_id", "evaluated_at_utc", "is_current"),
+        "Coverage Freshness Result",
+    )
+    return CoverageFreshnessResult(
+        evidence_id=_payload_string(item["evidence_id"], "evidence_id"),
+        policy_id=_payload_string(item["policy_id"], "policy_id"),
+        evaluated_at_utc=_payload_string(item["evaluated_at_utc"], "evaluated_at_utc"),
+        is_current=_payload_bool(item["is_current"], "is_current"),
+    )
+
+
+def _scope_assessment_from_json(value: object) -> FixtureScopeAssessment:
+    item = _payload_object(
+        value,
+        (
+            "scope",
+            "coverage_state",
+            "provider_attempt_ids",
+            "coverage_evidence_ids",
+            "fixture_revisions",
+            "identity_blocker_candidate_ids",
+            "freshness_results",
+            "current_coverage_evidence_ids",
+            "stale_coverage_evidence_ids",
+        ),
+        "Fixture Scope Assessment",
+    )
+    return FixtureScopeAssessment(
+        scope=_scope_from_json(item["scope"]),
+        coverage_state=ScopeCoverageState(
+            _payload_string(item["coverage_state"], "coverage_state")
+        ),
+        provider_attempt_ids=_payload_string_tuple(
+            item["provider_attempt_ids"], "provider_attempt_ids"
+        ),
+        coverage_evidence_ids=_payload_string_tuple(
+            item["coverage_evidence_ids"], "coverage_evidence_ids"
+        ),
+        fixture_revisions=tuple(
+            _revision_reference_from_json(entry)
+            for entry in _payload_list(item["fixture_revisions"], "fixture_revisions")
+        ),
+        identity_blocker_candidate_ids=_payload_string_tuple(
+            item["identity_blocker_candidate_ids"], "identity_blocker_candidate_ids"
+        ),
+        freshness_results=tuple(
+            _freshness_result_from_json(entry)
+            for entry in _payload_list(item["freshness_results"], "freshness_results")
+        ),
+        current_coverage_evidence_ids=_payload_string_tuple(
+            item["current_coverage_evidence_ids"], "current_coverage_evidence_ids"
+        ),
+        stale_coverage_evidence_ids=_payload_string_tuple(
+            item["stale_coverage_evidence_ids"], "stale_coverage_evidence_ids"
+        ),
+    )
 
 
 def _full_partitions_accounted(evidence: ProviderCoverageEvidence) -> bool:

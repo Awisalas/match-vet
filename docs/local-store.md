@@ -33,7 +33,7 @@ Every authoritative writer uses:
 
 One private lock file permits one MatchVet writer coordinator. Write work uses explicit bounded transactions. Network, parsing, modelling, and report work must remain outside them.
 
-## Schema version 9
+## Schema version 10
 
 The schema contains:
 
@@ -58,6 +58,8 @@ The schema contains:
 - verified venue location provenance and bounded Open-Meteo forecast captures
 - cutoff-classified Important weather evidence, including explicit UNKNOWN states
 - append-only T10 Settlement Evidence Sets, Settlement Grades, and grade-to-evidence links
+- immutable F01 Fixture Coverage Assessments with their complete canonical values and links to
+  existing Fixture Revisions, source captures, and source assertions
 
 Later tickets add their own entities through new migrations.
 
@@ -73,9 +75,9 @@ verified private SQLite pre-migration copy before a released migration runs. Mig
 T06 structured-ingestion records and append-only source assertions. Migration 5 adds T05
 Matchweek freeze records and cutoff membership. Migration 6 adds T07 contextual evidence
 records. Migration 7 adds T08 workload and weather evidence records. Migration 8 adds T09 frozen
-evidence states. Migration 9 adds the T10 append-only settlement evidence and grade records. A
-custom or unsupported migration plan remains refused; T17 backup accepts only stores matching
-the current application and migration identity.
+evidence states. Migration 9 adds the T10 append-only settlement evidence and grade records.
+Migration 10 adds F03 Fixture Coverage Assessment persistence. Migrations 1 through 9 remain
+unchanged. A custom or unsupported migration plan remains refused.
 
 ## Recovery behavior
 
@@ -95,15 +97,17 @@ matched against the copied artifact catalog.
 
 The shared destination is written as `<destination>.partial`, flushed, read back, and verified.
 Only after the complete database/object/manifest verification succeeds is the final `COMPLETE`
-marker written. Missing markers, partial bundles, changed manifests, incompatible migrations,
+marker written. Missing markers, partial bundles, changed manifests, unknown migration histories,
 SQLite integrity or foreign-key failures, missing objects, and digest mismatches are refused with
-stable `MV-T17-*` error codes. Shared storage contains no credentials, locks, WAL sidecars,
+stable `MV-T17-*` error codes. T17 accepts a database whose migration history is an exact known
+prefix of the current migration list. Shared storage contains no credentials, locks, WAL sidecars,
 caches, or executable authoritative state.
 
-`matchvet restore` verifies the complete bundle before creating a private target. It copies into
-private `.partial` staging, repeats compatibility, SQLite, catalog, and object checks, and then
-installs only into a new database path; an existing target is never overwritten. Object files are
-created only when their digest path is absent and are never replaced with different bytes. A
-failed activation removes only operation-owned target files/staging and leaves the current
-authoritative database, append-only records, frozen evidence, grades, policy, versions, and
-protected objects unchanged.
+`matchvet restore` verifies the complete bundle before creating a private target. It copies the
+bundle into isolated private staging and leaves the original bundle unchanged. For a backup from
+an older schema, restore verifies the known migration prefix and forward-migrates only the staged
+database. It then reruns current integrity, foreign-key, schema, artifact-catalog, and object checks
+before activation. Restore never downgrades a database. It installs only into a new database path; an
+existing target is never overwritten. Object files are created only when their digest path is
+absent and are never replaced with different bytes. A failed activation removes only
+operation-owned target files and staging.
