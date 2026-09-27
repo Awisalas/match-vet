@@ -905,7 +905,7 @@ def test_schema_nine_backup_restores_through_staged_forward_migration(
     } == original_bundle
 
 
-def test_schema_ten_backup_restores_through_migration_eleven_without_changing_bundle(
+def test_schema_ten_backup_restores_through_current_migrations_without_changing_bundle(
     tmp_path: Path,
 ) -> None:
     from matchvet.fixture_coverage import FixtureCoverageAssessment
@@ -930,7 +930,7 @@ def test_schema_ten_backup_restores_through_migration_eleven_without_changing_bu
         resource_observation=_safe_resource_observation(),
     )
     assert restored.status == "COMPLETE"
-    assert inspect_store(target, private_root=private_root).schema_version == 11
+    assert inspect_store(target, private_root=private_root).schema_version == len(MIGRATIONS)
     with open_store(target, private_root=private_root) as store:
         assessment = cast(FixtureCoverageAssessment, expected["assessment"])
         assert FixtureCoverageRepository(store).get(assessment.digest) == assessment
@@ -952,6 +952,7 @@ def test_schema_ten_backup_restores_through_migration_eleven_without_changing_bu
 def test_schema_eleven_backup_restore_keeps_provider_health_digests_and_bundle_bytes(
     tmp_path: Path,
 ) -> None:
+    import matchvet.t17 as t17
     from matchvet.fixture_coverage import (
         ProviderAttempt,
         ProviderAttemptState,
@@ -959,10 +960,16 @@ def test_schema_eleven_backup_restore_keeps_provider_health_digests_and_bundle_b
         fixture_scopes_for_matchweek,
     )
     from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.provider_health import (
+        FixtureCoverageAssessmentReference,
+        provider_health_record_to_canonical_json,
+    )
     from matchvet.provider_health_acquisition import build_provider_health_records
     from matchvet.provider_health_repository import ProviderHealthRepository
 
-    private_root, database_path = _private_store(tmp_path)
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "matchvet.sqlite3"
     attempts = tuple(
         ProviderAttempt(
             attempt_id=f"backup-attempt-{provider_id}",
@@ -984,16 +991,76 @@ def test_schema_eleven_backup_restore_keeps_provider_health_digests_and_bundle_b
     )
     records = build_provider_health_records(assessment)
     expected_digests = tuple(record.digest for record in records)
-    with open_store(database_path, private_root=private_root) as store:
+    with open_store(
+        database_path,
+        private_root=private_root,
+        migrations=MIGRATIONS[:11],
+    ) as store:
         FixtureCoverageRepository(store).persist(assessment)
-        ProviderHealthRepository(store).persist_many(records)
+        with store.transaction() as transaction:
+            for record in records:
+                scope = record.requested_scope.fixture_scope
+                assert scope is not None
+                assessment_reference = next(
+                    reference
+                    for reference in record.provenance
+                    if isinstance(reference, FixtureCoverageAssessmentReference)
+                )
+                transaction.execute(
+                    """
+                    INSERT INTO provider_health_records (
+                        record_digest, record_json, contract_version, record_schema_version,
+                        provider_id, capability_id, fixture_scope_id, season, matchweek_friday,
+                        intended_use_id, checked_at_utc, assessment_digest,
+                        first_persisted_at_utc
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.digest,
+                        provider_health_record_to_canonical_json(record),
+                        record.contract_version,
+                        record.schema_version,
+                        record.provider.provider_id,
+                        record.capability.capability_id,
+                        scope.scope_id,
+                        scope.season,
+                        scope.matchweek_friday,
+                        record.intended_use_id,
+                        record.checked_at_utc,
+                        assessment_reference.assessment_digest,
+                        "2026-09-16T13:00:00.000000+00:00",
+                    ),
+                )
 
     source = tmp_path / "shared" / "schema-eleven-health-backup"
-    backup_store(
-        database_path,
-        source,
-        private_root=private_root,
-        resource_observation=_safe_resource_observation(),
+    source.mkdir(parents=True)
+    staged_database = source / "database.sqlite3"
+    t17._online_backup(database_path, staged_database)
+    database_length, database_digest = digest_file(staged_database)
+    manifest = t17._build_backup_manifest(
+        {
+            "path": "database.sqlite3",
+            "kind": "DATABASE",
+            "media_type": "application/vnd.sqlite3",
+            "byte_length": database_length,
+            "sha256": database_digest,
+        },
+        [],
+        schema_version=11,
+        migration_checksums=tuple(migration.checksum for migration in MIGRATIONS[:11]),
+    )
+    (source / "manifest.json").write_bytes(manifest.to_bytes())
+    (source / "COMPLETE").write_bytes(
+        CompletionMarker.from_payload(
+            {
+                "schema": "matchvet.t17.completion",
+                "schema_version": T17_SCHEMA_VERSION,
+                "kind": "BACKUP",
+                "state": "COMPLETE",
+                "manifest_digest": manifest.digest,
+                "identity": manifest.identity,
+            }
+        ).to_bytes()
     )
     assert verify_backup(source).details["schema_version"] == 11
     original_bundle = {
@@ -1011,6 +1078,7 @@ def test_schema_eleven_backup_restore_keeps_provider_health_digests_and_bundle_b
     )
     with open_store(target, private_root=private_root) as store:
         repository = ProviderHealthRepository(store)
+        assert store.status.schema_version == len(MIGRATIONS)
         restored_records = repository.list_for_matchweek("2026-27", "2026-09-25")
         assert {record.digest for record in restored_records} == set(expected_digests)
         assert tuple(repository.get(digest) for digest in expected_digests) == records

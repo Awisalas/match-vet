@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -44,14 +45,28 @@ def run_matchvet(
     if extra_environment is not None:
         environment.update(extra_environment)
 
-    return subprocess.run(
-        [sys.executable, "-m", "matchvet", *arguments],
-        cwd=cwd,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    if any(argument == "--store" or argument.startswith("--store=") for argument in arguments):
+        return subprocess.run(
+            [sys.executable, "-m", "matchvet", *arguments],
+            cwd=cwd,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="matchvet-cli-private-root-") as isolated_root:
+        base_prefix = Path(isolated_root) / "files" / "usr"
+        base_prefix.mkdir(parents=True)
+        environment["MATCHVET_TEST_BASE_PREFIX"] = str(base_prefix)
+        return subprocess.run(
+            [sys.executable, "-m", "matchvet", *arguments],
+            cwd=cwd,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
 
 
 def _t18_cli_corpus() -> dict[str, object]:
@@ -719,12 +734,18 @@ def test_normal_commands_work_with_live_network_sockets_denied() -> None:
         assert "forbids live network sockets" not in result.stderr
 
 
-def test_installed_matchvet_command_exposes_the_same_bootstrap_state() -> None:
+def test_installed_matchvet_command_exposes_the_same_bootstrap_state(tmp_path: Path) -> None:
     executable = Path(sys.executable).parent / "matchvet"
+    base_prefix = tmp_path / "files" / "usr"
+    base_prefix.mkdir(parents=True)
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join((str(NETWORK_GUARD), str(PROJECT_ROOT / "src")))
+    environment["MATCHVET_TEST_BASE_PREFIX"] = str(base_prefix)
 
     result = subprocess.run(
         [executable],
         cwd=PROJECT_ROOT,
+        env=environment,
         check=False,
         capture_output=True,
         text=True,

@@ -784,7 +784,7 @@ def test_schema_nine_migrates_existing_v1_and_t05_records_unchanged(tmp_path: Pa
 
     with open_store(database_path, private_root=private_root) as migrated:
         after_importer = FixtureHistoryImporter(migrated, private_root=private_root)
-        assert migrated.status.schema_version == 11
+        assert migrated.status.schema_version == len(MIGRATIONS)
         assert after_importer.fixtures() == before_fixtures
         assert after_importer.source_captures() == before_captures
         assert after_importer.source_assertions() == before_assertions

@@ -421,14 +421,11 @@ def test_repository_is_idempotent_and_appends_deterministic_history(tmp_path: Pa
         )
 
 
-def test_repository_rejects_conflicting_logical_observations_without_writes(
+def test_repository_persists_each_attempt_with_matching_observation_fields(
     tmp_path: Path,
 ) -> None:
     from matchvet.fixture_coverage_repository import FixtureCoverageRepository
-    from matchvet.provider_health_repository import (
-        ProviderHealthIntegrityError,
-        ProviderHealthRepository,
-    )
+    from matchvet.provider_health_repository import ProviderHealthRepository
     from matchvet.store import open_store
 
     private_root = tmp_path / "private"
@@ -451,8 +448,58 @@ def test_repository_rejects_conflicting_logical_observations_without_writes(
         FixtureCoverageRepository(store).persist(assessment)
         repository = ProviderHealthRepository(store)
 
+        repository.persist_many(conflicting_records)
+        history = repository.list_for_matchweek("2026-27", "2026-09-25")
+
+        assert len(history) == 2
+        assert {record.digest for record in history} == {
+            record.digest for record in conflicting_records
+        }
+        assert {
+            reference.attempt_id
+            for record in history
+            for reference in record.provenance
+            if isinstance(reference, ProviderAttemptReference)
+        } == {attempt.attempt_id for attempt in attempts}
+        repository.persist_many(conflicting_records)
+        assert repository.list_for_matchweek("2026-27", "2026-09-25") == history
+
+
+def test_repository_rejects_conflicting_content_for_one_attempt_assessment_pair(
+    tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.provider_health_repository import (
+        ProviderHealthIntegrityError,
+        ProviderHealthRepository,
+    )
+    from matchvet.store import open_store
+
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    attempt = ProviderAttempt(
+        attempt_id="attempt-exact-context-conflict",
+        scope_id="premier_league:2026-27:2026-09-25",
+        provider_id="openfootball-json",
+        capability_id="scheduled-fixtures",
+        state=ProviderAttemptState.UNAVAILABLE,
+        retrieved_at_utc="2026-09-16T12:00:00.000000+00:00",
+    )
+    assessment = _assessment((attempt,))
+    (record,) = build_provider_health_records(assessment)
+    conflicting_record = replace(
+        record,
+        checked_at_utc="2026-09-16T12:01:00.000000+00:00",
+    )
+
+    with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        FixtureCoverageRepository(store).persist(assessment)
+        repository = ProviderHealthRepository(store)
+
         with pytest.raises(ProviderHealthIntegrityError, match="observation key"):
-            repository.persist_many(conflicting_records)
+            repository.persist_many((record, conflicting_record))
 
         assert repository.list_for_matchweek("2026-27", "2026-09-25") == ()
 
@@ -693,8 +740,8 @@ def test_schema_ten_migrates_forward_without_changing_t06_t05_or_f03_values(
     assert old_checksums == tuple(migration.checksum for migration in MIGRATIONS[:10])
 
     with open_store(database_path, private_root=private_root) as migrated:
-        assert migrated.status.schema_version == 11
-        assert migrated.status.applied_migrations == tuple(range(1, 12))
+        assert migrated.status.schema_version == len(MIGRATIONS)
+        assert migrated.status.applied_migrations == tuple(range(1, len(MIGRATIONS) + 1))
         assert FixtureCoverageRepository(migrated).get(assessment.digest) == assessment
         assert (
             tuple(
@@ -716,10 +763,10 @@ def test_schema_ten_migrates_forward_without_changing_t06_t05_or_f03_values(
             ).fetchall()
         )
     assert new_checksums[:10] == old_checksums
-    assert len(new_checksums) == 11
+    assert len(new_checksums) == len(MIGRATIONS)
 
 
-def test_schema_eleven_refuses_an_older_migration_plan(tmp_path: Path) -> None:
+def test_schema_twelve_refuses_a_schema_eleven_migration_plan(tmp_path: Path) -> None:
     from matchvet.store import MIGRATIONS, StoreMode, open_store
 
     private_root = tmp_path / "private"
@@ -728,7 +775,7 @@ def test_schema_eleven_refuses_an_older_migration_plan(tmp_path: Path) -> None:
     with open_store(database_path, private_root=private_root):
         pass
 
-    with open_store(database_path, private_root=private_root, migrations=MIGRATIONS[:10]) as store:
+    with open_store(database_path, private_root=private_root, migrations=MIGRATIONS[:11]) as store:
         assert store.status.mode is StoreMode.READ_ONLY_RECOVERY
         assert store.status.issues[0].code == "MV-STORE-SCHEMA_TOO_NEW"
 
@@ -958,10 +1005,12 @@ def test_scheduled_replay_preserves_f01_f03_references_and_f05_digests(
             )
 
 
-def test_cached_attempt_replay_is_idempotent_when_sibling_attempt_changes(
+def test_cached_attempt_replay_preserves_each_exact_assessment_context(
     tmp_path: Path,
 ) -> None:
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
     from matchvet.ingestion import (
+        DownloadedSource,
         FixtureHistoryAcquirer,
         FixtureHistoryImporter,
         IngestionPlan,
@@ -978,8 +1027,34 @@ def test_cached_attempt_replay_is_idempotent_when_sibling_attempt_changes(
     league = league_by_key("premier_league")
     json_url = openfootball_url(league, "2026-27")
     text_url = openfootball_text_url(league, "2026-27")
-    fetcher = StaticSourceFetcher(
-        {json_url: b'{"matches":[]}'},
+
+    class SiblingRetryFetcher(StaticSourceFetcher):
+        sibling_calls = 0
+
+        def fetch(self, url: str, *, cache_key: str, refresh: bool = False) -> DownloadedSource:
+            downloaded = super().fetch(url, cache_key=cache_key, refresh=refresh)
+            if url != text_url:
+                return downloaded
+            self.sibling_calls += 1
+            retrieved_at = (
+                "2026-09-16T12:01:00.000000+00:00"
+                if self.sibling_calls == 1
+                else "2026-09-16T12:02:00.000000+00:00"
+            )
+            return DownloadedSource(
+                content=downloaded.content,
+                retrieved_at_utc=retrieved_at,
+                response_status=downloaded.response_status,
+                content_type=downloaded.content_type,
+                from_cache=downloaded.from_cache,
+                bytes_downloaded=downloaded.bytes_downloaded,
+            )
+
+    fetcher = SiblingRetryFetcher(
+        {
+            json_url: b'{"matches":[]}',
+            text_url: b"= Empty schedule\n",
+        },
         retrieved_at_utc="2026-09-16T12:00:00.000000+00:00",
     )
     plan = IngestionPlan(
@@ -994,8 +1069,20 @@ def test_cached_attempt_replay_is_idempotent_when_sibling_attempt_changes(
         )
 
         first = acquirer.acquire_scheduled_fixtures(plan)
+        first_sibling_attempt = next(
+            attempt
+            for attempt in first.assessment.provider_attempts
+            if attempt.provider_id == "openfootball-footballtxt"
+        )
+        fetcher.sources[text_url] = b"= Empty schedule\n# sibling retry\n"
         second = acquirer.acquire_scheduled_fixtures(plan)
-        history = ProviderHealthRepository(store).list_for_matchweek("2026-27", "2026-09-25")
+        second_sibling_attempt = next(
+            attempt
+            for attempt in second.assessment.provider_attempts
+            if attempt.provider_id == "openfootball-footballtxt"
+        )
+        repository = ProviderHealthRepository(store)
+        history_after_second = repository.list_for_matchweek("2026-27", "2026-09-25")
 
         first_json_attempt = next(
             attempt
@@ -1009,22 +1096,90 @@ def test_cached_attempt_replay_is_idempotent_when_sibling_attempt_changes(
         )
         assert first_json_attempt == second_json_attempt
         assert first.assessment.digest != second.assessment.digest
+        assert first_sibling_attempt != second_sibling_attempt
+        assert first_sibling_attempt.capture_digest != second_sibling_attempt.capture_digest
+
         json_records = tuple(
-            record for record in history if record.provider.provider_id == "openfootball-json"
+            record
+            for record in history_after_second
+            if record.provider.provider_id == "openfootball-json"
         )
         text_records = tuple(
             record
-            for record in history
+            for record in history_after_second
             if record.provider.provider_id == "openfootball-footballtxt"
         )
-        assert len(json_records) == 1
+        assert len(json_records) == 2
         assert len(text_records) == 2
-        assert any(
-            isinstance(reference, FixtureCoverageAssessmentReference)
-            and reference.assessment_digest == first.assessment.digest
-            for reference in json_records[0].provenance
+        assert len(history_after_second) == 4
+        records_by_assessment_and_attempt = {}
+        for acquisition in (first, second):
+            assessment = acquisition.assessment
+            for attempt in assessment.provider_attempts:
+                matching = tuple(
+                    record
+                    for record in history_after_second
+                    if ProviderAttemptReference.from_f01(attempt) in record.provenance
+                    and any(
+                        isinstance(reference, FixtureCoverageAssessmentReference)
+                        and reference.assessment_digest == assessment.digest
+                        for reference in record.provenance
+                    )
+                )
+                assert len(matching) == 1
+                record = matching[0]
+                assert repository.get(record.digest) == record
+                assert FixtureCoverageRepository(store).get(assessment.digest) == assessment
+                records_by_assessment_and_attempt[(assessment.digest, attempt.attempt_id)] = record
+
+        first_json_record = records_by_assessment_and_attempt[
+            (first.assessment.digest, first_json_attempt.attempt_id)
+        ]
+        second_json_record = records_by_assessment_and_attempt[
+            (second.assessment.digest, second_json_attempt.attempt_id)
+        ]
+        assert first_json_record.digest != second_json_record.digest
+
+        def sort_key(record: ProviderHealthRecord) -> tuple[str, ...]:
+            scope = record.requested_scope.fixture_scope
+            assert scope is not None
+            return (
+                record.checked_at_utc,
+                record.provider.provider_id,
+                record.capability.capability_id,
+                scope.scope_id,
+                record.intended_use_id,
+                record.digest,
+            )
+
+        assert history_after_second == tuple(sorted(history_after_second, key=sort_key))
+        assert history_after_second == repository.list_for_matchweek("2026-27", "2026-09-25")
+
+        before_replay = tuple(
+            tuple(row)
+            for row in store._connection_for_repository()
+            .execute(
+                "SELECT record_digest, first_persisted_at_utc FROM provider_health_records "
+                "ORDER BY record_digest"
+            )
+            .fetchall()
         )
-        assert fetcher.calls == [json_url, text_url, json_url, text_url]
+        third = acquirer.acquire_scheduled_fixtures(plan)
+        history_after_replay = repository.list_for_matchweek("2026-27", "2026-09-25")
+        after_replay = tuple(
+            tuple(row)
+            for row in store._connection_for_repository()
+            .execute(
+                "SELECT record_digest, first_persisted_at_utc FROM provider_health_records "
+                "ORDER BY record_digest"
+            )
+            .fetchall()
+        )
+
+        assert third.assessment.digest == second.assessment.digest
+        assert history_after_replay == history_after_second
+        assert after_replay == before_replay
+        assert fetcher.calls == [json_url, text_url, json_url, text_url, json_url, text_url]
 
 
 def test_local_resource_limit_through_f02_stays_unknown_in_f05(

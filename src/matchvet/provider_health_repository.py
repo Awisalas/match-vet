@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ from datetime import UTC, date, datetime
 from matchvet.fixture_coverage import FixtureCoverageAssessment
 from matchvet.fixture_coverage_repository import FixtureCoverageRepository
 from matchvet.provider_health import (
-    EvidenceReferenceKind,
     F01FixtureScopeReference,
     FixtureCoverageAssessmentReference,
     ProviderAttemptReference,
@@ -52,6 +50,7 @@ class _RecordMetadata:
     matchweek_friday: str
     intended_use_id: str
     checked_at_utc: str
+    attempt_id: str
     assessment_digest: str
 
     def indexed_values(self) -> tuple[object, ...]:
@@ -67,6 +66,7 @@ class _RecordMetadata:
             self.matchweek_friday,
             self.intended_use_id,
             self.checked_at_utc,
+            self.attempt_id,
             self.assessment_digest,
         )
 
@@ -83,7 +83,7 @@ class ProviderHealthRepository:
             records = tuple(records)
         metadata_by_digest: dict[str, _RecordMetadata] = {}
         records_by_digest: dict[str, ProviderHealthRecord] = {}
-        logical_keys: dict[tuple[str, str, str, str, str], str] = {}
+        logical_keys: dict[tuple[str, str], str] = {}
         assessments: dict[str, FixtureCoverageAssessment] = {}
 
         for record in records:
@@ -95,13 +95,7 @@ class ProviderHealthRepository:
                 raise ProviderHealthIntegrityError(
                     "One F04 digest identifies conflicting canonical records."
                 )
-            key = (
-                metadata.provider_id,
-                metadata.capability_id,
-                metadata.fixture_scope_id,
-                metadata.intended_use_id,
-                metadata.checked_at_utc,
-            )
+            key = (metadata.assessment_digest, metadata.attempt_id)
             prior_digest = logical_keys.get(key)
             if prior_digest is not None and prior_digest != record.digest:
                 raise ProviderHealthIntegrityError(
@@ -135,7 +129,7 @@ class ProviderHealthRepository:
                         SELECT record_digest, record_json, contract_version,
                                record_schema_version, provider_id, capability_id,
                                fixture_scope_id, season, matchweek_friday, intended_use_id,
-                               checked_at_utc, assessment_digest
+                               checked_at_utc, attempt_id, assessment_digest
                         FROM provider_health_records
                         WHERE record_digest = ?
                         """,
@@ -154,32 +148,22 @@ class ProviderHealthRepository:
                         SELECT record_digest, record_json, contract_version,
                                record_schema_version, provider_id, capability_id,
                                fixture_scope_id, season, matchweek_friday, intended_use_id,
-                               checked_at_utc, assessment_digest, first_persisted_at_utc
+                               checked_at_utc, attempt_id, assessment_digest,
+                               first_persisted_at_utc
                         FROM provider_health_records
-                        WHERE provider_id = ? AND capability_id = ?
-                          AND fixture_scope_id = ? AND intended_use_id = ?
-                          AND checked_at_utc = ?
+                        WHERE assessment_digest = ? AND attempt_id = ?
                         """,
                         (
-                            metadata.provider_id,
-                            metadata.capability_id,
-                            metadata.fixture_scope_id,
-                            metadata.intended_use_id,
-                            metadata.checked_at_utc,
+                            metadata.assessment_digest,
+                            metadata.attempt_id,
                         ),
                     ).fetchone()
                     if logical is not None:
-                        prior_record = self._decode_row(tuple(logical), assessments)
-                        candidate = records_by_digest[digest]
-                        # A cached F01 attempt can recur inside a newer assessment when a
-                        # sibling feed was retried. Keep its first exact F03 reference when
-                        # every other F04 observation fact still matches.
-                        if not _is_replayed_attempt(prior_record, candidate):
-                            raise ProviderHealthIntegrityError(
-                                "One provider health observation key already has different content."
-                            )
-                        persisted_digests.add(prior_record.digest)
-                        continue
+                        self._decode_row(tuple(logical), assessments)
+                        raise ProviderHealthIntegrityError(
+                            "One provider health observation key has different content for the "
+                            "same exact F01 assessment."
+                        )
 
                     if persisted_at is None:
                         persisted_at = datetime.now(UTC).isoformat(timespec="microseconds")
@@ -190,8 +174,9 @@ class ProviderHealthRepository:
                             record_digest, record_json, contract_version,
                             record_schema_version, provider_id, capability_id,
                             fixture_scope_id, season, matchweek_friday, intended_use_id,
-                            checked_at_utc, assessment_digest, first_persisted_at_utc
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            checked_at_utc, attempt_id, assessment_digest,
+                            first_persisted_at_utc
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (*metadata.indexed_values(), persisted_at),
                     )
@@ -210,7 +195,7 @@ class ProviderHealthRepository:
             """
             SELECT record_digest, record_json, contract_version, record_schema_version,
                    provider_id, capability_id, fixture_scope_id, season, matchweek_friday,
-                   intended_use_id, checked_at_utc, assessment_digest,
+                   intended_use_id, checked_at_utc, attempt_id, assessment_digest,
                    first_persisted_at_utc
             FROM provider_health_records
             WHERE record_digest = ?
@@ -255,7 +240,7 @@ class ProviderHealthRepository:
             f"""
             SELECT record_digest, record_json, contract_version, record_schema_version,
                    provider_id, capability_id, fixture_scope_id, season, matchweek_friday,
-                   intended_use_id, checked_at_utc, assessment_digest,
+                   intended_use_id, checked_at_utc, attempt_id, assessment_digest,
                    first_persisted_at_utc
             FROM provider_health_records
             WHERE {" AND ".join(clauses)}
@@ -272,7 +257,7 @@ class ProviderHealthRepository:
         row: tuple[object, ...],
         assessment_cache: dict[str, FixtureCoverageAssessment],
     ) -> ProviderHealthRecord:
-        if len(row) != 13:
+        if len(row) != 14:
             raise ProviderHealthIntegrityError("Stored F05 row has an unsupported shape.")
         digest = str(row[0])
         _validate_digest(digest)
@@ -284,7 +269,7 @@ class ProviderHealthRepository:
                 "Stored F04 canonical JSON is invalid or has a digest mismatch."
             ) from error
         metadata = _record_metadata(record)
-        if tuple(row[:12]) != metadata.indexed_values() or not str(row[12]):
+        if tuple(row[:13]) != metadata.indexed_values() or not str(row[13]):
             raise ProviderHealthIntegrityError(
                 "Stored F05 indexed metadata does not match its canonical record."
             )
@@ -313,9 +298,11 @@ def _record_metadata(record: ProviderHealthRecord) -> _RecordMetadata:
     fixture_scope = record.requested_scope.fixture_scope
     if fixture_scope is None:
         raise ProviderHealthIntegrityError("F05 requires the exact F01 Fixture Scope.")
+    # F05 retains both identity references in top-level provenance. Migration 12 indexes the
+    # same canonical locations when it preserves schema-11 rows and enforces the row key.
     assessment_references = tuple(
         reference
-        for reference in _record_references(record)
+        for reference in record.provenance
         if isinstance(reference, FixtureCoverageAssessmentReference)
     )
     unique_assessment_references = set(assessment_references)
@@ -326,6 +313,13 @@ def _record_metadata(record: ProviderHealthRecord) -> _RecordMetadata:
     assessment_reference = next(iter(unique_assessment_references))
     if _F01_DIGEST_RE.fullmatch(assessment_reference.assessment_digest) is None:
         raise ProviderHealthIntegrityError("F05 assessment digest is malformed.")
+    attempt_ids = {
+        reference.attempt_id
+        for reference in record.provenance
+        if isinstance(reference, ProviderAttemptReference)
+    }
+    if len(attempt_ids) != 1:
+        raise ProviderHealthIntegrityError("F05 record must identify exactly one F01 attempt.")
     return _RecordMetadata(
         record_digest=record.digest,
         record_json=encoded,
@@ -338,42 +332,9 @@ def _record_metadata(record: ProviderHealthRecord) -> _RecordMetadata:
         matchweek_friday=fixture_scope.matchweek_friday,
         intended_use_id=record.intended_use_id,
         checked_at_utc=record.checked_at_utc,
+        attempt_id=next(iter(attempt_ids)),
         assessment_digest=assessment_reference.assessment_digest,
     )
-
-
-def _is_replayed_attempt(persisted: ProviderHealthRecord, candidate: ProviderHealthRecord) -> bool:
-    persisted_attempts = tuple(
-        reference
-        for reference in persisted.provenance
-        if isinstance(reference, ProviderAttemptReference)
-    )
-    candidate_attempts = tuple(
-        reference
-        for reference in candidate.provenance
-        if isinstance(reference, ProviderAttemptReference)
-    )
-    if len(persisted_attempts) != 1 or persisted_attempts != candidate_attempts:
-        return False
-    return _without_assessment_reference(persisted) == _without_assessment_reference(candidate)
-
-
-def _without_assessment_reference(record: ProviderHealthRecord) -> object:
-    payload = json.loads(provider_health_record_to_canonical_json(record))
-    assessment_kind = EvidenceReferenceKind.FIXTURE_COVERAGE_ASSESSMENT.value
-    if isinstance(payload, dict):
-        payload["digest"] = "<observation-digest>"
-
-    def normalize(value: object) -> object:
-        if isinstance(value, dict):
-            if value.get("reference_kind") == assessment_kind:
-                return {"reference_kind": assessment_kind}
-            return {key: normalize(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [normalize(item) for item in value]
-        return value
-
-    return normalize(payload)
 
 
 def _record_references(record: ProviderHealthRecord) -> tuple[object, ...]:

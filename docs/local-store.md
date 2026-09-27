@@ -33,7 +33,7 @@ Every authoritative writer uses:
 
 One private lock file permits one MatchVet writer coordinator. Write work uses explicit bounded transactions. Network, parsing, modelling, and report work must remain outside them.
 
-## Schema version 11
+## Schema version 12
 
 The schema contains:
 
@@ -60,8 +60,8 @@ The schema contains:
 - append-only T10 Settlement Evidence Sets, Settlement Grades, and grade-to-evidence links
 - immutable F01 Fixture Coverage Assessments with their complete canonical values and links to
   existing Fixture Revisions, source captures, and source assertions
-- immutable F04 Provider Health Records with canonical JSON, exact F03 assessment references, and
-  indexed Matchweek history metadata
+- immutable F04 Provider Health Records with canonical JSON, exact F03 assessment references,
+  per-attempt assessment identity, and indexed Matchweek history metadata
 
 Later tickets add their own entities through new migrations.
 
@@ -79,8 +79,10 @@ Matchweek freeze records and cutoff membership. Migration 6 adds T07 contextual 
 records. Migration 7 adds T08 workload and weather evidence records. Migration 8 adds T09 frozen
 evidence states. Migration 9 adds the T10 append-only settlement evidence and grade records.
 Migration 10 adds F03 Fixture Coverage Assessment persistence. Migration 11 adds immutable F04
-Provider Health Record persistence. Migrations 1 through 10 remain unchanged. A custom or
-unsupported migration plan remains refused.
+Provider Health Record persistence. Migration 12 gives each F04 record the identity of its exact
+F03 assessment and F01 Provider Attempt pair, preserving existing records while allowing a reused
+attempt to retain provenance in each assessment. Migrations 1 through 11 remain unchanged. A custom
+or unsupported migration plan remains refused.
 
 ## Recovery behavior
 

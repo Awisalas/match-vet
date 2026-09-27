@@ -361,3 +361,6 @@ One of KNOWN, UNBOUNDED, NOT_APPLICABLE, or UNKNOWN. UNKNOWN means the requested
 
 **Provider Health Dimensions**:
 Separate permission, reachability, capability availability, structural validity, freshness, coverage, and failure assessments. No combined provider-wide health verdict replaces these dimensions.
+
+**Provider Health Record Identity**:
+The pair of exact Fixture Coverage Assessment digest and Provider Attempt ID. F05 persists one record per pair. Replaying the same pair is idempotent; reusing an attempt in another assessment creates another immutable record because its assessment reference changes the provenance and F04 digest.

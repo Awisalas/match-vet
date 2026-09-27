@@ -2664,6 +2664,197 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=12,
+        name="provider_health_assessment_attempt_identity",
+        statements=(
+            """
+            CREATE TABLE provider_health_records_v12 (
+                record_digest TEXT PRIMARY KEY
+                    CHECK (
+                        length(record_digest) = 71
+                        AND substr(record_digest, 1, 7) = 'sha256:'
+                        AND substr(record_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                record_json TEXT NOT NULL
+                    CHECK (
+                        json_valid(record_json)
+                        AND json_type(record_json, '$') = 'object'
+                        AND json_type(record_json, '$.digest') IS 'text'
+                        AND json_type(record_json, '$.contract_version') IS 'text'
+                        AND json_type(record_json, '$.schema_version') IS 'integer'
+                        AND json_extract(record_json, '$.digest') = record_digest
+                        AND json_extract(record_json, '$.contract_version') = contract_version
+                        AND json_extract(record_json, '$.schema_version') = record_schema_version
+                        AND json_extract(record_json, '$.provider.provider_id') = provider_id
+                        AND json_extract(record_json, '$.capability.capability_id') = capability_id
+                        AND json_extract(
+                            record_json, '$.requested_scope.fixture_scope.scope_id'
+                        ) = fixture_scope_id
+                        AND json_extract(
+                            record_json, '$.requested_scope.fixture_scope.season'
+                        ) = season
+                        AND json_extract(
+                            record_json, '$.requested_scope.fixture_scope.matchweek_friday'
+                        ) = matchweek_friday
+                        AND json_extract(record_json, '$.intended_use_id') = intended_use_id
+                        AND json_extract(record_json, '$.checked_at_utc') = checked_at_utc
+                        AND json_type(record_json, '$.provider') IS 'object'
+                        AND json_type(record_json, '$.provider.provider_id') IS 'text'
+                        AND json_type(record_json, '$.capability') IS 'object'
+                        AND json_type(record_json, '$.capability.capability_id') IS 'text'
+                        AND json_type(record_json, '$.requested_scope.fixture_scope') IS 'object'
+                        AND json_type(
+                            record_json, '$.requested_scope.fixture_scope.scope_id'
+                        ) IS 'text'
+                        AND json_type(record_json, '$.requested_scope.fixture_scope.season')
+                            IS 'text'
+                        AND json_type(
+                            record_json,
+                            '$.requested_scope.fixture_scope.matchweek_friday'
+                        ) IS 'text'
+                        AND json_type(record_json, '$.intended_use_id') IS 'text'
+                        AND json_type(record_json, '$.checked_at_utc') IS 'text'
+                        AND json_type(record_json, '$.use_permission.state') IS 'text'
+                        AND json_type(record_json, '$.reachability.state') IS 'text'
+                        AND json_type(record_json, '$.capability_availability.state') IS 'text'
+                        AND json_type(record_json, '$.structural_validity.state') IS 'text'
+                        AND json_type(record_json, '$.freshness.state') IS 'text'
+                        AND json_type(record_json, '$.coverage.state') IS 'text'
+                        AND json_type(record_json, '$.failure.state') IS 'text'
+                        AND json_extract(record_json, '$.use_permission.state') IN (
+                            'PERMITTED', 'NOT_PERMITTED', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.reachability.state') IN (
+                            'REACHABLE', 'UNREACHABLE', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.capability_availability.state') IN (
+                            'AVAILABLE', 'UNAVAILABLE', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.structural_validity.state') IN (
+                            'VALID', 'INVALID', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.freshness.state') IN (
+                            'FRESH', 'STALE', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.coverage.state') IN (
+                            'COMPLETE', 'CONFIRMED_EMPTY', 'PARTIAL', 'UNKNOWN', 'NOT_APPLICABLE'
+                        )
+                        AND json_extract(record_json, '$.failure.state') IN (
+                            'FAILED', 'NO_FAILURE_OBSERVED', 'UNKNOWN'
+                        )
+                    ),
+                contract_version TEXT NOT NULL CHECK (contract_version = 'provider-health-v1'),
+                record_schema_version INTEGER NOT NULL CHECK (record_schema_version = 1),
+                provider_id TEXT NOT NULL CHECK (
+                    provider_id IN ('openfootball-json', 'openfootball-footballtxt')
+                ),
+                capability_id TEXT NOT NULL CHECK (capability_id = 'scheduled-fixtures'),
+                fixture_scope_id TEXT NOT NULL CHECK (length(fixture_scope_id) > 0),
+                season TEXT NOT NULL CHECK (length(season) > 0),
+                matchweek_friday TEXT NOT NULL
+                    CHECK (
+                        length(matchweek_friday) = 10
+                        AND matchweek_friday GLOB
+                            '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                    ),
+                intended_use_id TEXT NOT NULL CHECK (
+                    intended_use_id = 'matchvet:research-only:upcoming-fixture-acquisition'
+                ),
+                checked_at_utc TEXT NOT NULL CHECK (length(checked_at_utc) > 0),
+                attempt_id TEXT NOT NULL CHECK (length(attempt_id) > 0),
+                assessment_digest TEXT NOT NULL
+                    REFERENCES fixture_coverage_assessments(assessment_digest)
+                    CHECK (
+                        length(assessment_digest) = 71
+                        AND substr(assessment_digest, 1, 7) = 'sha256:'
+                        AND substr(assessment_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                first_persisted_at_utc TEXT NOT NULL CHECK (length(first_persisted_at_utc) > 0),
+                UNIQUE (assessment_digest, attempt_id)
+            ) STRICT
+            """,
+            """
+            INSERT INTO provider_health_records_v12 (
+                record_digest, record_json, contract_version, record_schema_version,
+                provider_id, capability_id, fixture_scope_id, season, matchweek_friday,
+                intended_use_id, checked_at_utc, attempt_id, assessment_digest,
+                first_persisted_at_utc
+            )
+            SELECT
+                legacy.record_digest, legacy.record_json, legacy.contract_version,
+                legacy.record_schema_version, legacy.provider_id, legacy.capability_id,
+                legacy.fixture_scope_id, legacy.season, legacy.matchweek_friday,
+                legacy.intended_use_id, legacy.checked_at_utc,
+                (
+                    SELECT json_extract(reference.value, '$.attempt_id')
+                    FROM json_each(legacy.record_json, '$.provenance') AS reference
+                    WHERE json_extract(reference.value, '$.reference_kind') = 'PROVIDER_ATTEMPT'
+                ),
+                legacy.assessment_digest, legacy.first_persisted_at_utc
+            FROM provider_health_records AS legacy
+            """,
+            "DROP TRIGGER provider_health_records_assessment_matches_f04",
+            "DROP TRIGGER provider_health_records_no_update",
+            "DROP TRIGGER provider_health_records_no_delete",
+            "DROP INDEX provider_health_records_matchweek_history",
+            "DROP INDEX provider_health_records_provider_scope_history",
+            "DROP TABLE provider_health_records",
+            "ALTER TABLE provider_health_records_v12 RENAME TO provider_health_records",
+            """
+            CREATE INDEX provider_health_records_matchweek_history
+            ON provider_health_records (
+                season, matchweek_friday, checked_at_utc, provider_id,
+                capability_id, fixture_scope_id, intended_use_id, record_digest
+            )
+            """,
+            """
+            CREATE INDEX provider_health_records_provider_scope_history
+            ON provider_health_records (
+                provider_id, capability_id, fixture_scope_id, season,
+                matchweek_friday, checked_at_utc, intended_use_id, record_digest
+            )
+            """,
+            """
+            CREATE TRIGGER provider_health_records_assessment_matches_f04
+            BEFORE INSERT ON provider_health_records
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM json_each(NEW.record_json, '$.provenance') AS reference
+                WHERE json_extract(reference.value, '$.reference_kind') =
+                          'FIXTURE_COVERAGE_ASSESSMENT'
+                  AND json_extract(reference.value, '$.assessment_digest') =
+                          NEW.assessment_digest
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'provider health F04 must reference its F03 assessment');
+            END
+            """,
+            """
+            CREATE TRIGGER provider_health_records_attempt_matches_f01
+            BEFORE INSERT ON provider_health_records
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM json_each(NEW.record_json, '$.provenance') AS reference
+                WHERE json_extract(reference.value, '$.reference_kind') = 'PROVIDER_ATTEMPT'
+                  AND json_extract(reference.value, '$.attempt_id') = NEW.attempt_id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'provider health F04 must identify its F01 attempt');
+            END
+            """,
+            """
+            CREATE TRIGGER provider_health_records_no_update
+            BEFORE UPDATE ON provider_health_records
+            BEGIN SELECT RAISE(ABORT, 'provider health records are immutable'); END
+            """,
+            """
+            CREATE TRIGGER provider_health_records_no_delete
+            BEFORE DELETE ON provider_health_records
+            BEGIN SELECT RAISE(ABORT, 'provider health records are immutable'); END
+            """,
+        ),
+    ),
 )
 
 
@@ -2884,6 +3075,29 @@ def _expected_schema_objects(
         for statement in migration.statements:
             normalized = _normalized_sql(statement)
             words = normalized.split(maxsplit=3)
+            if len(words) >= 3 and words[0] == "DROP":
+                object_type = words[1].lower()
+                if object_type in {"table", "trigger", "index"}:
+                    object_name = words[2]
+                    if object_name == "IF":
+                        object_name = normalized.split()[4]
+                    expected.pop((object_type, object_name), None)
+                continue
+            full_words = normalized.split()
+            if (
+                len(full_words) == 6
+                and full_words[:2] == ["ALTER", "TABLE"]
+                and full_words[3:5] == ["RENAME", "TO"]
+            ):
+                old_name, new_name = full_words[2], full_words[5]
+                old_definition = expected.pop(("table", old_name), None)
+                if old_definition is not None:
+                    old_prefix = f"CREATE TABLE {old_name} "
+                    new_prefix = f'CREATE TABLE "{new_name}" '
+                    expected[("table", new_name)] = old_definition.replace(
+                        old_prefix, new_prefix, 1
+                    )
+                continue
             if len(words) < 3 or words[0:2] not in (
                 ["CREATE", "TABLE"],
                 ["CREATE", "TRIGGER"],
