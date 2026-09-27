@@ -1578,8 +1578,11 @@ def test_t06_runner_resumes_from_t04_checkpoint(tmp_path: Path) -> None:
         assert len(importer.source_captures()) == 1
 
 
+@pytest.mark.parametrize("schema_prefix", (9, 10))
 def test_t06_old_migration_identity_checkpoint_is_refused_without_rewrite(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    schema_prefix: int,
 ) -> None:
     from matchvet import ingestion
     from matchvet.ingestion import (
@@ -1611,8 +1614,10 @@ def test_t06_old_migration_identity_checkpoint_is_refused_without_rewrite(
     plan = IngestionPlan(current_season="2026-27", leagues=(league,))
     observation = ResourceObservation(0, 5 * GIB, 2 * GIB, 3, False, False, 0)
 
-    monkeypatch.setattr(ingestion, "MIGRATIONS", MIGRATIONS[:9])
-    with open_store(database_path, private_root=private_root, migrations=MIGRATIONS[:9]) as store:
+    monkeypatch.setattr(ingestion, "MIGRATIONS", MIGRATIONS[:schema_prefix])
+    with open_store(
+        database_path, private_root=private_root, migrations=MIGRATIONS[:schema_prefix]
+    ) as store:
         importer = FixtureHistoryImporter(store, private_root=private_root)
         runner = T06AcquisitionRunner(store, InterruptedAcquirer(importer, StaticSourceFetcher({})))
         with pytest.raises(RunLifecycleError) as interrupted:

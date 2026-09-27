@@ -2983,6 +2983,7 @@ class FixtureHistoryAcquirer:
         attempts: list[ProviderAttempt] = []
         imports: list[ImportResult] = []
         diagnostics = ["belgian_pro_league: no approved schedule source configured"]
+        attempt_diagnostics: dict[str, str] = {}
         downloads: dict[str, DownloadedSource] = {}
         capture_scopes: dict[str, str] = {}
         bytes_downloaded = 0
@@ -3030,6 +3031,7 @@ class FixtureHistoryAcquirer:
                 if result is not None:
                     imports.append(result)
                 if diagnostic is not None:
+                    attempt_diagnostics[attempt.attempt_id] = diagnostic
                     kind = (
                         "unavailable"
                         if attempt.state is ProviderAttemptState.UNAVAILABLE
@@ -3156,6 +3158,21 @@ class FixtureHistoryAcquirer:
         except Exception as error:
             raise FixtureCoveragePersistenceError(
                 "The F01 Fixture Coverage Assessment could not be persisted."
+            ) from error
+        from matchvet.provider_health_acquisition import build_provider_health_records
+        from matchvet.provider_health_repository import (
+            ProviderHealthPersistenceError,
+            ProviderHealthRepository,
+        )
+
+        try:
+            health_records = build_provider_health_records(
+                assessment, attempt_diagnostics=attempt_diagnostics
+            )
+            ProviderHealthRepository(self.importer._store).persist_many(health_records)
+        except Exception as error:
+            raise ProviderHealthPersistenceError(
+                "The F04 Provider Health Record batch could not be persisted."
             ) from error
         return (
             ScheduledFixtureAcquisition(

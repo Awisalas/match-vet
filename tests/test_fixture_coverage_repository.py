@@ -784,7 +784,7 @@ def test_schema_nine_migrates_existing_v1_and_t05_records_unchanged(tmp_path: Pa
 
     with open_store(database_path, private_root=private_root) as migrated:
         after_importer = FixtureHistoryImporter(migrated, private_root=private_root)
-        assert migrated.status.schema_version == 10
+        assert migrated.status.schema_version == 11
         assert after_importer.fixtures() == before_fixtures
         assert after_importer.source_captures() == before_captures
         assert after_importer.source_assertions() == before_assertions
@@ -805,6 +805,11 @@ def test_schema_nine_migrates_existing_v1_and_t05_records_unchanged(tmp_path: Pa
             10,
             "fixture_coverage_assessment_persistence",
             MIGRATIONS[9].checksum,
+        )
+        assert after_ledger[10][0:3] == (
+            11,
+            "provider_health_record_persistence",
+            MIGRATIONS[10].checksum,
         )
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert (

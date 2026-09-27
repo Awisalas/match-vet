@@ -741,38 +741,75 @@ def test_restore_verifies_then_activates_a_new_private_target(tmp_path: Path) ->
     assert database_path.is_file()
 
 
-def _make_schema_nine_backup(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
+def _make_schema_prefix_backup(
+    tmp_path: Path, schema_version: int
+) -> tuple[Path, Path, dict[str, object]]:
+    from test_fixture_coverage_repository import _unknown_assessment
+
     import matchvet.t17 as t17
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
     from matchvet.ingestion import (
         FixtureHistoryImporter,
         FootballDataCSVParser,
         SourceCaptureInput,
         league_by_key,
     )
+    from matchvet.matchweek import freeze_matchweek
 
     private_root, database_path = _private_store(tmp_path)
+    if schema_version not in (9, 10):
+        raise ValueError("The test helper creates only schema 9 or schema 10 bundles.")
+    matchweek_friday = "2026-09-25" if schema_version == 10 else "2026-08-21"
+    retrieved_at_utc = (
+        "2026-09-25T13:00:00.000000+00:00" if schema_version == 10 else "2026-09-13T12:00:00+00:00"
+    )
     content = (
         b"Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HTHG,HTAG,HC,AC,HS,AS,HY,AY,HR,AR\n"
-        b"E0,21/08/2026,20:00,Arsenal,Coventry,3,0,H,2,0,8,2,20,4,1,1,0,0\n"
+        + (
+            b"E0,25/09/2026,20:00,Arsenal,Coventry,,,,,,,,,,,,,,\n"
+            if schema_version == 10
+            else b"E0,21/08/2026,20:00,Arsenal,Coventry,3,0,H,2,0,8,2,20,4,1,1,0,0\n"
+        )
     )
     league = league_by_key("premier_league")
-    with open_store(database_path, private_root=private_root, migrations=MIGRATIONS[:9]) as store:
+    with open_store(
+        database_path,
+        private_root=private_root,
+        migrations=MIGRATIONS[:schema_version],
+    ) as store:
         importer = FixtureHistoryImporter(store, private_root=private_root)
         importer.import_dataset(
             FootballDataCSVParser().parse(content, league=league, season="2026-27"),
             content,
             SourceCaptureInput(
                 source_url="https://example.test/E0.csv",
-                retrieved_at_utc="2026-09-13T12:00:00+00:00",
-                observed_terms="restricted private schema-nine capture",
+                retrieved_at_utc=retrieved_at_utc,
+                observed_terms=f"restricted private schema-{schema_version} capture",
             ),
         )
         fixture_id = importer.fixtures()[0].fixture_id
         revision = importer.revisions(fixture_id)[0]
         capture_ids = tuple(capture.capture_id for capture in importer.source_captures())
+        expected: dict[str, object] = {
+            "fixture_id": fixture_id,
+            "revision_id": revision.revision_id,
+            "revision_digest": revision.revision_digest,
+            "capture_ids": capture_ids,
+        }
+        if schema_version == 10:
+            assessment = _unknown_assessment()
+            FixtureCoverageRepository(store).persist(assessment)
+            frozen = freeze_matchweek(
+                store,
+                matchweek_friday,
+                as_of_utc=retrieved_at_utc,
+                created_at_utc=retrieved_at_utc,
+            )
+            expected["assessment"] = assessment
+            expected["frozen_matchweek"] = frozen
         objects = store.artifact_catalog()
 
-    source = tmp_path / "shared" / "schema-nine-backup"
+    source = tmp_path / "shared" / f"schema-{schema_version}-backup"
     source.mkdir(parents=True)
     staged_database = source / "database.sqlite3"
     t17._online_backup(database_path, staged_database)
@@ -805,8 +842,8 @@ def _make_schema_nine_backup(tmp_path: Path) -> tuple[Path, Path, dict[str, obje
             "sha256": database_digest,
         },
         object_members,
-        schema_version=9,
-        migration_checksums=tuple(migration.checksum for migration in MIGRATIONS[:9]),
+        schema_version=schema_version,
+        migration_checksums=tuple(migration.checksum for migration in MIGRATIONS[:schema_version]),
     )
     (source / "manifest.json").write_bytes(manifest.to_bytes())
     (source / "COMPLETE").write_bytes(
@@ -821,13 +858,11 @@ def _make_schema_nine_backup(tmp_path: Path) -> tuple[Path, Path, dict[str, obje
             }
         ).to_bytes()
     )
-    expected: dict[str, object] = {
-        "fixture_id": fixture_id,
-        "revision_id": revision.revision_id,
-        "revision_digest": revision.revision_digest,
-        "capture_ids": capture_ids,
-    }
     return private_root, source, expected
+
+
+def _make_schema_nine_backup(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
+    return _make_schema_prefix_backup(tmp_path, 9)
 
 
 def test_schema_nine_backup_restores_through_staged_forward_migration(
@@ -870,31 +905,104 @@ def test_schema_nine_backup_restores_through_staged_forward_migration(
     } == original_bundle
 
 
-def test_schema_ten_backup_restore_preserves_f03_assessment(tmp_path: Path) -> None:
-    from test_fixture_coverage_repository import _unknown_assessment
-
+def test_schema_ten_backup_restores_through_migration_eleven_without_changing_bundle(
+    tmp_path: Path,
+) -> None:
+    from matchvet.fixture_coverage import FixtureCoverageAssessment
     from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.ingestion import FixtureHistoryImporter
+    from matchvet.matchweek import read_frozen_matchweek
+    from matchvet.provider_health_repository import ProviderHealthRepository
+
+    private_root, source, expected = _make_schema_prefix_backup(tmp_path, 10)
+    original_bundle = {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    }
+    assert verify_backup(source).details["schema_version"] == 10
+
+    target = private_root / "restored-schema-ten" / "matchvet.sqlite3"
+    restored = restore_backup(
+        source,
+        target,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+    assert restored.status == "COMPLETE"
+    assert inspect_store(target, private_root=private_root).schema_version == 11
+    with open_store(target, private_root=private_root) as store:
+        assessment = cast(FixtureCoverageAssessment, expected["assessment"])
+        assert FixtureCoverageRepository(store).get(assessment.digest) == assessment
+        assert read_frozen_matchweek(store, "2026-09-25") == expected["frozen_matchweek"]
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        assert importer.fixtures()[0].fixture_id == expected["fixture_id"]
+        assert (
+            tuple(capture.capture_id for capture in importer.source_captures())
+            == expected["capture_ids"]
+        )
+        assert ProviderHealthRepository(store).list_for_matchweek("2026-27", "2026-09-25") == ()
+    assert {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    } == original_bundle
+
+
+def test_schema_eleven_backup_restore_keeps_provider_health_digests_and_bundle_bytes(
+    tmp_path: Path,
+) -> None:
+    from matchvet.fixture_coverage import (
+        ProviderAttempt,
+        ProviderAttemptState,
+        assess_fixture_coverage,
+        fixture_scopes_for_matchweek,
+    )
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.provider_health_acquisition import build_provider_health_records
+    from matchvet.provider_health_repository import ProviderHealthRepository
 
     private_root, database_path = _private_store(tmp_path)
-    assessment = _unknown_assessment()
+    attempts = tuple(
+        ProviderAttempt(
+            attempt_id=f"backup-attempt-{provider_id}",
+            scope_id="premier_league:2026-27:2026-09-25",
+            provider_id=provider_id,
+            capability_id="scheduled-fixtures",
+            state=ProviderAttemptState.UNAVAILABLE,
+            retrieved_at_utc="2026-09-16T12:00:00.000000+00:00",
+        )
+        for provider_id in ("openfootball-json", "openfootball-footballtxt")
+    )
+    assessment = assess_fixture_coverage(
+        scopes=fixture_scopes_for_matchweek("2026-09-25", season="2026-27"),
+        provider_attempts=attempts,
+        coverage_evidence=(),
+        fixture_revisions=(),
+        identity_resolutions=(),
+        freshness_results=(),
+    )
+    records = build_provider_health_records(assessment)
+    expected_digests = tuple(record.digest for record in records)
     with open_store(database_path, private_root=private_root) as store:
         FixtureCoverageRepository(store).persist(assessment)
+        ProviderHealthRepository(store).persist_many(records)
 
-    source = tmp_path / "shared" / "schema-ten-backup"
+    source = tmp_path / "shared" / "schema-eleven-health-backup"
     backup_store(
         database_path,
         source,
         private_root=private_root,
         resource_observation=_safe_resource_observation(),
     )
+    assert verify_backup(source).details["schema_version"] == 11
     original_bundle = {
         path.relative_to(source).as_posix(): path.read_bytes()
         for path in source.rglob("*")
         if path.is_file()
     }
-    assert verify_backup(source).details["schema_version"] == len(MIGRATIONS)
 
-    target = private_root / "restored-schema-ten" / "matchvet.sqlite3"
+    target = private_root / "restored-schema-eleven" / "matchvet.sqlite3"
     restore_backup(
         source,
         target,
@@ -902,6 +1010,10 @@ def test_schema_ten_backup_restore_preserves_f03_assessment(tmp_path: Path) -> N
         resource_observation=_safe_resource_observation(),
     )
     with open_store(target, private_root=private_root) as store:
+        repository = ProviderHealthRepository(store)
+        restored_records = repository.list_for_matchweek("2026-27", "2026-09-25")
+        assert {record.digest for record in restored_records} == set(expected_digests)
+        assert tuple(repository.get(digest) for digest in expected_digests) == records
         assert FixtureCoverageRepository(store).get(assessment.digest) == assessment
     assert {
         path.relative_to(source).as_posix(): path.read_bytes()

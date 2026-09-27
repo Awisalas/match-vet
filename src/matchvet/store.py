@@ -2511,6 +2511,159 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=11,
+        name="provider_health_record_persistence",
+        statements=(
+            """
+            CREATE TABLE provider_health_records (
+                record_digest TEXT PRIMARY KEY
+                    CHECK (
+                        length(record_digest) = 71
+                        AND substr(record_digest, 1, 7) = 'sha256:'
+                        AND substr(record_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                record_json TEXT NOT NULL
+                    CHECK (
+                        json_valid(record_json)
+                        AND json_type(record_json, '$') = 'object'
+                        AND json_type(record_json, '$.digest') IS 'text'
+                        AND json_type(record_json, '$.contract_version') IS 'text'
+                        AND json_type(record_json, '$.schema_version') IS 'integer'
+                        AND json_extract(record_json, '$.digest') = record_digest
+                        AND json_extract(record_json, '$.contract_version') = contract_version
+                        AND json_extract(record_json, '$.schema_version') = record_schema_version
+                        AND json_extract(record_json, '$.provider.provider_id') = provider_id
+                        AND json_extract(record_json, '$.capability.capability_id') = capability_id
+                        AND json_extract(
+                            record_json, '$.requested_scope.fixture_scope.scope_id'
+                        ) = fixture_scope_id
+                        AND json_extract(
+                            record_json, '$.requested_scope.fixture_scope.season'
+                        ) = season
+                        AND json_extract(
+                            record_json, '$.requested_scope.fixture_scope.matchweek_friday'
+                        ) = matchweek_friday
+                        AND json_extract(record_json, '$.intended_use_id') = intended_use_id
+                        AND json_extract(record_json, '$.checked_at_utc') = checked_at_utc
+                        AND json_type(record_json, '$.provider') IS 'object'
+                        AND json_type(record_json, '$.provider.provider_id') IS 'text'
+                        AND json_type(record_json, '$.capability') IS 'object'
+                        AND json_type(record_json, '$.capability.capability_id') IS 'text'
+                        AND json_type(record_json, '$.requested_scope.fixture_scope') IS 'object'
+                        AND json_type(
+                            record_json, '$.requested_scope.fixture_scope.scope_id'
+                        ) IS 'text'
+                        AND json_type(record_json, '$.requested_scope.fixture_scope.season')
+                            IS 'text'
+                        AND json_type(
+                            record_json,
+                            '$.requested_scope.fixture_scope.matchweek_friday'
+                        ) IS 'text'
+                        AND json_type(record_json, '$.intended_use_id') IS 'text'
+                        AND json_type(record_json, '$.checked_at_utc') IS 'text'
+                        AND json_type(record_json, '$.use_permission.state') IS 'text'
+                        AND json_type(record_json, '$.reachability.state') IS 'text'
+                        AND json_type(record_json, '$.capability_availability.state') IS 'text'
+                        AND json_type(record_json, '$.structural_validity.state') IS 'text'
+                        AND json_type(record_json, '$.freshness.state') IS 'text'
+                        AND json_type(record_json, '$.coverage.state') IS 'text'
+                        AND json_type(record_json, '$.failure.state') IS 'text'
+                        AND json_extract(record_json, '$.use_permission.state') IN (
+                            'PERMITTED', 'NOT_PERMITTED', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.reachability.state') IN (
+                            'REACHABLE', 'UNREACHABLE', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.capability_availability.state') IN (
+                            'AVAILABLE', 'UNAVAILABLE', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.structural_validity.state') IN (
+                            'VALID', 'INVALID', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.freshness.state') IN (
+                            'FRESH', 'STALE', 'UNKNOWN'
+                        )
+                        AND json_extract(record_json, '$.coverage.state') IN (
+                            'COMPLETE', 'CONFIRMED_EMPTY', 'PARTIAL', 'UNKNOWN', 'NOT_APPLICABLE'
+                        )
+                        AND json_extract(record_json, '$.failure.state') IN (
+                            'FAILED', 'NO_FAILURE_OBSERVED', 'UNKNOWN'
+                        )
+                    ),
+                contract_version TEXT NOT NULL CHECK (contract_version = 'provider-health-v1'),
+                record_schema_version INTEGER NOT NULL CHECK (record_schema_version = 1),
+                provider_id TEXT NOT NULL CHECK (
+                    provider_id IN ('openfootball-json', 'openfootball-footballtxt')
+                ),
+                capability_id TEXT NOT NULL CHECK (capability_id = 'scheduled-fixtures'),
+                fixture_scope_id TEXT NOT NULL CHECK (length(fixture_scope_id) > 0),
+                season TEXT NOT NULL CHECK (length(season) > 0),
+                matchweek_friday TEXT NOT NULL
+                    CHECK (
+                        length(matchweek_friday) = 10
+                        AND matchweek_friday GLOB
+                            '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                    ),
+                intended_use_id TEXT NOT NULL CHECK (
+                    intended_use_id = 'matchvet:research-only:upcoming-fixture-acquisition'
+                ),
+                checked_at_utc TEXT NOT NULL CHECK (length(checked_at_utc) > 0),
+                assessment_digest TEXT NOT NULL
+                    REFERENCES fixture_coverage_assessments(assessment_digest)
+                    CHECK (
+                        length(assessment_digest) = 71
+                        AND substr(assessment_digest, 1, 7) = 'sha256:'
+                        AND substr(assessment_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                first_persisted_at_utc TEXT NOT NULL CHECK (length(first_persisted_at_utc) > 0),
+                UNIQUE (
+                    provider_id, capability_id, fixture_scope_id, intended_use_id,
+                    checked_at_utc
+                )
+            ) STRICT
+            """,
+            """
+            CREATE INDEX provider_health_records_matchweek_history
+            ON provider_health_records (
+                season, matchweek_friday, checked_at_utc, provider_id,
+                capability_id, fixture_scope_id, intended_use_id, record_digest
+            )
+            """,
+            """
+            CREATE INDEX provider_health_records_provider_scope_history
+            ON provider_health_records (
+                provider_id, capability_id, fixture_scope_id, season,
+                matchweek_friday, checked_at_utc, intended_use_id, record_digest
+            )
+            """,
+            """
+            CREATE TRIGGER provider_health_records_assessment_matches_f04
+            BEFORE INSERT ON provider_health_records
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM json_each(NEW.record_json, '$.provenance') AS reference
+                WHERE json_extract(reference.value, '$.reference_kind') =
+                          'FIXTURE_COVERAGE_ASSESSMENT'
+                  AND json_extract(reference.value, '$.assessment_digest') =
+                          NEW.assessment_digest
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'provider health F04 must reference its F03 assessment');
+            END
+            """,
+            """
+            CREATE TRIGGER provider_health_records_no_update
+            BEFORE UPDATE ON provider_health_records
+            BEGIN SELECT RAISE(ABORT, 'provider health records are immutable'); END
+            """,
+            """
+            CREATE TRIGGER provider_health_records_no_delete
+            BEFORE DELETE ON provider_health_records
+            BEGIN SELECT RAISE(ABORT, 'provider health records are immutable'); END
+            """,
+        ),
+    ),
 )
 
 
