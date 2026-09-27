@@ -2855,6 +2855,310 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=13,
+        name="v2_matchweek_membership_freeze",
+        statements=(
+            """
+            CREATE TABLE v2_matchweek_membership_freezes (
+                freeze_id TEXT PRIMARY KEY
+                    CHECK (
+                        length(freeze_id) = 71
+                        AND substr(freeze_id, 1, 7) = 'sha256:'
+                        AND substr(freeze_id, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                freeze_digest TEXT NOT NULL UNIQUE
+                    CHECK (
+                        length(freeze_digest) = 71
+                        AND substr(freeze_digest, 1, 7) = 'sha256:'
+                        AND substr(freeze_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                freeze_json TEXT NOT NULL
+                    CHECK (
+                        json_valid(freeze_json)
+                        AND json_type(freeze_json, '$') = 'object'
+                        AND json_extract(freeze_json, '$.freeze_id') = freeze_id
+                        AND json_extract(freeze_json, '$.freeze_digest') = freeze_digest
+                        AND json_extract(freeze_json, '$.contract_version') = contract_version
+                        AND json_extract(freeze_json, '$.payload_version') = payload_version
+                        AND json_extract(freeze_json, '$.season') = season
+                        AND json_extract(freeze_json, '$.matchweek_friday') = matchweek_friday
+                        AND json_extract(freeze_json, '$.assessment_digest') = assessment_digest
+                        AND json_extract(freeze_json, '$.schedule_state') = schedule_state
+                        AND json_extract(freeze_json, '$.policy.policy_id') = policy_id
+                        AND json_extract(freeze_json, '$.policy.policy_version') = policy_version
+                        AND json_extract(freeze_json, '$.policy.digest') = policy_digest
+                        AND json_extract(freeze_json, '$.membership_set_digest') =
+                            membership_set_digest
+                        AND json_array_length(freeze_json, '$.memberships') = membership_count
+                        AND json_extract(freeze_json, '$.created_at_utc') = created_at_utc
+                        AND json_type(freeze_json, '$.scopes') = 'array'
+                        AND json_type(freeze_json, '$.policy') = 'object'
+                        AND json_type(freeze_json, '$.provider_health_references') = 'array'
+                        AND json_type(freeze_json, '$.memberships') = 'array'
+                    ),
+                contract_version TEXT NOT NULL
+                    CHECK (contract_version = 'matchweek-membership-freeze-v2'),
+                payload_version INTEGER NOT NULL CHECK (payload_version = 1),
+                season TEXT NOT NULL CHECK (length(season) > 0),
+                matchweek_friday TEXT NOT NULL
+                    CHECK (
+                        length(matchweek_friday) = 10
+                        AND matchweek_friday GLOB
+                            '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                    ),
+                assessment_digest TEXT NOT NULL
+                    REFERENCES fixture_coverage_assessments(assessment_digest),
+                schedule_state TEXT NOT NULL
+                    CHECK (schedule_state IN ('COMPLETE', 'CONFIRMED_EMPTY')),
+                policy_id TEXT NOT NULL CHECK (length(policy_id) > 0),
+                policy_version TEXT NOT NULL CHECK (length(policy_version) > 0),
+                policy_digest TEXT NOT NULL
+                    CHECK (
+                        length(policy_digest) = 71
+                        AND substr(policy_digest, 1, 7) = 'sha256:'
+                        AND substr(policy_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                membership_set_digest TEXT NOT NULL
+                    CHECK (
+                        length(membership_set_digest) = 71
+                        AND substr(membership_set_digest, 1, 7) = 'sha256:'
+                        AND substr(membership_set_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                membership_count INTEGER NOT NULL CHECK (membership_count >= 0),
+                created_at_utc TEXT NOT NULL CHECK (length(created_at_utc) > 0)
+            ) STRICT
+            """,
+            """
+            CREATE INDEX v2_matchweek_membership_freezes_history
+            ON v2_matchweek_membership_freezes (
+                season, matchweek_friday, created_at_utc, freeze_id
+            )
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_freezes_same_matchweek
+            BEFORE INSERT ON v2_matchweek_membership_freezes
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM fixture_coverage_assessments AS assessment
+                WHERE assessment.assessment_digest = NEW.assessment_digest
+                  AND assessment.season = NEW.season
+                  AND assessment.matchweek_friday = NEW.matchweek_friday
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'F06 freeze must use the exact F01 Matchweek assessment');
+            END
+            """,
+            """
+            CREATE TABLE v2_matchweek_membership_decisions (
+                membership_id TEXT PRIMARY KEY
+                    CHECK (
+                        length(membership_id) = 71
+                        AND substr(membership_id, 1, 7) = 'sha256:'
+                        AND substr(membership_id, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                freeze_id TEXT NOT NULL
+                    REFERENCES v2_matchweek_membership_freezes(freeze_id),
+                scope_id TEXT NOT NULL CHECK (length(scope_id) > 0),
+                fixture_id TEXT NOT NULL REFERENCES fixtures(fixture_id),
+                decision TEXT NOT NULL CHECK (decision IN ('INCLUDED', 'EXCLUDED')),
+                reason_code TEXT NOT NULL CHECK (length(reason_code) > 0),
+                controlling_revision_id TEXT NOT NULL REFERENCES fixture_revisions(revision_id),
+                controlling_revision_digest TEXT NOT NULL
+                    CHECK (
+                        length(controlling_revision_digest) = 64
+                        AND controlling_revision_digest NOT GLOB '*[^0-9a-f]*'
+                    ),
+                membership_digest TEXT NOT NULL
+                    CHECK (
+                        length(membership_digest) = 71
+                        AND substr(membership_digest, 1, 7) = 'sha256:'
+                        AND substr(membership_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                decision_json TEXT NOT NULL
+                    CHECK (
+                        json_valid(decision_json)
+                        AND json_type(decision_json, '$') = 'object'
+                        AND json_extract(decision_json, '$.membership_id') = membership_id
+                        AND json_extract(decision_json, '$.membership_digest') = membership_digest
+                        AND json_extract(decision_json, '$.scope_id') = scope_id
+                        AND json_extract(decision_json, '$.fixture_id') = fixture_id
+                        AND json_extract(decision_json, '$.decision') = decision
+                        AND json_extract(decision_json, '$.reason_code') = reason_code
+                        AND json_extract(decision_json, '$.controlling_revision_id') =
+                            controlling_revision_id
+                        AND json_extract(decision_json, '$.controlling_revision_digest') =
+                            controlling_revision_digest
+                    ),
+                UNIQUE (freeze_id, scope_id, fixture_id)
+            ) STRICT
+            """,
+            """
+            CREATE INDEX v2_matchweek_membership_decisions_fixture
+            ON v2_matchweek_membership_decisions (freeze_id, fixture_id)
+            """,
+            """
+            CREATE TABLE v2_matchweek_membership_health_refs (
+                freeze_id TEXT NOT NULL
+                    REFERENCES v2_matchweek_membership_freezes(freeze_id),
+                assessment_digest TEXT NOT NULL
+                    REFERENCES fixture_coverage_assessments(assessment_digest),
+                attempt_id TEXT NOT NULL CHECK (length(attempt_id) > 0),
+                record_digest TEXT NOT NULL REFERENCES provider_health_records(record_digest),
+                scope_id TEXT NOT NULL CHECK (length(scope_id) > 0),
+                provider_id TEXT NOT NULL CHECK (length(provider_id) > 0),
+                capability_id TEXT NOT NULL CHECK (length(capability_id) > 0),
+                PRIMARY KEY (freeze_id, attempt_id),
+                FOREIGN KEY (assessment_digest, attempt_id)
+                    REFERENCES provider_health_records(assessment_digest, attempt_id)
+            ) STRICT
+            """,
+            """
+            CREATE INDEX v2_matchweek_membership_health_refs_attempt
+            ON v2_matchweek_membership_health_refs (assessment_digest, attempt_id)
+            """,
+            """
+            CREATE TABLE v2_matchweek_membership_observations (
+                observation_id TEXT PRIMARY KEY
+                    CHECK (
+                        length(observation_id) = 71
+                        AND substr(observation_id, 1, 7) = 'sha256:'
+                        AND substr(observation_id, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                observation_digest TEXT NOT NULL UNIQUE
+                    CHECK (
+                        length(observation_digest) = 71
+                        AND substr(observation_digest, 1, 7) = 'sha256:'
+                        AND substr(observation_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                    ),
+                observation_json TEXT NOT NULL
+                    CHECK (
+                        json_valid(observation_json)
+                        AND json_type(observation_json, '$') = 'object'
+                        AND json_extract(observation_json, '$.observation_id') = observation_id
+                        AND json_extract(observation_json, '$.observation_digest') =
+                            observation_digest
+                        AND json_extract(observation_json, '$.freeze_id') = freeze_id
+                        AND json_extract(observation_json, '$.assessment_digest') =
+                            assessment_digest
+                        AND json_extract(observation_json, '$.assessment_state') = assessment_state
+                        AND json_extract(observation_json, '$.recorded_at_utc') = recorded_at_utc
+                        AND json_type(observation_json, '$.changes') = 'array'
+                    ),
+                freeze_id TEXT NOT NULL
+                    REFERENCES v2_matchweek_membership_freezes(freeze_id),
+                assessment_digest TEXT NOT NULL
+                    REFERENCES fixture_coverage_assessments(assessment_digest),
+                assessment_state TEXT NOT NULL
+                    CHECK (
+                        assessment_state IN (
+                            'COMPLETE', 'CONFIRMED_EMPTY', 'PARTIAL', 'UNKNOWN', 'STALE'
+                        )
+                    ),
+                recorded_at_utc TEXT NOT NULL CHECK (length(recorded_at_utc) > 0),
+                UNIQUE (freeze_id, assessment_digest)
+            ) STRICT
+            """,
+            """
+            CREATE INDEX v2_matchweek_membership_observations_history
+            ON v2_matchweek_membership_observations (freeze_id, recorded_at_utc, observation_id)
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_decisions_reference_exact_revision
+            BEFORE INSERT ON v2_matchweek_membership_decisions
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM v2_matchweek_membership_freezes AS freeze
+                JOIN fixture_coverage_assessment_revisions AS reference
+                  ON reference.assessment_digest = freeze.assessment_digest
+                WHERE freeze.freeze_id = NEW.freeze_id
+                  AND reference.scope_id = NEW.scope_id
+                  AND reference.fixture_id = NEW.fixture_id
+                  AND reference.revision_id = NEW.controlling_revision_id
+                  AND reference.expected_revision_digest = NEW.controlling_revision_digest
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'F06 decision must use an exact F01 revision reference');
+            END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_health_refs_match_freeze
+            BEFORE INSERT ON v2_matchweek_membership_health_refs
+            WHEN NOT EXISTS (
+                    SELECT 1
+                    FROM v2_matchweek_membership_freezes AS freeze
+                    JOIN provider_health_records AS health
+                      ON health.record_digest = NEW.record_digest
+                     AND health.assessment_digest = NEW.assessment_digest
+                     AND health.attempt_id = NEW.attempt_id
+                     AND health.fixture_scope_id = NEW.scope_id
+                     AND health.provider_id = NEW.provider_id
+                     AND health.capability_id = NEW.capability_id
+                    WHERE freeze.freeze_id = NEW.freeze_id
+                      AND freeze.assessment_digest = NEW.assessment_digest
+                 )
+            BEGIN
+                SELECT RAISE(ABORT, 'F06 health reference must match its exact F01 and F05 data');
+            END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_observations_same_matchweek
+            BEFORE INSERT ON v2_matchweek_membership_observations
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM v2_matchweek_membership_freezes AS freeze
+                JOIN fixture_coverage_assessments AS assessment
+                  ON assessment.assessment_digest = NEW.assessment_digest
+                 AND assessment.season = freeze.season
+                 AND assessment.matchweek_friday = freeze.matchweek_friday
+                WHERE freeze.freeze_id = NEW.freeze_id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'F06 observation assessment must match its frozen Matchweek');
+            END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_freezes_no_update
+            BEFORE UPDATE ON v2_matchweek_membership_freezes
+            BEGIN SELECT RAISE(ABORT, 'F06 freezes are immutable'); END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_freezes_no_delete
+            BEFORE DELETE ON v2_matchweek_membership_freezes
+            BEGIN SELECT RAISE(ABORT, 'F06 freezes are immutable'); END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_decisions_no_update
+            BEFORE UPDATE ON v2_matchweek_membership_decisions
+            BEGIN SELECT RAISE(ABORT, 'F06 membership decisions are immutable'); END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_decisions_no_delete
+            BEFORE DELETE ON v2_matchweek_membership_decisions
+            BEGIN SELECT RAISE(ABORT, 'F06 membership decisions are immutable'); END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_health_refs_no_update
+            BEFORE UPDATE ON v2_matchweek_membership_health_refs
+            BEGIN SELECT RAISE(ABORT, 'F06 health references are immutable'); END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_health_refs_no_delete
+            BEFORE DELETE ON v2_matchweek_membership_health_refs
+            BEGIN SELECT RAISE(ABORT, 'F06 health references are immutable'); END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_observations_no_update
+            BEFORE UPDATE ON v2_matchweek_membership_observations
+            BEGIN SELECT RAISE(ABORT, 'F06 observations are immutable'); END
+            """,
+            """
+            CREATE TRIGGER v2_matchweek_membership_observations_no_delete
+            BEFORE DELETE ON v2_matchweek_membership_observations
+            BEGIN SELECT RAISE(ABORT, 'F06 observations are immutable'); END
+            """,
+        ),
+    ),
 )
 
 
@@ -3503,6 +3807,95 @@ def _verify_schema_manifest(
                 ),
             }
         )
+    if schema_version >= 13:
+        expected_indexes.update(
+            {
+                (
+                    "v2_matchweek_membership_freezes",
+                    "sqlite_autoindex_v2_matchweek_membership_freezes_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_freezes",
+                    "sqlite_autoindex_v2_matchweek_membership_freezes_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_freezes",
+                    "v2_matchweek_membership_freezes_history",
+                    0,
+                    "c",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_decisions",
+                    "sqlite_autoindex_v2_matchweek_membership_decisions_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_decisions",
+                    "sqlite_autoindex_v2_matchweek_membership_decisions_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_decisions",
+                    "v2_matchweek_membership_decisions_fixture",
+                    0,
+                    "c",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_health_refs",
+                    "sqlite_autoindex_v2_matchweek_membership_health_refs_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_health_refs",
+                    "v2_matchweek_membership_health_refs_attempt",
+                    0,
+                    "c",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_observations",
+                    "sqlite_autoindex_v2_matchweek_membership_observations_1",
+                    1,
+                    "pk",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_observations",
+                    "sqlite_autoindex_v2_matchweek_membership_observations_2",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_observations",
+                    "sqlite_autoindex_v2_matchweek_membership_observations_3",
+                    1,
+                    "u",
+                    0,
+                ),
+                (
+                    "v2_matchweek_membership_observations",
+                    "v2_matchweek_membership_observations_history",
+                    0,
+                    "c",
+                    0,
+                ),
+            }
+        )
     actual_indexes: set[tuple[str, str, int, str, int]] = set()
     for table_name in (
         "application_metadata",
@@ -3564,6 +3957,16 @@ def _verify_schema_manifest(
         "settlement_evidence_sets",
         "settlement_grades",
         "settlement_grade_evidence",
+        *(
+            (
+                "v2_matchweek_membership_freezes",
+                "v2_matchweek_membership_decisions",
+                "v2_matchweek_membership_health_refs",
+                "v2_matchweek_membership_observations",
+            )
+            if schema_version >= 13
+            else ()
+        ),
     ):
         actual_indexes.update(
             (table_name, str(row[1]), int(row[2]), str(row[3]), int(row[4]))

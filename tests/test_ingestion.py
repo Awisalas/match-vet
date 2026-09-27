@@ -1578,7 +1578,7 @@ def test_t06_runner_resumes_from_t04_checkpoint(tmp_path: Path) -> None:
         assert len(importer.source_captures()) == 1
 
 
-@pytest.mark.parametrize("schema_prefix", (9, 10))
+@pytest.mark.parametrize("schema_prefix", (9, 10, 12))
 def test_t06_old_migration_identity_checkpoint_is_refused_without_rewrite(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

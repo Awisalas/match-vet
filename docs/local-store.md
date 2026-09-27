@@ -6,7 +6,8 @@ T02 owns the store foundation. T03 adds artifact and snapshot records. T04 adds 
 research-run, work-unit, attempt, checkpoint, and completion-publication records. T07 adds
 canonical people, contextual source identities and origins, retained or citation-only evidence
 captures, cutoff assessments, source status history, corrections, corroboration, and immutable
-conflict records. Models, decisions, and reports remain outside this schema.
+conflict records. Predictive models, recommendation decisions, and rendered reports remain outside
+this schema; domain records such as frozen fixture membership are stored in their own tables.
 T06 adds source captures, canonical league/team/fixture identities, structured match statistics,
 append-only fixture revisions, source assertions, and retained conflict records. Private source
 artifacts remain subject to their source-specific rights and retention metadata. T08 adds
@@ -33,7 +34,7 @@ Every authoritative writer uses:
 
 One private lock file permits one MatchVet writer coordinator. Write work uses explicit bounded transactions. Network, parsing, modelling, and report work must remain outside them.
 
-## Schema version 12
+## Schema version 13
 
 The schema contains:
 
@@ -62,6 +63,8 @@ The schema contains:
   existing Fixture Revisions, source captures, and source assertions
 - immutable F04 Provider Health Records with canonical JSON, exact F03 assessment references,
   per-attempt assessment identity, and indexed Matchweek history metadata
+- immutable V2 Matchweek membership freezes, ordered fixture decisions, exact F05 references, and
+  append-only post-freeze observations
 
 Later tickets add their own entities through new migrations.
 
@@ -81,8 +84,10 @@ evidence states. Migration 9 adds the T10 append-only settlement evidence and gr
 Migration 10 adds F03 Fixture Coverage Assessment persistence. Migration 11 adds immutable F04
 Provider Health Record persistence. Migration 12 gives each F04 record the identity of its exact
 F03 assessment and F01 Provider Attempt pair, preserving existing records while allowing a reused
-attempt to retain provenance in each assessment. Migrations 1 through 11 remain unchanged. A custom
-or unsupported migration plan remains refused.
+attempt to retain provenance in each assessment. Migration 13 adds separate V2 Matchweek membership
+freeze, decision, health-reference, and observation tables. It does not change the V1 T05 freeze
+tables or readers. Migrations 1 through 12 remain unchanged. A custom or unsupported migration plan
+remains refused.
 
 ## Recovery behavior
 

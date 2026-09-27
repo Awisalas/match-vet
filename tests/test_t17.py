@@ -757,17 +757,17 @@ def _make_schema_prefix_backup(
     from matchvet.matchweek import freeze_matchweek
 
     private_root, database_path = _private_store(tmp_path)
-    if schema_version not in (9, 10):
-        raise ValueError("The test helper creates only schema 9 or schema 10 bundles.")
-    matchweek_friday = "2026-09-25" if schema_version == 10 else "2026-08-21"
+    if schema_version not in (9, 10, 12):
+        raise ValueError("The test helper creates only schema 9, 10, or 12 bundles.")
+    matchweek_friday = "2026-09-25" if schema_version >= 10 else "2026-08-21"
     retrieved_at_utc = (
-        "2026-09-25T13:00:00.000000+00:00" if schema_version == 10 else "2026-09-13T12:00:00+00:00"
+        "2026-09-25T13:00:00.000000+00:00" if schema_version >= 10 else "2026-09-13T12:00:00+00:00"
     )
     content = (
         b"Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HTHG,HTAG,HC,AC,HS,AS,HY,AY,HR,AR\n"
         + (
             b"E0,25/09/2026,20:00,Arsenal,Coventry,,,,,,,,,,,,,,\n"
-            if schema_version == 10
+            if schema_version >= 10
             else b"E0,21/08/2026,20:00,Arsenal,Coventry,3,0,H,2,0,8,2,20,4,1,1,0,0\n"
         )
     )
@@ -796,7 +796,7 @@ def _make_schema_prefix_backup(
             "revision_digest": revision.revision_digest,
             "capture_ids": capture_ids,
         }
-        if schema_version == 10:
+        if schema_version >= 10:
             assessment = _unknown_assessment()
             FixtureCoverageRepository(store).persist(assessment)
             frozen = freeze_matchweek(
@@ -942,6 +942,139 @@ def test_schema_ten_backup_restores_through_current_migrations_without_changing_
             == expected["capture_ids"]
         )
         assert ProviderHealthRepository(store).list_for_matchweek("2026-27", "2026-09-25") == ()
+    assert {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    } == original_bundle
+
+
+def test_schema_twelve_backup_restores_through_migration_thirteen_without_changing_bundle(
+    tmp_path: Path,
+) -> None:
+    from matchvet.fixture_coverage import FixtureCoverageAssessment
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.ingestion import FixtureHistoryImporter
+    from matchvet.matchweek import read_frozen_matchweek
+
+    private_root, source, expected = _make_schema_prefix_backup(tmp_path, 12)
+    original_bundle = {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    }
+    assert verify_backup(source).details["schema_version"] == 12
+
+    target = private_root / "restored-schema-twelve" / "matchvet.sqlite3"
+    restored = restore_backup(
+        source,
+        target,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+
+    assert restored.status == "COMPLETE"
+    assert inspect_store(target, private_root=private_root).schema_version == len(MIGRATIONS) == 13
+    with open_store(target, private_root=private_root) as store:
+        assessment = cast(FixtureCoverageAssessment, expected["assessment"])
+        assert FixtureCoverageRepository(store).get(assessment.digest) == assessment
+        assert read_frozen_matchweek(store, "2026-09-25") == expected["frozen_matchweek"]
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        assert importer.fixtures()[0].fixture_id == expected["fixture_id"]
+        assert (
+            importer.revisions(str(expected["fixture_id"]))[0].revision_id
+            == expected["revision_id"]
+        )
+    assert {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    } == original_bundle
+
+
+def test_schema_thirteen_backup_restores_exact_f06_and_v1_history_without_changing_bundle(
+    tmp_path: Path,
+) -> None:
+    from datetime import UTC, datetime
+
+    from test_matchweek_membership import (
+        _persistable_later_assessment,
+        _persistable_schedule_assessment,
+    )
+
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.matchweek import freeze_matchweek, read_frozen_matchweek
+    from matchvet.matchweek_membership_repository import MatchweekMembershipRepository
+    from matchvet.provider_health_acquisition import build_provider_health_records
+    from matchvet.provider_health_repository import ProviderHealthRepository
+
+    private_root, database_path = _private_store(tmp_path)
+    with open_store(database_path, private_root=private_root) as store:
+        initial = _persistable_schedule_assessment(
+            store,
+            private_root,
+            (("2026-09-25", "12:00", "Backup United", "Backup City"),),
+        )
+        FixtureCoverageRepository(store).persist(initial)
+        ProviderHealthRepository(store).persist_many(build_provider_health_records(initial))
+        v1_freeze = freeze_matchweek(
+            store,
+            "2026-09-25",
+            as_of_utc="2026-09-24T12:00:00+00:00",
+            created_at_utc="2026-09-24T12:00:00+00:00",
+        )
+        memberships = MatchweekMembershipRepository(
+            store,
+            clock=lambda: datetime(2026, 9, 24, 12, tzinfo=UTC),
+        )
+        v2_freeze = memberships.freeze_exact(
+            "2026-27",
+            "2026-09-25",
+            initial.digest,
+            "matchvet:matchweek-membership",
+            "1",
+        )
+        later = _persistable_later_assessment(store, private_root)
+        FixtureCoverageRepository(store).persist(later)
+        observation = memberships.append_observation(v2_freeze.freeze_id, later.digest)
+        expected_membership_digests = tuple(
+            item.membership_digest for item in v2_freeze.memberships
+        )
+
+    source = tmp_path / "shared" / "schema-thirteen-f06-backup"
+    backup_store(
+        database_path,
+        source,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+    assert verify_backup(source).details["schema_version"] == 13
+    original_bundle = {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    }
+
+    target = private_root / "restored-schema-thirteen" / "matchvet.sqlite3"
+    restored = restore_backup(
+        source,
+        target,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+
+    assert restored.status == "COMPLETE"
+    with open_store(target, private_root=private_root) as store:
+        memberships = MatchweekMembershipRepository(store)
+        replayed = memberships.get_by_id(v2_freeze.freeze_id)
+        observations = memberships.list_observations(v2_freeze.freeze_id)
+        assert replayed == v2_freeze
+        assert tuple(item.membership_digest for item in replayed.memberships) == (
+            expected_membership_digests
+        )
+        assert observations == (observation,)
+        assert observations[0].observation_digest == observation.observation_digest
+        assert read_frozen_matchweek(store, "2026-09-25") == v1_freeze
     assert {
         path.relative_to(source).as_posix(): path.read_bytes()
         for path in source.rglob("*")

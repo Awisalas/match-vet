@@ -7,7 +7,10 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-from matchvet.fixture_coverage import FixtureCoverageAssessment
+from matchvet.fixture_coverage import (
+    FixtureCoverageAssessment,
+    fixture_scopes_for_matchweek,
+)
 from matchvet.fixture_coverage_repository import FixtureCoverageRepository
 from matchvet.provider_health import (
     F01FixtureScopeReference,
@@ -205,6 +208,56 @@ class ProviderHealthRepository:
         if row is None:
             return None
         return self._decode_row(tuple(row), {})
+
+    def list_for_assessment(self, assessment_digest: str) -> tuple[ProviderHealthRecord, ...]:
+        """Load only validated F05 records for one exact persisted F01 assessment."""
+        assessment = FixtureCoverageRepository(self._store).get(assessment_digest)
+        if assessment is None:
+            raise ProviderHealthIntegrityError(
+                "F05 history references a missing exact F01 assessment."
+            )
+        scopes = fixture_scopes_for_matchweek(
+            assessment.scope_assessments[0].scope.matchweek_friday,
+            season=assessment.scope_assessments[0].scope.season,
+        )
+        scope_order = {scope.scope_id: index for index, scope in enumerate(scopes)}
+        connection = self._store._connection_for_repository()
+        rows = connection.execute(
+            """
+            SELECT record_digest, record_json, contract_version, record_schema_version,
+                   provider_id, capability_id, fixture_scope_id, season, matchweek_friday,
+                   intended_use_id, checked_at_utc, attempt_id, assessment_digest,
+                   first_persisted_at_utc
+            FROM provider_health_records
+            WHERE assessment_digest = ?
+            ORDER BY fixture_scope_id, attempt_id, record_digest
+            """,
+            (assessment_digest,),
+        ).fetchall()
+        records = tuple(
+            self._decode_row(tuple(row), {assessment_digest: assessment}) for row in rows
+        )
+        if any(
+            _record_metadata(record).assessment_digest != assessment_digest for record in records
+        ):
+            raise ProviderHealthIntegrityError(
+                "F05 exact assessment history contains a wrong-assessment record."
+            )
+        return tuple(
+            sorted(
+                records,
+                key=lambda record: (
+                    scope_order.get(
+                        record.requested_scope.fixture_scope.scope_id
+                        if record.requested_scope.fixture_scope is not None
+                        else "",
+                        len(scope_order),
+                    ),
+                    _record_metadata(record).attempt_id,
+                    record.digest,
+                ),
+            )
+        )
 
     def list_for_matchweek(
         self,
