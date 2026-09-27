@@ -341,3 +341,23 @@ Enough out-of-sample evidence under predeclared Preference Family or Supported L
 
 **Odds Context**:
 Optional bookmaker price data retained for research or benchmarking with its source and observation time. Odds never determine PLAY or AVOID MATCH, and missing odds never block a recommendation.
+
+## Provider health
+
+**Provider Health Record**:
+An immutable F04 observation for one provider or feed, one capability, one exact requested query scope, one intended use, and one check time. It records each health dimension separately and has a deterministic versioned digest.
+
+**Provider Capability**:
+A stable identifier for one operation or dataset, such as scheduled fixtures or season results. Evidence for one capability does not establish health for another.
+
+**Source Lineage**:
+The shared upstream data ancestry for one or more provider feeds. Distinct feeds can share a lineage, as OpenFootball JSON and Football.TXT do; lineage does not establish independent corroboration.
+
+**Requested Query Scope**:
+The exact competition, season, date or time range, subjects, and named filters requested for one provider capability. Every applicable facet retains an explicit state and participates in record identity.
+
+**Scope Facet State**:
+One of KNOWN, UNBOUNDED, NOT_APPLICABLE, or UNKNOWN. UNKNOWN means the requested bound is not established and is never treated as unbounded.
+
+**Provider Health Dimensions**:
+Separate permission, reachability, capability availability, structural validity, freshness, coverage, and failure assessments. No combined provider-wide health verdict replaces these dimensions.
