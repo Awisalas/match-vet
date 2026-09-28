@@ -48,9 +48,17 @@ Use free, open, or official football data and infrastructure that requires no pa
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`, `$tdd`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
+### LF01 Resolve the all-seven live fixture coverage blocker
+- **Type:** Corrective source-contract and product-decision blocker; outside the original 53-ticket count.
+- **Goal:** Resolve whether an approved zero-cost provider contract can prove complete, current F01 coverage for all seven target leagues. Keep F01 unchanged; if no path meets the source-rights and proof requirements, record the product consequence and preserve the F06 refusal.
+- **Tracked by:** [#44](https://github.com/Awisalas/match-vet/issues/44).
+- **Blocked by:** None; requires a maintainer/product-owner decision.
+- **Status:** `ready-for-human`; not ready for agent implementation. Keep LF01 open until the approved provider implementation and live F06 path are complete, or the product owner explicitly withdraws the all-seven live-freeze requirement.
+
 ### F07 Persist per-match Match Evidence Cutoff
 - **Goal:** Add an immutable cutoff for each frozen match, tied to its fixture revision and a versioned policy. Leave the numeric lead time undecided.
-- **Blocked by:** F06.
+- **Blocked by:** F06, LF01. If the source decision creates a separate implementation issue, keep F07 blocked by that issue until the approved all-seven acquisition path is implemented and F06 can succeed.
+- **Status:** Parked while LF01 is unresolved.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$tdd`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.
