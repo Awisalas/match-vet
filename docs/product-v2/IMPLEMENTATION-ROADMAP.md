@@ -4,6 +4,8 @@ Each entry is one proposed implementation ticket. `Blocked by` uses the roadmap 
 
 Use free, open, or official football data and infrastructure that requires no paid dependency. Keep provider boundaries replaceable.
 
+The original roadmap total remains 53 numbered tickets. Corrective `LF` entries are outside that total; keep F01–F21 numbering unchanged.
+
 ## 1. Live foundation
 
 ### F01 Define fixture completeness
@@ -50,15 +52,49 @@ Use free, open, or official football data and infrastructure that requires no pa
 
 ### LF01 Resolve the all-seven live fixture coverage blocker
 - **Type:** Corrective source-contract and product-decision blocker; outside the original 53-ticket count.
-- **Goal:** Resolve whether an approved zero-cost provider contract can prove complete, current F01 coverage for all seven target leagues. Keep F01 unchanged; if no path meets the source-rights and proof requirements, record the product consequence and preserve the F06 refusal.
+- **Goal:** Preserve F01's proof bar after the audit found no reviewed all-seven automated path satisfying both completeness and use/retention requirements. The product owner selected operator-attested official publications as a temporary Research-Only bridge; this does not approve an automated source or clear rights for Product Promotion.
 - **Tracked by:** [#44](https://github.com/Awisalas/match-vet/issues/44).
-- **Blocked by:** None; requires a maintainer/product-owner decision.
-- **Status:** `ready-for-human`; not ready for agent implementation. Keep LF01 open until the approved provider implementation and live F06 path are complete, or the product owner explicitly withdraws the all-seven live-freeze requirement.
+- **Blocked by:** None; the product-owner bridge decision is recorded in #44.
+- **Status:** Keep #44 open until LF02 and corrective LF03–LF05 are implemented, a fresh isolated real v2 base is acquired, all seven scopes can be attested, a real v3 assessment persists, and F06 produces a real all-seven Research-Only freeze. The automated/licensed source requirement remains tracked for Product Promotion.
+
+### LF02 Add Research-Only operator-attested official fixture completeness
+- **Type:** Corrective Research-Only implementation ticket; outside the original 53-ticket count.
+- **Goal:** Add immutable operator attestations bound to one exact automatic F01 assessment and candidate manifest; derive a separately versioned F01 assessment without changing F02, provider health, or the F06 gate.
+- **Tracked by:** [#45](https://github.com/Awisalas/match-vet/issues/45).
+- **Blocked by:** F01, F03, F05, F06 (all complete); product-owner decision recorded in #44.
+- **Status:** Complete in #45 (closed). This does not close #44 or release F07; real validation still requires the corrective tickets and all-seven Research-Only freeze.
+- **Size:** L.
+- **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`, `$blast-radius`.
+- **Model:** GPT-6 Luna Max is sufficient.
+
+### LF03 Resolve scheduled-fixture team aliases without creating duplicate teams
+- **Type:** Corrective identity-resolution implementation ticket; outside the original 53-ticket count.
+- **Goal:** Resolve schedule names only through an exact existing canonical team identity or a versioned, league-and-season-scoped, operator-confirmed whole-name alias registry. Pin source provenance, fail closed on ambiguity, and preserve all historical team/fixture identities and F01 v2 digests.
+- **Tracked by:** [#46](https://github.com/Awisalas/match-vet/issues/46).
+- **Blocked by:** None; LF02 #45 is complete.
+- **Status:** `ready-for-agent`. Do not change scheduled acquisition from `KNOWN_ONLY` to `REGISTER_UNKNOWN`.
+- **Size:** M.
+
+### LF04 Preserve DATE precision in fixture source assertions and LF02 manifests
+- **Type:** Corrective timestamp-compatibility implementation ticket; outside the original 53-ticket count.
+- **Goal:** Keep DATE facts as exact calendar dates and INSTANT facts as canonical offset-aware UTC timestamps. Add a strict compatibility rule for old date-only kickoff assertions without rewriting rows, changing F01 v2 digests, or requiring a database migration.
+- **Tracked by:** [#47](https://github.com/Awisalas/match-vet/issues/47).
+- **Blocked by:** None; LF02 #45 is complete.
+- **Status:** `ready-for-agent`.
+- **Size:** S.
+
+### LF05 Add Research-Only official fixture observations for unsupported scopes
+- **Type:** Corrective manual-citation implementation ticket; outside the original 53-ticket count.
+- **Goal:** Allow minimal immutable operator-cited official fixture facts to seed missing Belgian candidate rows without scraping, acting as a provider, asserting completeness, or changing F01/F06 rules. LF02 remains the separate completeness attestation.
+- **Tracked by:** [#48](https://github.com/Awisalas/match-vet/issues/48).
+- **Blocked by:** LF03, LF04.
+- **Status:** `ready-for-agent`. Product Promotion remains blocked on a separately accepted automated/licensed source strategy.
+- **Size:** M.
 
 ### F07 Persist per-match Match Evidence Cutoff
 - **Goal:** Add an immutable cutoff for each frozen match, tied to its fixture revision and a versioned policy. Leave the numeric lead time undecided.
-- **Blocked by:** F06, LF01. If the source decision creates a separate implementation issue, keep F07 blocked by that issue until the approved all-seven acquisition path is implemented and F06 can succeed.
-- **Status:** Parked while LF01 is unresolved.
+- **Blocked by:** F06, LF01, LF02, LF03, LF04, LF05.
+- **Status:** Parked until LF03–LF05 are implemented, a fresh isolated real v2 base is acquired, all seven scopes can be attested, a real v3 assessment persists, and F06 produces a real all-seven Research-Only freeze. The automated/licensed-source requirement remains separate for Product Promotion.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$tdd`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.
