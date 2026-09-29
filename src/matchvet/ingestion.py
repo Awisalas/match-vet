@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 35961)
-Total output lines: 3631
-
 """T06 fixture and structured match-history acquisition.
 
 This module deliberately stops at source-backed facts. It does not freeze a
@@ -1557,7 +1554,641 @@ class FixtureHistoryImporter:
             ORDER BY c.retrieved_at_utc, c.capture_id
             """
         ).fetchall()
- …5961 tokens truncated…vision_digest = ?
+        return tuple(
+            SourceCaptureRecord(
+                capture_id=str(row[0]),
+                source_id=str(row[1]),
+                source_key=str(row[2]),
+                locator=str(row[3]),
+                retrieved_at_utc=str(row[4]),
+                content_sha256=str(row[5]),
+                byte_length=int(row[6]),
+                artifact_digest=str(row[7]),
+                allowed_use=str(row[8]),
+                retention_status=str(row[9]),
+                redistributable=bool(row[10]),
+                observed_terms=str(row[11]),
+                terms_reference=str(row[12]),
+            )
+            for row in rows
+        )
+
+    def source_assertions(self) -> tuple[SourceAssertionRecord, ...]:
+        connection = self._store._connection_for_repository()
+        rows = connection.execute(
+            """
+            SELECT assertion_id, capture_id, source_row_key, subject_kind, subject_key,
+                   evidence_type, predicate, raw_field_name, evidence_state,
+                   raw_value_json, normalized_value_json, unknown_reason
+            FROM source_assertions
+            ORDER BY capture_id, source_row_key, predicate
+            """
+        ).fetchall()
+        return tuple(
+            SourceAssertionRecord(
+                assertion_id=str(row[0]),
+                capture_id=str(row[1]),
+                source_row_key=str(row[2]),
+                subject_kind=str(row[3]),
+                subject_key=str(row[4]),
+                evidence_type=str(row[5]),
+                predicate=str(row[6]),
+                raw_field_name=str(row[7]),
+                evidence_state=EvidenceState(str(row[8])),
+                raw_value_json=str(row[9]) if row[9] is not None else None,
+                normalized_value_json=str(row[10]) if row[10] is not None else None,
+                unknown_reason=str(row[11]) if row[11] is not None else None,
+            )
+            for row in rows
+        )
+
+    def conflicts(self, fixture_id: str) -> tuple[ConflictRecord, ...]:
+        connection = self._store._connection_for_repository()
+        rows = connection.execute(
+            """
+            SELECT conflict_id, subject_key, predicate, value_digest, status
+            FROM conflict_sets
+            WHERE subject_kind = 'FIXTURE' AND subject_key = ?
+            ORDER BY predicate, conflict_id
+            """,
+            (fixture_id,),
+        ).fetchall()
+        result: list[ConflictRecord] = []
+        for row in rows:
+            members = connection.execute(
+                """
+                SELECT assertion_id FROM conflict_assertions
+                WHERE conflict_id = ? ORDER BY assertion_id
+                """,
+                (str(row[0]),),
+            ).fetchall()
+            result.append(
+                ConflictRecord(
+                    conflict_id=str(row[0]),
+                    subject_key=str(row[1]),
+                    predicate=str(row[2]),
+                    value_digest=str(row[3]),
+                    status=str(row[4]),
+                    assertion_ids=tuple(str(member[0]) for member in members),
+                )
+            )
+        return tuple(result)
+
+    def resolve_existing_team(
+        self,
+        league: LeagueConfig,
+        season: str,
+        source_name: str,
+        *,
+        source_kind: SourceKind = SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION,
+    ) -> TeamResolution:
+        """Resolve one source name through the normal known-only LF03 rules."""
+        season_code(season)
+        connection = self._store._connection_for_repository()
+        return self._resolve_team_evidence(
+            connection,
+            league,
+            season,
+            source_name,
+            source_kind,
+        ).resolution
+
+    def _resolve_team_evidence(
+        self,
+        database: StoreTransaction | sqlite3.Connection,
+        league: LeagueConfig,
+        season: str,
+        source_name: str,
+        source_kind: SourceKind,
+    ) -> _TeamIdentityEvidence:
+        """Resolve every supported current identity before registration policy applies."""
+        from matchvet.team_alias_registry import source_lineage
+
+        normalized = canonical_key(source_name)
+        league_id = deterministic_identifier("league", league.key)
+        rows = database.execute(
+            """
+            SELECT DISTINCT t.team_id, t.canonical_name
+            FROM teams AS t
+            LEFT JOIN team_aliases AS a
+              ON a.team_id = t.team_id AND a.league_id = t.league_id
+            WHERE t.league_id = ?
+              AND (t.normalized_name = ? OR a.normalized_alias = ?)
+            """,
+            (league_id, normalized, normalized),
+        ).fetchall()
+        current_team_ids = {str(row[0]) for row in rows}
+        evidence: set[str] = set(current_team_ids)
+        names = {str(row[0]): str(row[1]) for row in rows}
+        registry_entries = self._team_alias_registry.candidates(
+            league.key, season, source_lineage(source_kind), source_name
+        )
+        if len(registry_entries) > 1:
+            return _TeamIdentityEvidence(
+                TeamResolution(MappingState.AMBIGUOUS, source_name, None, None),
+                _TeamRegistrationDisposition.NONE,
+            )
+        registry_entry = registry_entries[0] if registry_entries else None
+        registry_target_missing = False
+        registry_target_invalid = False
+        if registry_entry is not None:
+            target = database.execute(
+                "SELECT league_id, canonical_name FROM teams WHERE team_id = ?",
+                (registry_entry.team_id,),
+            ).fetchone()
+            if target is None:
+                registry_target_missing = True
+            elif str(target[0]) != league_id or str(target[1]) != registry_entry.canonical_name:
+                registry_target_invalid = True
+            else:
+                evidence.add(registry_entry.team_id)
+                names[registry_entry.team_id] = registry_entry.canonical_name
+        candidates = tuple(sorted(evidence))
+        if len(candidates) > 1:
+            return _TeamIdentityEvidence(
+                TeamResolution(MappingState.AMBIGUOUS, source_name, None, None, candidates),
+                _TeamRegistrationDisposition.NONE,
+                registry_entry,
+            )
+        if registry_target_invalid or (registry_target_missing and current_team_ids):
+            return _TeamIdentityEvidence(
+                TeamResolution(MappingState.UNKNOWN, source_name, None, None),
+                _TeamRegistrationDisposition.BLOCKED,
+                registry_entry,
+            )
+        if registry_target_missing:
+            return _TeamIdentityEvidence(
+                TeamResolution(MappingState.UNKNOWN, source_name, None, None),
+                _TeamRegistrationDisposition.REVIEWED_TARGET,
+                registry_entry,
+            )
+        if len(candidates) == 1:
+            team_id = candidates[0]
+            return _TeamIdentityEvidence(
+                TeamResolution(
+                    MappingState.CONFIRMED,
+                    source_name,
+                    team_id,
+                    names[team_id],
+                    candidates,
+                ),
+                _TeamRegistrationDisposition.NONE,
+                registry_entry,
+            )
+        return _TeamIdentityEvidence(
+            TeamResolution(MappingState.UNKNOWN, source_name, None, None),
+            _TeamRegistrationDisposition.SOURCE_NAME,
+            registry_entry,
+        )
+
+    def _existing_capture(
+        self, source_id: str, cache_key: str, digest: str, retrieved_at_utc: str
+    ) -> SourceCaptureRecord | None:
+        connection = self._store._connection_for_repository()
+        row = connection.execute(
+            """
+            SELECT c.capture_id FROM source_captures AS c
+            WHERE c.source_id = ? AND c.cache_key = ?
+              AND c.content_sha256 = ? AND c.retrieved_at_utc = ?
+            """,
+            (source_id, cache_key, digest, retrieved_at_utc),
+        ).fetchone()
+        if row is None:
+            return None
+        return next(
+            (capture for capture in self.source_captures() if capture.capture_id == str(row[0])),
+            None,
+        )
+
+    def _ensure_source(
+        self, tx: StoreTransaction, source_id: str, rights: _SourceRights, now: str
+    ) -> None:
+        tx.add_identifier_if_missing(CanonicalIdentifier("source", source_id))
+        tx.execute(
+            """
+            INSERT INTO source_identities (
+                source_id, source_key, canonical_name, owner, source_class,
+                access_method, base_locator, allowed_use, retention_status,
+                redistributable, terms_reference, terms_observed_at_utc, created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_id) DO NOTHING
+            """,
+            (
+                source_id,
+                rights.source_key,
+                rights.canonical_name,
+                rights.owner,
+                rights.source_class,
+                rights.access_method,
+                rights.base_locator,
+                rights.allowed_use,
+                rights.retention_status,
+                int(rights.redistributable),
+                rights.terms_reference,
+                now,
+                now,
+            ),
+        )
+
+    def _ensure_origin(self, tx: StoreTransaction, origin_id: str, rights: _SourceRights) -> None:
+        tx.add_identifier_if_missing(CanonicalIdentifier("origin", origin_id))
+        tx.execute(
+            """
+            INSERT INTO independent_origins (
+                origin_id, origin_key, organization, locator, classification, created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(origin_id) DO NOTHING
+            """,
+            (
+                origin_id,
+                rights.source_key,
+                rights.owner,
+                rights.base_locator,
+                "DATASET_ORIGIN",
+                _utc_now_text(),
+            ),
+        )
+
+    def _ensure_league(
+        self, tx: StoreTransaction, league_id: str, league: LeagueConfig, now: str
+    ) -> None:
+        tx.add_identifier_if_missing(CanonicalIdentifier("league", league_id))
+        tx.execute(
+            """
+            INSERT INTO target_leagues (
+                league_id, league_key, canonical_name, country, football_data_code,
+                openfootball_code, source_timezone, created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(league_id) DO NOTHING
+            """,
+            (
+                league_id,
+                league.key,
+                league.name,
+                league.country,
+                league.football_data_code,
+                league.openfootball_code,
+                league.timezone,
+                now,
+            ),
+        )
+
+    def _ensure_season(
+        self, tx: StoreTransaction, season_id: str, league_id: str, season: str, now: str
+    ) -> None:
+        tx.add_identifier_if_missing(CanonicalIdentifier("competition_season", season_id))
+        tx.execute(
+            """
+            INSERT INTO competition_seasons (season_id, league_id, season_label, created_at_utc)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(season_id) DO NOTHING
+            """,
+            (season_id, league_id, season, now),
+        )
+
+    def _row_already_imported(
+        self, tx: StoreTransaction, capture_id: str, source_row_key: str
+    ) -> bool:
+        row = tx.execute(
+            "SELECT 1 FROM source_assertions WHERE capture_id = ? AND source_row_key = ? LIMIT 1",
+            (capture_id, source_row_key),
+        ).fetchone()
+        return row is not None
+
+    def _resolve_team(
+        self,
+        tx: StoreTransaction,
+        league: LeagueConfig,
+        source_name: str,
+        source_id: str,
+        league_id: str,
+        captured_at: str,
+        identity_policy: TeamIdentityPolicy,
+        season: str,
+        source_kind: SourceKind,
+    ) -> TeamResolution:
+        evidence = self._resolve_team_evidence(tx, league, season, source_name, source_kind)
+        resolution = evidence.resolution
+        if identity_policy is TeamIdentityPolicy.REGISTER_UNKNOWN:
+            if evidence.registration_disposition is _TeamRegistrationDisposition.SOURCE_NAME:
+                team_id = deterministic_identifier(
+                    "team", f"{league.key}:{canonical_key(source_name)}"
+                )
+                resolution = TeamResolution(
+                    MappingState.CONFIRMED,
+                    source_name,
+                    team_id,
+                    source_name,
+                )
+            elif evidence.registration_disposition is _TeamRegistrationDisposition.REVIEWED_TARGET:
+                assert evidence.registry_entry is not None
+                resolution = TeamResolution(
+                    MappingState.CONFIRMED,
+                    source_name,
+                    evidence.registry_entry.team_id,
+                    evidence.registry_entry.canonical_name,
+                    (evidence.registry_entry.team_id,),
+                )
+        if resolution.state is not MappingState.CONFIRMED:
+            self._insert_source_team_mapping(
+                tx,
+                league,
+                source_name,
+                source_id,
+                league_id,
+                resolution,
+                captured_at,
+                identity_policy,
+                registry_evidence=evidence.registry_entry is not None,
+            )
+            return resolution
+        assert resolution.canonical_team_id is not None
+        canonical_name = resolution.canonical_name or source_name
+        if identity_policy is TeamIdentityPolicy.KNOWN_ONLY:
+            self._insert_source_team_mapping(
+                tx,
+                league,
+                source_name,
+                source_id,
+                league_id,
+                resolution,
+                captured_at,
+                identity_policy,
+                registry_evidence=evidence.registry_entry is not None,
+            )
+            return resolution
+        tx.add_identifier_if_missing(CanonicalIdentifier("team", resolution.canonical_team_id))
+        tx.execute(
+            """
+            INSERT INTO teams (team_id, league_id, canonical_name, normalized_name, created_at_utc)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(team_id) DO NOTHING
+            """,
+            (
+                resolution.canonical_team_id,
+                league_id,
+                canonical_name,
+                canonical_key(canonical_name),
+                captured_at,
+            ),
+        )
+        if evidence.registry_entry is None:
+            alias_id = deterministic_identifier(
+                "team_alias",
+                f"{league.key}:{resolution.canonical_team_id}:{canonical_key(source_name)}",
+            )
+            tx.add_identifier_if_missing(CanonicalIdentifier("team_alias", alias_id))
+            tx.execute(
+                """
+                INSERT INTO team_aliases (
+                    alias_id, league_id, team_id, source_id, alias_name, normalized_alias,
+                    mapping_rule_version, created_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(alias_id) DO NOTHING
+                """,
+                (
+                    alias_id,
+                    league_id,
+                    resolution.canonical_team_id,
+                    source_id,
+                    source_name,
+                    canonical_key(source_name),
+                    "matchvet-t06-team-v1",
+                    captured_at,
+                ),
+            )
+        self._insert_source_team_mapping(
+            tx,
+            league,
+            source_name,
+            source_id,
+            league_id,
+            resolution,
+            captured_at,
+            identity_policy,
+            registry_evidence=evidence.registry_entry is not None,
+        )
+        return resolution
+
+    def _insert_source_team_mapping(
+        self,
+        tx: StoreTransaction,
+        league: LeagueConfig,
+        source_name: str,
+        source_id: str,
+        league_id: str,
+        resolution: TeamResolution,
+        captured_at: str,
+        identity_policy: TeamIdentityPolicy,
+        *,
+        registry_evidence: bool,
+    ) -> None:
+        mapping_id = deterministic_identifier(
+            "source_team_mapping", f"{source_id}:{league.key}:{canonical_key(source_name)}"
+        )
+        tx.add_identifier_if_missing(CanonicalIdentifier("source_team_mapping", mapping_id))
+        tx.execute(
+            """
+            INSERT INTO source_team_mappings (
+                mapping_id, source_id, league_id, source_team_key, source_team_name,
+                mapping_state, team_id, candidates_json, mapping_rule_version, created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(mapping_id) DO NOTHING
+            """,
+            (
+                mapping_id,
+                source_id,
+                league_id,
+                canonical_key(source_name),
+                source_name,
+                resolution.state.value,
+                resolution.canonical_team_id,
+                _canonical_json(sorted(resolution.candidates)).decode("utf-8"),
+                (
+                    f"{self._team_alias_registry.version}:{self._team_alias_registry.digest}"
+                    if identity_policy is TeamIdentityPolicy.KNOWN_ONLY or registry_evidence
+                    else "matchvet-t06-team-v1"
+                ),
+                captured_at,
+            ),
+        )
+
+    def _ensure_fixture(
+        self,
+        tx: StoreTransaction,
+        fixture_id: str,
+        identity_key: str,
+        league_id: str,
+        season_id: str,
+        home: TeamResolution,
+        away: TeamResolution,
+        captured_at: str,
+    ) -> None:
+        assert home.canonical_team_id is not None
+        assert away.canonical_team_id is not None
+        tx.add_identifier_if_missing(CanonicalIdentifier("fixture", fixture_id))
+        tx.execute(
+            """
+            INSERT INTO fixtures (
+                fixture_id, league_id, season_id, home_team_id, away_team_id,
+                identity_state, identity_key, created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, 'CONFIRMED', ?, ?)
+            ON CONFLICT(fixture_id) DO NOTHING
+            """,
+            (
+                fixture_id,
+                league_id,
+                season_id,
+                home.canonical_team_id,
+                away.canonical_team_id,
+                identity_key,
+                captured_at,
+            ),
+        )
+
+    def _import_row(
+        self,
+        tx: StoreTransaction,
+        dataset: ParsedDataset,
+        row: ParsedRow,
+        capture_id: str,
+        source_id: str,
+        league_id: str,
+        season_id: str,
+        origin_id: str,
+        captured_at: str,
+        counters: dict[str, int],
+        identity_policy: TeamIdentityPolicy,
+    ) -> None:
+        home = self._resolve_team(
+            tx,
+            dataset.league,
+            row.home_team,
+            source_id,
+            league_id,
+            captured_at,
+            identity_policy,
+            dataset.season,
+            dataset.source_kind,
+        )
+        away = self._resolve_team(
+            tx,
+            dataset.league,
+            row.away_team,
+            source_id,
+            league_id,
+            captured_at,
+            identity_policy,
+            dataset.season,
+            dataset.source_kind,
+        )
+        resolved = home.state is MappingState.CONFIRMED and away.state is MappingState.CONFIRMED
+        if resolved:
+            assert home.canonical_team_id is not None
+            assert away.canonical_team_id is not None
+            fixture_key = (
+                f"{dataset.league.key}:{dataset.season}:"
+                f"{home.canonical_team_id}:{away.canonical_team_id}"
+            )
+            fixture_id = deterministic_identifier("fixture", fixture_key)
+            subject_kind = "FIXTURE"
+            subject_key = fixture_id
+            self._ensure_fixture(
+                tx,
+                fixture_id,
+                fixture_key,
+                league_id,
+                season_id,
+                home,
+                away,
+                captured_at,
+            )
+        else:
+            fixture_id = None
+            subject_kind = "UNRESOLVED_FIXTURE_ROW"
+            subject_key = deterministic_identifier(
+                "unresolved_fixture", f"{capture_id}:{row.source_row_key}"
+            )
+        assertions = self._insert_assertions(
+            tx,
+            dataset,
+            row,
+            capture_id,
+            origin_id,
+            subject_kind,
+            subject_key,
+            captured_at,
+            counters,
+        )
+        if fixture_id is None:
+            unresolved_id = subject_key
+            tx.add_identifier_if_missing(CanonicalIdentifier("unresolved_fixture", unresolved_id))
+            candidates = sorted(set(home.candidates + away.candidates))
+            tx.execute(
+                """
+                INSERT INTO unresolved_fixture_rows (
+                    unresolved_id, capture_id, source_row_key, league_id, season_id,
+                    home_name, away_name, resolution_state, candidates_json, reason, created_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(unresolved_id) DO NOTHING
+                """,
+                (
+                    unresolved_id,
+                    capture_id,
+                    row.source_row_key,
+                    league_id,
+                    season_id,
+                    row.home_team,
+                    row.away_team,
+                    "AMBIGUOUS"
+                    if MappingState.AMBIGUOUS in (home.state, away.state)
+                    else "UNKNOWN",
+                    _canonical_json(candidates).decode("utf-8"),
+                    "TEAM_MAPPING_UNRESOLVED",
+                    captured_at,
+                ),
+            )
+            counters["unresolved_rows"] += 1
+            return
+        revision_assertions = [
+            assertions["kickoff"],
+            assertions["home_team"],
+            assertions["away_team"],
+        ]
+        if row.explicit_fixture_status is not None:
+            revision_assertions.append(assertions["fixture_status"])
+        fixture_status = _fixture_status(row)
+        revision_payload = {
+            "fixture_status": fixture_status,
+            "kickoff_local_text": row.kickoff_local_text,
+            "kickoff_precision": row.kickoff_precision,
+            "kickoff_state": (
+                EvidenceState.OBSERVED.value
+                if row.kickoff_local_date is not None
+                else EvidenceState.UNKNOWN.value
+            ),
+            "kickoff_utc": (
+                row.kickoff_utc.astimezone(UTC).isoformat()
+                if row.kickoff_utc is not None and row.kickoff_precision != "DATE"
+                else None
+            ),
+            "source_round": row.source_round,
+        }
+        revision_digest = sha256_bytes(_canonical_json(revision_payload))
+        revision_id = deterministic_identifier(
+            "fixture_revision", f"{fixture_id}:{revision_digest}"
+        )
+        predecessor = tx.execute(
+            """
+            SELECT revision_id FROM fixture_revisions
+            WHERE fixture_id = ? ORDER BY observed_at_utc DESC, revision_id DESC LIMIT 1
+            """,
+            (fixture_id,),
+        ).fetchone()
+        existing_revision = tx.execute(
+            """
+            SELECT revision_id FROM fixture_revisions
+            WHERE fixture_id = ? AND revision_digest = ?
             """,
             (fixture_id, revision_digest),
         ).fetchone()
