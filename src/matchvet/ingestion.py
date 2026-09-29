@@ -68,6 +68,7 @@ class SourceKind(StrEnum):
     FOOTBALL_DATA = "FOOTBALL_DATA"
     OPENFOOTBALL = "OPENFOOTBALL"
     OPENFOOTBALL_TEXT = "OPENFOOTBALL_TEXT"
+    OPERATOR_OFFICIAL_FIXTURE_OBSERVATION = "OPERATOR_OFFICIAL_FIXTURE_OBSERVATION"
 
 
 class MappingState(StrEnum):
@@ -262,6 +263,7 @@ class ParsedRow:
     raw_fields: Mapping[str, str]
     source_round: str | None = None
     parse_warnings: tuple[str, ...] = ()
+    explicit_fixture_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1091,6 +1093,19 @@ _SOURCE_RIGHTS: Mapping[SourceKind, _SourceRights] = MappingProxyType(
             terms_reference="https://creativecommons.org/publicdomain/zero/1.0/",
             artifact_retention_class="REUSABLE",
         ),
+        SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION: _SourceRights(
+            source_key="pro-league-official-manual-citation",
+            canonical_name="Pro League official publication, manual citation",
+            owner="Pro League",
+            source_class="OFFICIAL_COMPETITION",
+            access_method="MANUAL_CITATION",
+            base_locator="https://www.proleague.be/",
+            allowed_use="RESEARCH_ONLY",
+            retention_status="RETAIN_PRIVATE",
+            redistributable=False,
+            terms_reference="matchvet:operator-official-fixture-observation:1",
+            artifact_retention_class="PROTECTED",
+        ),
     }
 )
 
@@ -1353,7 +1368,8 @@ class FixtureHistoryImporter:
             JOIN fixture_revision_assertions AS fra ON fra.assertion_id = sa.assertion_id
             JOIN fixture_revisions AS fr ON fr.revision_id = fra.revision_id
             JOIN fixtures AS f ON f.fixture_id = fr.fixture_id
-            WHERE sa.capture_id = ? AND sa.predicate IN ('kickoff', 'home_team', 'away_team')
+            WHERE sa.capture_id = ?
+              AND sa.predicate IN ('kickoff', 'home_team', 'away_team', 'fixture_status')
             GROUP BY sa.source_row_key, f.fixture_id, fr.revision_id, fr.revision_digest,
                      fr.kickoff_utc, fr.kickoff_local_text
             ORDER BY sa.source_row_key, fr.revision_id
@@ -1368,7 +1384,8 @@ class FixtureHistoryImporter:
             FROM unresolved_fixture_rows AS u
             JOIN source_assertions AS sa
               ON sa.capture_id = u.capture_id AND sa.source_row_key = u.source_row_key
-            WHERE u.capture_id = ? AND sa.predicate IN ('kickoff', 'home_team', 'away_team')
+            WHERE u.capture_id = ?
+              AND sa.predicate IN ('kickoff', 'home_team', 'away_team', 'fixture_status')
             GROUP BY u.source_row_key, u.reason
             ORDER BY u.source_row_key
             """,
@@ -1609,6 +1626,64 @@ class FixtureHistoryImporter:
                 )
             )
         return tuple(result)
+
+    def resolve_existing_team(
+        self,
+        league: LeagueConfig,
+        season: str,
+        source_name: str,
+        *,
+        source_kind: SourceKind = SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION,
+    ) -> TeamResolution:
+        """Resolve one source name through the normal known-only LF03 rules."""
+        from matchvet.team_alias_registry import source_lineage
+
+        season_code(season)
+        normalized = canonical_key(source_name)
+        league_id = deterministic_identifier("league", league.key)
+        connection = self._store._connection_for_repository()
+        rows = connection.execute(
+            """
+            SELECT DISTINCT t.team_id, t.canonical_name
+            FROM teams AS t
+            LEFT JOIN team_aliases AS a
+              ON a.team_id = t.team_id AND a.league_id = t.league_id
+            WHERE t.league_id = ?
+              AND (t.normalized_name = ? OR a.normalized_alias = ?)
+            """,
+            (league_id, normalized, normalized),
+        ).fetchall()
+        evidence: set[str] = {str(row[0]) for row in rows}
+        names = {str(row[0]): str(row[1]) for row in rows}
+        registry_entries = self._team_alias_registry.candidates(
+            league.key, season, source_lineage(source_kind), source_name
+        )
+        invalid_registry_target = False
+        for entry in registry_entries:
+            target = connection.execute(
+                "SELECT canonical_name FROM teams WHERE league_id = ? AND team_id = ?",
+                (league_id, entry.team_id),
+            ).fetchone()
+            if target is None or str(target[0]) != entry.canonical_name:
+                invalid_registry_target = True
+                break
+            evidence.add(entry.team_id)
+            names[entry.team_id] = entry.canonical_name
+        candidates = tuple(sorted(evidence))
+        if invalid_registry_target:
+            return TeamResolution(MappingState.UNKNOWN, source_name, None, None)
+        if len(candidates) == 1:
+            team_id = candidates[0]
+            return TeamResolution(
+                MappingState.CONFIRMED,
+                source_name,
+                team_id,
+                names[team_id],
+                candidates,
+            )
+        if candidates:
+            return TeamResolution(MappingState.AMBIGUOUS, source_name, None, None, candidates)
+        return TeamResolution(MappingState.UNKNOWN, source_name, None, None)
 
     def _existing_capture(
         self, source_id: str, cache_key: str, digest: str, retrieved_at_utc: str
@@ -2051,6 +2126,8 @@ class FixtureHistoryImporter:
             assertions["home_team"],
             assertions["away_team"],
         ]
+        if row.explicit_fixture_status is not None:
+            revision_assertions.append(assertions["fixture_status"])
         fixture_status = _fixture_status(row)
         revision_payload = {
             "fixture_status": fixture_status,
@@ -2169,6 +2246,10 @@ class FixtureHistoryImporter:
                 counters["unknown_fields"] += 1
             self._record_conflict(tx, "FIXTURE", fixture_id, metric_key, assertion_id)
         self._record_conflict(tx, "FIXTURE", fixture_id, "kickoff", assertions["kickoff"])
+        if row.explicit_fixture_status is not None:
+            self._record_conflict(
+                tx, "FIXTURE", fixture_id, "fixture_status", assertions["fixture_status"]
+            )
         counters["fixtures_imported"] += 1
 
     def _insert_assertions(
@@ -2221,6 +2302,12 @@ class FixtureHistoryImporter:
                 _raw_kickoff(row),
             ),
         }
+        if row.explicit_fixture_status is not None:
+            fields["fixture_status"] = (
+                ParsedField("fixture_status", OBSERVED, row.explicit_fixture_status),
+                "FixtureStatus",
+                row.explicit_fixture_status,
+            )
         for metric_key, parsed in row.fields.items():
             fields[metric_key] = (
                 parsed,
@@ -2238,7 +2325,7 @@ class FixtureHistoryImporter:
             normalized_json = _optional_json(parsed.value)
             evidence_type = (
                 "FIXTURE"
-                if predicate in {"home_team", "away_team", "kickoff"}
+                if predicate in {"home_team", "away_team", "kickoff", "fixture_status"}
                 else (
                     "OPTIONAL_EVIDENCE"
                     if parsed.evidence_class == "OPTIONAL_EVIDENCE"
@@ -2423,6 +2510,8 @@ def _raw_kickoff(row: ParsedRow) -> str:
 
 
 def _fixture_status(row: ParsedRow) -> str:
+    if row.explicit_fixture_status is not None:
+        return row.explicit_fixture_status
     home = row.fields["full_time_home_goals"]
     away = row.fields["full_time_away_goals"]
     if home.state is OBSERVED and away.state is OBSERVED:
@@ -3212,6 +3301,20 @@ class FixtureHistoryAcquirer:
                         else "malformed"
                     )
                     diagnostics.append(f"{league.key}: {provider_id} {kind}: {diagnostic}")
+
+        from matchvet.operator_fixture_observation import OperatorFixtureObservationRepository
+
+        manual_scope = scopes_by_league["belgian_pro_league"]
+        manual_repository = OperatorFixtureObservationRepository(
+            self.importer._store,
+            private_root=self.importer._private_root,
+        )
+        for manual_record in manual_repository.list_for_scope(manual_scope.scope_id):
+            capture_id = manual_record.capture_id
+            row_key = f"official-observation:{manual_record.observation.digest}"
+            capture_scopes[capture_id] = manual_scope.scope_id
+            capture_rows[capture_id] = {row_key}
+            imports.append(manual_record.import_result)
 
         window = MatchweekWindow.for_friday(plan.matchweek_friday)
         revisions_by_id: dict[str, FixtureRevisionReference] = {}

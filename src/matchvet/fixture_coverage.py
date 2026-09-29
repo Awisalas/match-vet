@@ -875,6 +875,7 @@ def assess_fixture_coverage(
     scope_by_id = {scope.scope_id: scope for scope in ordered_scopes}
 
     attempts_by_id: dict[str, ProviderAttempt] = {}
+    provider_capture_scopes: dict[str, set[str]] = {}
     captured_source_ids_by_scope: dict[str, set[str]] = {
         scope.scope_id: set() for scope in ordered_scopes
     }
@@ -884,6 +885,8 @@ def assess_fixture_coverage(
         if attempt.scope_id not in scope_by_id:
             raise ValueError("Provider Attempt references a scope outside the assessment.")
         attempts_by_id[attempt.attempt_id] = attempt
+        if attempt.capture_id is not None:
+            provider_capture_scopes.setdefault(attempt.capture_id, set()).add(attempt.scope_id)
         if attempt.state is ProviderAttemptState.CAPTURED and attempt.capture_id is not None:
             captured_source_ids_by_scope[attempt.scope_id].add(attempt.capture_id)
 
@@ -908,13 +911,16 @@ def assess_fixture_coverage(
             raise ValueError("Fixture Revision IDs must be unique within an assessment.")
         if revision.scope_id not in scope_by_id:
             raise ValueError("Fixture Revision references a scope outside the assessment.")
-        if not set(revision.source_capture_ids).issubset(
-            captured_source_ids_by_scope[revision.scope_id]
-        ):
-            raise ValueError(
-                "Fixture Revision source capture IDs must reference captured Provider Attempts "
-                "in the same scope."
-            )
+        for capture_id in revision.source_capture_ids:
+            attempted_scopes = provider_capture_scopes.get(capture_id)
+            if attempted_scopes is not None and (
+                revision.scope_id not in attempted_scopes
+                or capture_id not in captured_source_ids_by_scope[revision.scope_id]
+            ):
+                raise ValueError(
+                    "Fixture Revision source capture IDs that belong to Provider Attempts must "
+                    "reference a captured Provider Attempt in the same scope."
+                )
         revisions_by_id[revision.revision_id] = revision
 
     candidate_ids: set[str] = set()

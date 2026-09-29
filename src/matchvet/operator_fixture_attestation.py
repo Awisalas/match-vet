@@ -1459,12 +1459,13 @@ def _validate_manifest_binding(
             )
         if any(
             item.capture_id not in entry.source_capture_ids
-            or capture_digests.get(item.capture_id) != item.capture_digest
+            or (
+                item.capture_id in capture_digests
+                and capture_digests[item.capture_id] != item.capture_digest
+            )
             for item in entry.assertion_facts
         ):
-            raise ValueError(
-                "Candidate manifest assertions differ from exact captured provider data."
-            )
+            raise ValueError("Candidate manifest assertions differ from exact capture provenance.")
     expected_entries = _with_manifest_fact_flags(list(manifest.entries))
     if tuple(expected_entries) != manifest.entries:
         raise ValueError("Candidate manifest conflict or provisional indicators changed.")

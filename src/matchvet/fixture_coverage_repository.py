@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, cast
@@ -92,7 +93,7 @@ class FixtureCoverageRepository:
         if assessment.contract_version == "fixture-coverage-v3-v3":
             self._validate_v3(cast(AttestedFixtureCoverageAssessment, assessment))
         with self._store.transaction() as transaction:
-            links = _assessment_links(transaction, assessment)
+            links = _assessment_links(transaction, assessment, self._store)
             existing = transaction.execute(
                 """
                 SELECT assessment_json, contract_version, assessment_schema_version,
@@ -359,7 +360,7 @@ class FixtureCoverageRepository:
             )
         except ValueError as error:
             raise FixtureCoverageIntegrityError(
-                "Candidate manifest facts differ from the exact F01 and T04 references."
+                f"Candidate manifest facts differ from the exact F01 and T04 references: {error}"
             ) from error
 
     def get(self, assessment_digest: str) -> SupportedFixtureCoverageAssessment | None:
@@ -401,7 +402,7 @@ class FixtureCoverageRepository:
                 raise FixtureCoverageIntegrityError(
                     "Fixture Coverage row identity or derived values do not match its payload."
                 )
-            expected_links = _assessment_links(connection, assessment)
+            expected_links = _assessment_links(connection, assessment, self._store)
             if self._stored_links(connection, assessment_digest) != expected_links:
                 raise FixtureCoverageIntegrityError(
                     "Fixture Coverage payload provenance does not match its relational links."
@@ -684,6 +685,7 @@ def _assessment_metadata(assessment: SupportedFixtureCoverageAssessment) -> _Ass
 def _assessment_links(
     connection: StoreTransaction | sqlite3.Connection,
     assessment: SupportedFixtureCoverageAssessment,
+    store: Store,
 ) -> _AssessmentLinks:
     _assessment_metadata(assessment)
     scope_ids = {item.scope.scope_id for item in assessment.scope_assessments}
@@ -751,7 +753,14 @@ def _assessment_links(
             (revision.scope_id, revision.fixture_id, revision.revision_id, revision_digest)
         )
         for capture_id in revision.source_capture_ids:
-            add_referenced_capture(capture_id, revision.scope_id, capture_scopes)
+            add_referenced_capture(
+                capture_id,
+                revision.scope_id,
+                capture_scopes,
+                capture_digests=capture_digests,
+                add_capture=add_capture,
+                store=store,
+            )
         _append_assertion_contexts(
             assertion_contexts,
             revision.source_assertion_ids,
@@ -763,7 +772,14 @@ def _assessment_links(
         if identity.scope_id not in scope_ids:
             raise FixtureCoverageIntegrityError("Fixture Identity Resolution has an unknown scope.")
         for capture_id in identity.source_capture_ids:
-            add_referenced_capture(capture_id, identity.scope_id, capture_scopes)
+            add_referenced_capture(
+                capture_id,
+                identity.scope_id,
+                capture_scopes,
+                capture_digests=capture_digests,
+                add_capture=add_capture,
+                store=store,
+            )
         _append_assertion_contexts(
             assertion_contexts,
             identity.source_assertion_ids,
@@ -939,12 +955,41 @@ def _assessment_links(
     )
 
 
-def add_referenced_capture(capture_id: str, scope_id: str, capture_scopes: dict[str, str]) -> None:
+def add_referenced_capture(
+    capture_id: str,
+    scope_id: str,
+    capture_scopes: dict[str, str],
+    *,
+    capture_digests: dict[str, str],
+    add_capture: Callable[[str, str, str], None],
+    store: Store,
+) -> None:
     source_scope = capture_scopes.get(capture_id)
-    if source_scope is None or source_scope != scope_id:
-        raise FixtureCoverageIntegrityError(
-            f"Source Capture {capture_id} is not retained by an attempt in the same scope."
+    if source_scope is not None:
+        if source_scope != scope_id:
+            raise FixtureCoverageIntegrityError(
+                f"Source Capture {capture_id} is not retained in the same Fixture Scope."
+            )
+        return
+    try:
+        from matchvet.operator_fixture_observation import (
+            verify_operator_fixture_observation_capture,
         )
+
+        verified = verify_operator_fixture_observation_capture(
+            store, capture_id, expected_scope_id=scope_id
+        )
+    except (ArtifactError, ValueError, TypeError) as error:
+        raise FixtureCoverageIntegrityError(
+            f"Source Capture {capture_id} is not a verified LF05 observation."
+        ) from error
+    if verified.observation.scope_id != scope_id:
+        raise FixtureCoverageIntegrityError(
+            f"Source Capture {capture_id} is not retained in the same Fixture Scope."
+        )
+    add_capture(capture_id, verified.artifact_digest, scope_id)
+    capture_digests[capture_id] = verified.artifact_digest
+    capture_scopes[capture_id] = scope_id
 
 
 def _append_assertion_contexts(

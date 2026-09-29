@@ -335,9 +335,13 @@ def main(arguments: Sequence[str] | None = None) -> int:
             parsed.as_json,
         )
     if parsed.command == "fixtures":
-        from matchvet.operator_fixture_attestation_cli import handle_fixture_attestation
+        if parsed.fixtures_command == "attest":
+            from matchvet.operator_fixture_attestation_cli import handle_fixture_attestation
 
-        return handle_fixture_attestation(parsed)
+            return handle_fixture_attestation(parsed)
+        from matchvet.operator_fixture_observation_cli import handle_fixture_observation
+
+        return handle_fixture_observation(parsed)
     return _resume_command(parsed.run_id, parsed.store, parsed.as_json)
 
 

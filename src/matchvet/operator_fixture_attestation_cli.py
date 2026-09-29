@@ -56,6 +56,9 @@ def add_fixture_attestation_parser(
 ) -> None:
     fixtures = commands.add_parser("fixtures", help="inspect scheduled-fixture research evidence")
     fixture_commands = fixtures.add_subparsers(dest="fixtures_command", required=True)
+    from matchvet.operator_fixture_observation_cli import add_fixture_observation_parser
+
+    add_fixture_observation_parser(fixture_commands)
     attest = fixture_commands.add_parser(
         "attest", help="record Research-Only official fixture comparisons"
     )
