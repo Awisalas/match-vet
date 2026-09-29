@@ -598,6 +598,7 @@ def _entry_json(entry: CandidateManifestEntry) -> dict[str, object]:
                 "home_team_id": item.home_team_id,
                 "away_team_id": item.away_team_id,
                 "kickoff_state": item.kickoff_state,
+                "kickoff_precision": item.kickoff_precision,
                 "kickoff_utc": item.kickoff_utc,
                 "kickoff_local_text": item.kickoff_local_text,
                 "fixture_status": item.fixture_status,

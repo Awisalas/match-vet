@@ -888,6 +888,86 @@ def test_date_only_text_fixture_is_included_by_f01_matchweek_scope(tmp_path: Pat
         stored = importer.revisions(importer.fixtures()[0].fixture_id)[0]
         assert stored.kickoff_utc is None
         assert stored.kickoff_precision == "DATE"
+        kickoff_assertion = next(
+            item
+            for item in importer.source_assertions()
+            if item.capture_id == text_attempt.capture_id and item.predicate == "kickoff"
+        )
+        assert kickoff_assertion.raw_value_json == '"2026-09-25"'
+        assert kickoff_assertion.normalized_value_json == '"2026-09-25"'
+        timestamps = (
+            store._connection_for_repository()
+            .execute(
+                """
+            SELECT event_time_utc, effective_time_utc
+            FROM source_assertions WHERE assertion_id = ?
+            """,
+                (kickoff_assertion.assertion_id,),
+            )
+            .fetchone()
+        )
+        assert tuple(timestamps) == (None, None)
+
+
+def test_instant_source_assertion_persists_canonical_offset_aware_utc(tmp_path: Path) -> None:
+    from dataclasses import replace
+    from datetime import timedelta, timezone
+
+    from matchvet.ingestion import (
+        FixtureHistoryImporter,
+        OpenFootballJSONParser,
+        SourceCaptureInput,
+    )
+    from matchvet.store import open_store
+
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    league = league_by_key("premier_league")
+    content = (
+        b'{"matches":[{"date":"2026-08-21","time":"20:00",'
+        b'"team1":"Arsenal","team2":"Coventry","score":{}}]}'
+    )
+    parsed = OpenFootballJSONParser().parse(content, league=league, season="2026-27")
+    local_offset = timezone(timedelta(hours=1))
+    parsed_row = replace(
+        parsed.rows[0],
+        kickoff_utc=datetime(2026, 8, 21, 20, tzinfo=local_offset),
+    )
+    parsed = replace(parsed, rows=(parsed_row,))
+
+    with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        imported = importer.import_dataset(
+            parsed,
+            content,
+            SourceCaptureInput(
+                source_url="https://example.test/premier.json",
+                retrieved_at_utc="2026-08-20T12:00:00+00:00",
+                observed_terms="CC0",
+                cache_key="instant-assertion-persistence",
+            ),
+        )
+        kickoff = next(
+            item
+            for item in importer.source_assertions()
+            if item.capture_id == imported.source_capture_id and item.predicate == "kickoff"
+        )
+        timestamps = (
+            store._connection_for_repository()
+            .execute(
+                """
+            SELECT event_time_utc, effective_time_utc
+            FROM source_assertions WHERE assertion_id = ?
+            """,
+                (kickoff.assertion_id,),
+            )
+            .fetchone()
+        )
+
+    assert tuple(timestamps) == (
+        "2026-08-21T19:00:00+00:00",
+        "2026-08-21T19:00:00+00:00",
+    )
 
 
 def test_date_only_text_fixture_crossing_f01_boundary_is_not_assigned_to_scope(

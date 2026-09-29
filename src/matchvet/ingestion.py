@@ -1948,7 +1948,11 @@ class FixtureHistoryImporter:
                 if row.kickoff_local_date is not None
                 else EvidenceState.UNKNOWN.value
             ),
-            "kickoff_utc": row.kickoff_utc.isoformat() if row.kickoff_utc else None,
+            "kickoff_utc": (
+                row.kickoff_utc.astimezone(UTC).isoformat()
+                if row.kickoff_utc is not None and row.kickoff_precision != "DATE"
+                else None
+            ),
             "source_round": row.source_round,
         }
         revision_digest = sha256_bytes(_canonical_json(revision_payload))
@@ -2068,10 +2072,20 @@ class FixtureHistoryImporter:
     ) -> dict[str, str]:
         kickoff_state = OBSERVED if row.kickoff_local_date is not None else UNKNOWN
         kickoff_value: str | None = None
-        if row.kickoff_utc is not None:
-            kickoff_value = row.kickoff_utc.isoformat()
+        if row.kickoff_precision == "DATE":
+            if row.kickoff_local_date is not None:
+                kickoff_value = row.kickoff_local_date.isoformat()
+        elif row.kickoff_utc is not None:
+            if row.kickoff_utc.tzinfo is None or row.kickoff_utc.utcoffset() is None:
+                raise ValueError("Source kickoff instants must include a UTC offset.")
+            kickoff_value = row.kickoff_utc.astimezone(UTC).isoformat()
         elif row.kickoff_local_date is not None:
             kickoff_value = row.kickoff_local_date.isoformat()
+        kickoff_timestamp = (
+            row.kickoff_utc.astimezone(UTC).isoformat()
+            if row.kickoff_precision != "DATE" and row.kickoff_utc is not None
+            else None
+        )
         fields: dict[str, tuple[ParsedField, str, str]] = {
             "home_team": (
                 ParsedField("home_team", OBSERVED, row.home_team),
@@ -2143,8 +2157,8 @@ class FixtureHistoryImporter:
                     normalized_json,
                     parsed.state.value,
                     parsed.unknown_reason,
-                    kickoff_value if predicate == "kickoff" else None,
-                    kickoff_value if predicate == "kickoff" else None,
+                    kickoff_timestamp if predicate == "kickoff" else None,
+                    kickoff_timestamp if predicate == "kickoff" else None,
                     captured_at,
                 ),
             )

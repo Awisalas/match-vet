@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ from matchvet.fixture_coverage import (
 )
 from matchvet.fixture_coverage_repository import FixtureCoverageRepository
 from matchvet.operator_fixture_attestation_cli import handle_fixture_attestation
-from matchvet.store import open_store, termux_private_root
+from matchvet.store import Store, open_store, termux_private_root
 
 
 def _base_assessment() -> FixtureCoverageAssessment:
@@ -40,6 +41,44 @@ def _base_assessment() -> FixtureCoverageAssessment:
         identity_resolutions=(),
         freshness_results=(),
     )
+
+
+def _rewrite_legacy_assertion(
+    store: Store,
+    *,
+    assertion_id: str,
+    predicate: str,
+    raw_value_json: str,
+    normalized_value_json: str,
+    event_time_utc: str,
+    effective_time_utc: str | None,
+) -> None:
+    """Seed pre-LF04 source rows without weakening production immutability."""
+    with store.transaction() as transaction:
+        transaction.execute("DROP TRIGGER source_assertions_no_update")
+        transaction.execute(
+            """
+            UPDATE source_assertions
+            SET predicate = ?, raw_value_json = ?, normalized_value_json = ?,
+                event_time_utc = ?, effective_time_utc = ?
+            WHERE assertion_id = ?
+            """,
+            (
+                predicate,
+                raw_value_json,
+                normalized_value_json,
+                event_time_utc,
+                effective_time_utc,
+                assertion_id,
+            ),
+        )
+        transaction.execute(
+            """
+            CREATE TRIGGER source_assertions_no_update
+            BEFORE UPDATE ON source_assertions
+            BEGIN SELECT RAISE(ABORT, 'source assertions are immutable'); END
+            """
+        )
 
 
 def test_prepare_is_one_scope_compact_and_research_only(
@@ -83,6 +122,258 @@ def test_prepare_is_one_scope_compact_and_research_only(
     assert "serie_a:2026-27:2026-09-25" not in output
     assert output.count("\n") < 20
     assert '{"' not in output
+
+
+def test_prepare_accepts_legacy_premier_league_date_only_kickoff(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from matchvet import operator_fixture_attestation_cli as attestation_cli
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.ingestion import (
+        FixtureHistoryAcquirer,
+        FixtureHistoryImporter,
+        IngestionPlan,
+        StaticSourceFetcher,
+        TeamCanonicalizer,
+        league_by_key,
+        openfootball_text_url,
+        openfootball_url,
+    )
+
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    store_path = private_root / "matchvet.sqlite3"
+    league = league_by_key("premier_league")
+    teams = TeamCanonicalizer()
+    teams.register_team(league, "Arsenal")
+    teams.register_team(league, "Chelsea")
+    text_source = openfootball_text_url(league, "2026-27")
+    text_content = (
+        b"= English Premier League 2026/27\n\nMatchday 1\n\nSat Oct 10 2026\n\nArsenal v Chelsea\n"
+    )
+    fetcher = StaticSourceFetcher(
+        {
+            openfootball_url(league, "2026-27"): b'{"matches":[]}',
+            text_source: text_content,
+        },
+        retrieved_at_utc="2026-10-09T09:00:00+00:00",
+    )
+
+    with open_store(store_path, private_root=private_root) as store:
+        assert store.status.schema_version == 13
+        assert store.status.applied_migrations == tuple(range(1, 14))
+        importer = FixtureHistoryImporter(
+            store,
+            private_root=private_root,
+            team_canonicalizer=teams,
+        )
+        scheduled = FixtureHistoryAcquirer(importer, fetcher).acquire_scheduled_fixtures(
+            IngestionPlan(
+                current_season="2026-27",
+                leagues=(league,),
+                matchweek_friday="2026-10-09",
+            )
+        )
+        assert len(scheduled.assessment.fixture_revisions) == 1
+        assert scheduled.assessment.fixture_revisions[0].source_assertion_ids
+        assertion = next(
+            item
+            for item in importer.source_assertions()
+            if item.predicate == "kickoff" and item.raw_value_json == '"2026-10-10"'
+        )
+        _rewrite_legacy_assertion(
+            store,
+            assertion_id=assertion.assertion_id,
+            predicate=assertion.predicate,
+            raw_value_json=assertion.raw_value_json or "",
+            normalized_value_json=assertion.normalized_value_json or "",
+            event_time_utc="2026-10-10",
+            effective_time_utc="2026-10-10",
+        )
+        before = (
+            store._connection_for_repository()
+            .execute(
+                """
+            SELECT raw_value_json, normalized_value_json, event_time_utc, effective_time_utc
+            FROM source_assertions WHERE assertion_id = ?
+            """,
+                (assertion.assertion_id,),
+            )
+            .fetchone()
+        )
+        assert tuple(before) == ('"2026-10-10"', '"2026-10-10"', "2026-10-10", "2026-10-10")
+        FixtureCoverageRepository(store).persist(scheduled.assessment)
+
+    monkeypatch.setattr(attestation_cli, "termux_private_root", lambda: private_root)
+    arguments = _parser().parse_args(
+        [
+            "fixtures",
+            "attest",
+            "prepare",
+            "--base",
+            scheduled.assessment.digest,
+            "--league",
+            "premier_league",
+            "--season",
+            "2026-27",
+            "--friday",
+            "2026-10-09",
+            "--store",
+            str(store_path),
+            "--json",
+        ]
+    )
+
+    assert handle_fixture_attestation(arguments) == 0, capsys.readouterr().out
+    output = capsys.readouterr().out
+    manifest_result = json.loads(output)
+    assert manifest_result["candidate_count"] == 1
+    assert manifest_result["candidate_manifest_digest"].startswith("sha256:")
+    prepared_revision = manifest_result["entries"][0]["revisions"][0]
+    assert prepared_revision["kickoff_precision"] == "DATE"
+    assert prepared_revision["kickoff_utc"] is None
+    assert prepared_revision["kickoff_local_text"] == "2026-10-10"
+
+    with open_store(store_path, private_root=private_root) as store:
+        repository = FixtureCoverageRepository(store)
+        manifest = repository.build_candidate_manifest(
+            scheduled.assessment, "premier_league:2026-27:2026-10-09"
+        )
+        replay = repository.build_candidate_manifest(
+            scheduled.assessment, "premier_league:2026-27:2026-10-09"
+        )
+        revision = manifest.entries[0].revision_facts[0]
+        from matchvet.operator_fixture_attestation import (
+            OperatorAttestationOutcome,
+            OperatorComparisonConfirmations,
+            make_operator_coverage_attestation,
+            policy_publications_for_scope,
+        )
+
+        attestation = make_operator_coverage_attestation(
+            base_assessment=scheduled.assessment,
+            candidate_manifest=manifest,
+            operator_id="lf04-test-replay",
+            verified_at_utc="2026-10-09T10:00:00.000000+00:00",
+            publications=policy_publications_for_scope(manifest.scope),
+            expected_official_fixture_count=1,
+            candidate_confirmations=(),
+            confirmations=OperatorComparisonConfirmations(
+                all_official_fixtures_represented=False,
+                no_extra_matchvet_fixture=False,
+                complete_official_publication_covers_scope=False,
+                pairing_calendar_layer_checked=False,
+                exact_schedule_layer_checked=False,
+                latest_applicable_update_checked=False,
+                complete_publication_affirms_empty_scope=False,
+            ),
+            outcome=OperatorAttestationOutcome.UNCERTAIN,
+            reason="Isolated LF04 replay coverage.",
+        )
+        persisted_attestation = repository.persist_attestation(attestation)
+        replayed_attestation = repository.get_attestation_artifact(
+            persisted_attestation.artifact_digest
+        )
+        after = (
+            store._connection_for_repository()
+            .execute(
+                """
+            SELECT raw_value_json, normalized_value_json, event_time_utc, effective_time_utc
+            FROM source_assertions WHERE assertion_id = ?
+            """,
+                (assertion.assertion_id,),
+            )
+            .fetchone()
+        )
+    kickoff = next(
+        item for item in manifest.entries[0].assertion_facts if item.predicate == "kickoff"
+    )
+    home_assertion = next(
+        item for item in manifest.entries[0].assertion_facts if item.predicate == "home_team"
+    )
+    home_assertion_id = home_assertion.assertion_id
+
+    assert kickoff.raw_value_json == '"2026-10-10"'
+    assert kickoff.normalized_value_json == '"2026-10-10"'
+    assert kickoff.event_time_utc is None
+    assert kickoff.effective_time_utc is None
+    assert revision.kickoff_precision == "DATE"
+    assert revision.kickoff_utc is None
+    assert revision.kickoff_local_text == "2026-10-10"
+    assert persisted_attestation.attestation.candidate_manifest == manifest
+    assert replayed_attestation == attestation
+    assert manifest.digest == replay.digest == manifest_result["candidate_manifest_digest"]
+    assert tuple(after) == tuple(before)
+
+    def assert_invalid_legacy_values(
+        *,
+        predicate: str,
+        raw_value_json: str,
+        normalized_value_json: str,
+        event_time_utc: str,
+        effective_time_utc: str | None,
+        target_assertion_id: str | None = None,
+    ) -> None:
+        with open_store(store_path, private_root=private_root) as store:
+            _rewrite_legacy_assertion(
+                store,
+                assertion_id=target_assertion_id or assertion.assertion_id,
+                predicate=predicate,
+                raw_value_json=raw_value_json,
+                normalized_value_json=normalized_value_json,
+                event_time_utc=event_time_utc,
+                effective_time_utc=effective_time_utc,
+            )
+            with pytest.raises(ValueError):
+                FixtureCoverageRepository(store).build_candidate_manifest(
+                    scheduled.assessment, "premier_league:2026-27:2026-10-09"
+                )
+
+    assert_invalid_legacy_values(
+        predicate="kickoff",
+        raw_value_json='"2026-10-10"',
+        normalized_value_json='"2026-10-10"',
+        event_time_utc="2026-10-10T00:00:00",
+        effective_time_utc="2026-10-10T00:00:00",
+    )
+    assert_invalid_legacy_values(
+        predicate="kickoff",
+        raw_value_json='"2026-10-10"',
+        normalized_value_json='"2026-10-10"',
+        event_time_utc="2026-02-31",
+        effective_time_utc="2026-02-31",
+    )
+    assert_invalid_legacy_values(
+        predicate="kickoff",
+        raw_value_json='"2026-10-10"',
+        normalized_value_json='"2026-10-11"',
+        event_time_utc="2026-10-10",
+        effective_time_utc="2026-10-10",
+    )
+    assert_invalid_legacy_values(
+        predicate="kickoff",
+        raw_value_json='"2026-10-11"',
+        normalized_value_json='"2026-10-10"',
+        event_time_utc="2026-10-10",
+        effective_time_utc="2026-10-10",
+    )
+    assert_invalid_legacy_values(
+        predicate="kickoff",
+        raw_value_json='"2026-10-10"',
+        normalized_value_json='"2026-10-10"',
+        event_time_utc="2026-10-10",
+        effective_time_utc="2026-10-10T00:00:00+00:00",
+    )
+    assert_invalid_legacy_values(
+        predicate="home_team",
+        raw_value_json=home_assertion.raw_value_json or "",
+        normalized_value_json=home_assertion.normalized_value_json or "",
+        event_time_utc="2026-10-10",
+        effective_time_utc="2026-10-10",
+        target_assertion_id=home_assertion_id,
+    )
 
 
 def test_record_has_no_default_yes_confirmation(

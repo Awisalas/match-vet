@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, cast
 
 from matchvet.artifacts import ArtifactError, ArtifactStore
@@ -25,7 +26,7 @@ from matchvet.fixture_coverage_codec import (
     encode_f01,
     is_supported_f01_assessment,
 )
-from matchvet.ingestion import TARGET_LEAGUES
+from matchvet.ingestion import TARGET_LEAGUES, _parse_date
 from matchvet.operator_fixture_attestation import (
     OPERATOR_ATTESTATION_MEDIA_TYPE,
     AttestationArtifactReference,
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _ASSESSMENT_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_DATE_ONLY_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 
 
 class FixtureCoverageIntegrityError(ValueError):
@@ -317,6 +319,16 @@ class FixtureCoverageRepository:
                 raise FixtureCoverageIntegrityError(
                     f"Exact candidate source assertion {assertion_id} is missing."
                 )
+            event_time_utc, effective_time_utc = _candidate_assertion_times(
+                assertion_id=str(row[0]),
+                predicate=str(row[8]),
+                subject_key=str(row[6]),
+                raw_value_json=None if row[11] is None else str(row[11]),
+                normalized_value_json=None if row[12] is None else str(row[12]),
+                event_time_utc=None if row[14] is None else str(row[14]),
+                effective_time_utc=None if row[15] is None else str(row[15]),
+                revision_facts=tuple(revision_facts),
+            )
             assertion_facts.append(
                 CandidateAssertionFact(
                     assertion_id=str(row[0]),
@@ -333,8 +345,8 @@ class FixtureCoverageRepository:
                     raw_value_json=None if row[11] is None else str(row[11]),
                     normalized_value_json=None if row[12] is None else str(row[12]),
                     unknown_reason=None if row[13] is None else str(row[13]),
-                    event_time_utc=None if row[14] is None else str(row[14]),
-                    effective_time_utc=None if row[15] is None else str(row[15]),
+                    event_time_utc=event_time_utc,
+                    effective_time_utc=effective_time_utc,
                     created_at_utc=str(row[16]),
                 )
             )
@@ -557,6 +569,77 @@ class FixtureCoverageRepository:
             captures=tuple((str(row[0]), str(row[1])) for row in captures),
             assertions=tuple((str(row[0]), str(row[1])) for row in assertions),
         )
+
+
+def _candidate_assertion_times(
+    *,
+    assertion_id: str,
+    predicate: str,
+    subject_key: str,
+    raw_value_json: str | None,
+    normalized_value_json: str | None,
+    event_time_utc: str | None,
+    effective_time_utc: str | None,
+    revision_facts: tuple[CandidateRevisionFact, ...],
+) -> tuple[str | None, str | None]:
+    timestamps = (event_time_utc, effective_time_utc)
+    date_values = tuple(
+        value for value in timestamps if value is not None and _DATE_ONLY_RE.fullmatch(value)
+    )
+    if not date_values:
+        return timestamps
+    if predicate != "kickoff":
+        raise FixtureCoverageIntegrityError(
+            "Date-only source assertion timestamps are valid only for kickoff assertions."
+        )
+    if len(date_values) != sum(value is not None for value in timestamps):
+        raise FixtureCoverageIntegrityError(
+            "A legacy DATE kickoff assertion cannot also contain an instant."
+        )
+    date_text = date_values[0]
+    try:
+        legacy_date = date.fromisoformat(date_text)
+    except ValueError as error:
+        raise FixtureCoverageIntegrityError(
+            "Legacy DATE kickoff assertion contains a malformed calendar date."
+        ) from error
+    if legacy_date.isoformat() != date_text or any(value != date_text for value in date_values):
+        raise FixtureCoverageIntegrityError(
+            "Legacy DATE kickoff assertion timestamps must match one exact calendar date."
+        )
+
+    normalized_value = _json_string(normalized_value_json)
+    raw_value = _json_string(raw_value_json)
+    if normalized_value != date_text or _parse_date(raw_value) != legacy_date:
+        raise FixtureCoverageIntegrityError(
+            "Legacy DATE kickoff assertion must match its raw and normalized date facts."
+        )
+
+    associated_revisions = tuple(
+        fact for fact in revision_facts if assertion_id in fact.reference.source_assertion_ids
+    )
+    if not associated_revisions or any(
+        fact.reference.fixture_id != subject_key
+        or fact.kickoff_precision != "DATE"
+        or fact.kickoff_state != "OBSERVED"
+        or fact.kickoff_utc is not None
+        or _parse_date(fact.kickoff_local_text) != legacy_date
+        for fact in associated_revisions
+    ):
+        raise FixtureCoverageIntegrityError(
+            "Legacy DATE kickoff assertion requires matching DATE-precision revisions."
+        )
+    return None, None
+
+
+def _json_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    return decoded if isinstance(decoded, str) else None
 
 
 def _assessment_digest_from_payload(payload: str) -> str:
