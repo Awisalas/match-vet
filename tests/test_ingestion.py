@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -53,6 +54,36 @@ def _seed_existing_teams(store: Store, league: LeagueConfig, names: tuple[str, .
                     ON CONFLICT(team_id) DO NOTHING""",
                 (team_id, league_id, name, canonical_key(name), now),
             )
+
+
+def _seed_existing_alias(
+    store: Store,
+    league: LeagueConfig,
+    alias_name: str,
+    target_name: str,
+) -> None:
+    league_id = deterministic_identifier("league", league.key)
+    team_id = deterministic_identifier("team", f"{league.key}:{canonical_key(target_name)}")
+    alias_id = deterministic_identifier(
+        "team_alias", f"{league.key}:{team_id}:{canonical_key(alias_name)}"
+    )
+    with store.transaction() as tx:
+        tx.add_identifier_if_missing(CanonicalIdentifier("team_alias", alias_id))
+        tx.execute(
+            """INSERT INTO team_aliases (
+                alias_id, league_id, team_id, source_id, alias_name, normalized_alias,
+                mapping_rule_version, created_at_utc
+            ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?) ON CONFLICT(alias_id) DO NOTHING""",
+            (
+                alias_id,
+                league_id,
+                team_id,
+                alias_name,
+                canonical_key(alias_name),
+                "test-confirmed-alias-v1",
+                "2026-09-01T00:00:00+00:00",
+            ),
+        )
 
 
 FOOTBALL_DATA_SAMPLE = """\
@@ -367,24 +398,19 @@ def test_ambiguous_team_aliases_remain_unresolved(tmp_path: Path) -> None:
         FixtureHistoryImporter,
         FootballDataCSVParser,
         SourceCaptureInput,
-        TeamCanonicalizer,
     )
     from matchvet.store import open_store
 
     private_root = tmp_path / "private"
     private_root.mkdir()
     league = league_by_key("premier_league")
-    mapping = TeamCanonicalizer()
-    first = mapping.register_team(league, "United One")
-    second = mapping.register_team(league, "United Two")
-    mapping.register_alias(league, "United", first)
-    mapping.register_alias(league, "United", second)
     content = _minimal_csv(home="United", away="Arsenal")
 
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
-        importer = FixtureHistoryImporter(
-            store, private_root=private_root, team_canonicalizer=mapping
-        )
+        _seed_existing_teams(store, league, ("United One", "United Two", "Arsenal"))
+        _seed_existing_alias(store, league, "United", "United One")
+        _seed_existing_alias(store, league, "United", "United Two")
+        importer = FixtureHistoryImporter(store, private_root=private_root)
         result = importer.import_dataset(
             FootballDataCSVParser().parse(content, league=league, season="2026-27"),
             content,
@@ -397,6 +423,22 @@ def test_ambiguous_team_aliases_remain_unresolved(tmp_path: Path) -> None:
 
         assert result.unresolved_rows == 1
         assert importer.fixtures() == ()
+        mapping = (
+            store._connection_for_repository()
+            .execute(
+                """SELECT mapping_state, candidates_json FROM source_team_mappings
+               WHERE source_team_name = 'United'"""
+            )
+            .fetchone()
+        )
+        candidate_ids = json.loads(str(mapping[1]))
+        assert mapping[0] == "AMBIGUOUS"
+        assert candidate_ids == sorted(
+            (
+                deterministic_identifier("team", "premier_league:united one"),
+                deterministic_identifier("team", "premier_league:united two"),
+            )
+        )
 
 
 def test_import_transaction_rolls_back_all_normalized_rows_on_failure(tmp_path: Path) -> None:
@@ -860,7 +902,6 @@ def test_date_only_text_fixture_is_included_by_f01_matchweek_scope(tmp_path: Pat
         FixtureHistoryImporter,
         IngestionPlan,
         StaticSourceFetcher,
-        TeamCanonicalizer,
         openfootball_text_url,
         openfootball_url,
     )
@@ -869,9 +910,6 @@ def test_date_only_text_fixture_is_included_by_f01_matchweek_scope(tmp_path: Pat
     private_root = tmp_path / "private"
     private_root.mkdir()
     league = league_by_key("premier_league")
-    canonicalizer = TeamCanonicalizer()
-    canonicalizer.register_team(league, "Northside")
-    canonicalizer.register_team(league, "Harbor United")
     text_source = openfootball_text_url(league, "2026-27")
     text_content = (
         b"= English Premier League 2026/27\n\n"
@@ -889,11 +927,7 @@ def test_date_only_text_fixture_is_included_by_f01_matchweek_scope(tmp_path: Pat
 
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
         _seed_existing_teams(store, league, ("Northside", "Harbor United"))
-        importer = FixtureHistoryImporter(
-            store,
-            private_root=private_root,
-            team_canonicalizer=canonicalizer,
-        )
+        importer = FixtureHistoryImporter(store, private_root=private_root)
         scheduled = FixtureHistoryAcquirer(importer, fetcher).acquire_scheduled_fixtures(
             IngestionPlan(
                 current_season="2026-27",
@@ -1017,7 +1051,6 @@ def test_date_only_text_fixture_crossing_f01_boundary_is_not_assigned_to_scope(
         FixtureHistoryImporter,
         IngestionPlan,
         StaticSourceFetcher,
-        TeamCanonicalizer,
         openfootball_text_url,
         openfootball_url,
     )
@@ -1026,9 +1059,6 @@ def test_date_only_text_fixture_crossing_f01_boundary_is_not_assigned_to_scope(
     private_root = tmp_path / "private"
     private_root.mkdir()
     league = league_by_key("serie_a")
-    canonicalizer = TeamCanonicalizer()
-    canonicalizer.register_team(league, "Northside")
-    canonicalizer.register_team(league, "Harbor United")
     text_source = openfootball_text_url(league, "2026-27")
     text_content = (
         b"= Italy Serie A 2026/27\n\nMatchday 1\n\nFri Sep 25 2026\n\nNorthside v Harbor United\n"
@@ -1043,11 +1073,7 @@ def test_date_only_text_fixture_crossing_f01_boundary_is_not_assigned_to_scope(
 
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
         _seed_existing_teams(store, league, ("Northside", "Harbor United"))
-        importer = FixtureHistoryImporter(
-            store,
-            private_root=private_root,
-            team_canonicalizer=canonicalizer,
-        )
+        importer = FixtureHistoryImporter(store, private_root=private_root)
         scheduled = FixtureHistoryAcquirer(importer, fetcher).acquire_scheduled_fixtures(
             IngestionPlan(
                 current_season="2026-27",
@@ -1222,7 +1248,6 @@ def test_schedule_import_is_idempotent_and_reschedules_append_revisions(tmp_path
         FixtureHistoryImporter,
         IngestionPlan,
         StaticSourceFetcher,
-        TeamCanonicalizer,
         openfootball_url,
     )
     from matchvet.store import open_store
@@ -1231,9 +1256,6 @@ def test_schedule_import_is_idempotent_and_reschedules_append_revisions(tmp_path
     private_root.mkdir()
     league = league_by_key("premier_league")
     source_url = openfootball_url(league, "2026-27")
-    canonicalizer = TeamCanonicalizer()
-    canonicalizer.register_team(league, "Northside")
-    canonicalizer.register_team(league, "Harbor FC")
 
     def schedule(time_text: str) -> bytes:
         return (
@@ -1254,11 +1276,7 @@ def test_schedule_import_is_idempotent_and_reschedules_append_revisions(tmp_path
 
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
         _seed_existing_teams(store, league, ("Northside", "Harbor FC"))
-        importer = FixtureHistoryImporter(
-            store,
-            private_root=private_root,
-            team_canonicalizer=canonicalizer,
-        )
+        importer = FixtureHistoryImporter(store, private_root=private_root)
         acquirer = FixtureHistoryAcquirer(importer, fetcher)
 
         first = acquirer.acquire_scheduled_fixtures(plan)
@@ -1304,7 +1322,6 @@ def test_schedule_import_reuses_persisted_team_aliases(tmp_path: Path) -> None:
         IngestionPlan,
         SourceCaptureInput,
         StaticSourceFetcher,
-        TeamCanonicalizer,
         football_data_url,
         openfootball_url,
     )
@@ -1313,21 +1330,17 @@ def test_schedule_import_reuses_persisted_team_aliases(tmp_path: Path) -> None:
     private_root = tmp_path / "private"
     private_root.mkdir()
     league = league_by_key("premier_league")
-    canonicalizer = TeamCanonicalizer()
-    canonicalizer.register_team(league, "Canonical Home", "Home Alias")
-    canonicalizer.register_team(league, "Canonical Away", "Away Alias")
-    results_content = _minimal_csv(home="Home Alias", away="Away Alias")
+    results_content = _minimal_csv(home="Canonical Home", away="Canonical Away")
     schedule_content = b"""{"matches":[
       {"date":"2026-09-26","time":"15:00","team1":"Home Alias",
        "team2":"Away Alias","score":{}}
     ]}"""
 
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
-        results_importer = FixtureHistoryImporter(
-            store,
-            private_root=private_root,
-            team_canonicalizer=canonicalizer,
-        )
+        _seed_existing_teams(store, league, ("Canonical Home", "Canonical Away"))
+        _seed_existing_alias(store, league, "Home Alias", "Canonical Home")
+        _seed_existing_alias(store, league, "Away Alias", "Canonical Away")
+        results_importer = FixtureHistoryImporter(store, private_root=private_root)
         results_importer.import_dataset(
             FootballDataCSVParser().parse(results_content, league=league, season="2026-27"),
             results_content,

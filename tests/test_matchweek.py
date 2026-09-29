@@ -53,6 +53,46 @@ def _import_schedule(
     return store, importer
 
 
+def _seed_ambiguous_team_aliases(store: Store, league_key: str, alias_name: str) -> None:
+    from matchvet.ingestion import canonical_key, deterministic_identifier, league_by_key
+    from matchvet.store import CanonicalIdentifier
+
+    league = league_by_key(league_key)
+    league_id = deterministic_identifier("league", league.key)
+    created_at = "2026-09-01T00:00:00+00:00"
+    with store.transaction() as tx:
+        for canonical_name in ("United One", "United Two", "Leeds"):
+            team_id = deterministic_identifier(
+                "team", f"{league.key}:{canonical_key(canonical_name)}"
+            )
+            tx.add_identifier_if_missing(CanonicalIdentifier("team", team_id))
+            tx.execute(
+                """INSERT INTO teams (
+                    team_id, league_id, canonical_name, normalized_name, created_at_utc
+                ) VALUES (?, ?, ?, ?, ?) ON CONFLICT(team_id) DO NOTHING""",
+                (team_id, league_id, canonical_name, canonical_key(canonical_name), created_at),
+            )
+            alias_id = deterministic_identifier(
+                "team_alias", f"{league.key}:{team_id}:{canonical_key(alias_name)}"
+            )
+            tx.add_identifier_if_missing(CanonicalIdentifier("team_alias", alias_id))
+            tx.execute(
+                """INSERT INTO team_aliases (
+                    alias_id, league_id, team_id, source_id, alias_name, normalized_alias,
+                    mapping_rule_version, created_at_utc
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?) ON CONFLICT(alias_id) DO NOTHING""",
+                (
+                    alias_id,
+                    league_id,
+                    team_id,
+                    alias_name,
+                    canonical_key(alias_name),
+                    "test-confirmed-alias-v1",
+                    created_at,
+                ),
+            )
+
+
 def test_matchweek_window_is_friday_to_tuesday_in_africa_lagos() -> None:
     from matchvet.matchweek import MatchweekWindow
 
@@ -699,7 +739,6 @@ def test_unresolved_identity_is_indeterminate_and_excluded_from_coverage(
         FixtureHistoryImporter,
         FootballDataCSVParser,
         SourceCaptureInput,
-        TeamCanonicalizer,
         league_by_key,
     )
     from matchvet.matchweek import MembershipState, freeze_matchweek
@@ -710,13 +749,9 @@ def test_unresolved_identity_is_indeterminate_and_excluded_from_coverage(
         "2026-09-17T12:00:00+00:00",
     )
     league = league_by_key("premier_league")
-    mapping = TeamCanonicalizer()
-    first = mapping.register_team(league, "United One")
-    second = mapping.register_team(league, "United Two")
-    mapping.register_alias(league, "United", first)
-    mapping.register_alias(league, "United", second)
+    _seed_ambiguous_team_aliases(store, league.key, "United")
     content = _schedule_csv([("19/09/2026", "15:00", "United", "Leeds")])
-    FixtureHistoryImporter(store, private_root=tmp_path, team_canonicalizer=mapping).import_dataset(
+    FixtureHistoryImporter(store, private_root=tmp_path).import_dataset(
         FootballDataCSVParser().parse(content, league=league, season="2026-27"),
         content,
         SourceCaptureInput(
@@ -751,7 +786,6 @@ def test_post_cutoff_unresolved_identity_is_appendix_only(
         FixtureHistoryImporter,
         FootballDataCSVParser,
         SourceCaptureInput,
-        TeamCanonicalizer,
         league_by_key,
     )
     from matchvet.matchweek import (
@@ -773,13 +807,9 @@ def test_post_cutoff_unresolved_identity_is_appendix_only(
         created_at_utc="2026-09-17T12:00:00+00:00",
     )
     league = league_by_key("premier_league")
-    mapping = TeamCanonicalizer()
-    first = mapping.register_team(league, "United One")
-    second = mapping.register_team(league, "United Two")
-    mapping.register_alias(league, "United", first)
-    mapping.register_alias(league, "United", second)
+    _seed_ambiguous_team_aliases(store, league.key, "United")
     content = _schedule_csv([("19/09/2026", "15:00", "United", "Leeds")])
-    FixtureHistoryImporter(store, private_root=tmp_path, team_canonicalizer=mapping).import_dataset(
+    FixtureHistoryImporter(store, private_root=tmp_path).import_dataset(
         FootballDataCSVParser().parse(content, league=league, season="2026-27"),
         content,
         SourceCaptureInput(

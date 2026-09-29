@@ -17,7 +17,6 @@ from matchvet.ingestion import (
     OpenFootballJSONParser,
     SourceCaptureInput,
     StaticSourceFetcher,
-    TeamCanonicalizer,
     TeamIdentityPolicy,
     canonical_key,
     deterministic_identifier,
@@ -174,12 +173,10 @@ def test_canonical_names_resolve_after_importer_construction(tmp_path: Path) -> 
         assert len(importer.fixtures()) == 1
 
 
-def test_known_only_does_not_persist_an_in_memory_only_team(tmp_path: Path) -> None:
+def test_known_only_does_not_register_an_unknown_team(tmp_path: Path) -> None:
     root = tmp_path / "private"
     root.mkdir()
     league = league_by_key("premier_league")
-    canonicalizer = TeamCanonicalizer()
-    canonicalizer.register_team(league, "Unpersisted United")
     content = json.dumps(
         {
             "matches": [
@@ -194,9 +191,7 @@ def test_known_only_does_not_persist_an_in_memory_only_team(tmp_path: Path) -> N
         }
     ).encode()
     with open_store(root / "matchvet.sqlite3", private_root=root) as store:
-        importer = FixtureHistoryImporter(
-            store, private_root=root, team_canonicalizer=canonicalizer
-        )
+        importer = FixtureHistoryImporter(store, private_root=root)
         result = importer.import_dataset(
             OpenFootballJSONParser().parse(content, league=league, season="2026-27"),
             content,
@@ -379,6 +374,21 @@ def test_canonical_evidence_disagreeing_with_registry_refuses_identity(tmp_path:
         assert _import_json(importer, "bundesliga", "2026-27", "Dortmund", "Other Club") == (
             MappingState.UNKNOWN,
             None,
+        )
+        mapping = (
+            store._connection_for_repository()
+            .execute(
+                """SELECT mapping_state, candidates_json FROM source_team_mappings
+               WHERE source_team_name = 'Dortmund'"""
+            )
+            .fetchone()
+        )
+        assert mapping[0] == MappingState.AMBIGUOUS.value
+        assert json.loads(str(mapping[1])) == sorted(
+            (
+                deterministic_identifier("team", "bundesliga:paderborn"),
+                deterministic_identifier("team", "bundesliga:dortmund"),
+            )
         )
         assert len(importer.fixtures()) == 0
 

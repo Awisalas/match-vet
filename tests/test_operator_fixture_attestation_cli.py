@@ -138,7 +138,6 @@ def test_prepare_accepts_legacy_premier_league_date_only_kickoff(
         IngestionPlan,
         SourceCaptureInput,
         StaticSourceFetcher,
-        TeamCanonicalizer,
         football_data_url,
         league_by_key,
         openfootball_text_url,
@@ -149,9 +148,6 @@ def test_prepare_accepts_legacy_premier_league_date_only_kickoff(
     private_root.mkdir()
     store_path = private_root / "matchvet.sqlite3"
     league = league_by_key("premier_league")
-    teams = TeamCanonicalizer()
-    teams.register_team(league, "Arsenal")
-    teams.register_team(league, "Chelsea")
     text_source = openfootball_text_url(league, "2026-27")
     text_content = (
         b"= English Premier League 2026/27\n\nMatchday 1\n\nSat Oct 10 2026\n\nArsenal v Chelsea\n"
@@ -167,11 +163,7 @@ def test_prepare_accepts_legacy_premier_league_date_only_kickoff(
     with open_store(store_path, private_root=private_root) as store:
         assert store.status.schema_version == 13
         assert store.status.applied_migrations == tuple(range(1, 14))
-        importer = FixtureHistoryImporter(
-            store,
-            private_root=private_root,
-            team_canonicalizer=teams,
-        )
+        importer = FixtureHistoryImporter(store, private_root=private_root)
         history = (
             b"Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR\n"
             b"E0,21/08/2026,15:00,Arsenal,Chelsea,1,0,H\n"
