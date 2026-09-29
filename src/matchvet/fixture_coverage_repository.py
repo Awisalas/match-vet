@@ -894,7 +894,7 @@ def _assessment_links(
     for revision in assessment.fixture_revisions:
         stored = connection.execute(
             """
-            SELECT fixture_id, revision_digest, source_capture_id
+            SELECT fixture_id, revision_digest
             FROM fixture_revisions
             WHERE revision_id = ?
             """,
@@ -904,7 +904,6 @@ def _assessment_links(
             stored is None
             or str(stored[0]) != revision.fixture_id
             or str(stored[1]) != _sha256_value(revision.revision_digest, "fixture revision digest")
-            or str(stored[2]) not in revision.source_capture_ids
         ):
             raise FixtureCoverageIntegrityError(
                 f"Fixture Revision {revision.revision_id} does not match its V1 identity."

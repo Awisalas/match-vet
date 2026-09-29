@@ -853,7 +853,16 @@ def test_scheduled_acquisition_persists_one_record_per_attempt_and_no_belgian_re
             )
             expected_t06_urls = (
                 tuple(football_data_url(league, "2026-27") for league in TARGET_LEAGUES)
-                + expected_schedule_urls
+                + tuple(
+                    openfootball_url(league, "2026-27")
+                    for league in TARGET_LEAGUES
+                    if league.openfootball_supported
+                )
+                + tuple(
+                    openfootball_text_url(league, "2026-27")
+                    for league in TARGET_LEAGUES
+                    if league.openfootball_supported
+                )
             )
             assert fetcher.calls == list(expected_t06_urls)
 
@@ -864,7 +873,9 @@ def test_scheduled_acquisition_persists_one_record_per_attempt_and_no_belgian_re
         if entrypoint == "scheduled":
             assert measured_bytes == sum(map(len, source_bytes.values()))
         else:
-            assert measured_bytes == 0
+            assert measured_bytes == sum(
+                len(schedule_json) for league in TARGET_LEAGUES if league.openfootball_supported
+            )
 
         records = ProviderHealthRepository(store).list_for_matchweek("2026-27", "2026-09-25")
 

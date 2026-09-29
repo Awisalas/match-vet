@@ -134,9 +134,12 @@ def test_prepare_accepts_legacy_premier_league_date_only_kickoff(
     from matchvet.ingestion import (
         FixtureHistoryAcquirer,
         FixtureHistoryImporter,
+        FootballDataCSVParser,
         IngestionPlan,
+        SourceCaptureInput,
         StaticSourceFetcher,
         TeamCanonicalizer,
+        football_data_url,
         league_by_key,
         openfootball_text_url,
         openfootball_url,
@@ -168,6 +171,19 @@ def test_prepare_accepts_legacy_premier_league_date_only_kickoff(
             store,
             private_root=private_root,
             team_canonicalizer=teams,
+        )
+        history = (
+            b"Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR\n"
+            b"E0,21/08/2026,15:00,Arsenal,Chelsea,1,0,H\n"
+        )
+        importer.import_dataset(
+            FootballDataCSVParser().parse(history, league=league, season="2026-27"),
+            history,
+            SourceCaptureInput(
+                source_url=football_data_url(league, "2026-27"),
+                retrieved_at_utc="2026-10-09T08:00:00+00:00",
+                observed_terms=("Football-Data.co.uk restricted private local noncommercial use"),
+            ),
         )
         scheduled = FixtureHistoryAcquirer(importer, fetcher).acquire_scheduled_fixtures(
             IngestionPlan(

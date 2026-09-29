@@ -1,0 +1,601 @@
+{
+  "leagues": [
+    {
+      "existing_canonical_teams": [
+        {
+          "canonical_name": "AFC Bournemouth",
+          "team_id": "ff2bcf77-6123-5e62-9516-09c9514315c1"
+        },
+        {
+          "canonical_name": "Arsenal FC",
+          "team_id": "db616fb4-3858-533b-9cd7-520cafcf2e25"
+        },
+        {
+          "canonical_name": "Aston Villa FC",
+          "team_id": "4008a4d7-0e6a-5dac-93d3-d371d2eb0cca"
+        },
+        {
+          "canonical_name": "Brentford FC",
+          "team_id": "2142677e-3678-566b-b35c-d1a7893e1059"
+        },
+        {
+          "canonical_name": "Brighton & Hove Albion FC",
+          "team_id": "5f235a5b-6064-5d00-bd66-f8eec7831eaa"
+        },
+        {
+          "canonical_name": "Chelsea FC",
+          "team_id": "af6d6294-832a-5dce-868b-8ade29327f8c"
+        },
+        {
+          "canonical_name": "Coventry City FC",
+          "team_id": "e44b25fe-09c7-5297-a25d-976ce4d924e3"
+        },
+        {
+          "canonical_name": "Crystal Palace FC",
+          "team_id": "f6f37531-1205-5dcb-a9fc-fbaf1bd81468"
+        },
+        {
+          "canonical_name": "Everton FC",
+          "team_id": "465b0970-d1d3-5204-85ce-74db81c04dfd"
+        },
+        {
+          "canonical_name": "Fulham FC",
+          "team_id": "a3006cad-b766-5108-8369-fa892c5212b2"
+        },
+        {
+          "canonical_name": "Hull City AFC",
+          "team_id": "ca0654ab-a93e-5ee0-91f5-3fdb67d1e4d2"
+        },
+        {
+          "canonical_name": "Ipswich Town FC",
+          "team_id": "879d8419-3ae4-5ad8-b6fe-5a8148c18206"
+        },
+        {
+          "canonical_name": "Leeds United FC",
+          "team_id": "b07d235b-3192-52f5-9b1a-7aa2aca72d10"
+        },
+        {
+          "canonical_name": "Liverpool FC",
+          "team_id": "f1a2fae4-cd8b-5c84-896d-b005b5fe7cfd"
+        },
+        {
+          "canonical_name": "Manchester City FC",
+          "team_id": "85cc0f6e-4930-501d-876a-6f70ff8cbe48"
+        },
+        {
+          "canonical_name": "Manchester United FC",
+          "team_id": "23532f0f-5d04-592e-96f5-4d4f99907cfe"
+        },
+        {
+          "canonical_name": "Newcastle United FC",
+          "team_id": "6108e69c-b6ed-528b-86c3-38f904f009bb"
+        },
+        {
+          "canonical_name": "Nottingham Forest FC",
+          "team_id": "605f40b7-9f6b-52b4-b854-2eb3e4ec3505"
+        },
+        {
+          "canonical_name": "Sunderland AFC",
+          "team_id": "71c9fcc4-8e1b-5232-9911-0361a158ebed"
+        },
+        {
+          "canonical_name": "Tottenham Hotspur FC",
+          "team_id": "04603c5f-a432-5ee8-8a66-02424a853c61"
+        }
+      ],
+      "league_key": "premier_league",
+      "season": "2026-27",
+      "source_lineage": "openfootball",
+      "source_spellings": [
+        "AFC Bournemouth",
+        "Arsenal FC",
+        "Aston Villa FC",
+        "Brentford FC",
+        "Brighton & Hove Albion FC",
+        "Chelsea FC",
+        "Coventry City FC",
+        "Crystal Palace FC",
+        "Everton FC",
+        "Fulham FC",
+        "Hull City AFC",
+        "Ipswich Town FC",
+        "Leeds United FC",
+        "Liverpool FC",
+        "Manchester City FC",
+        "Manchester United FC",
+        "Newcastle United FC",
+        "Nottingham Forest FC",
+        "Sunderland AFC",
+        "Tottenham Hotspur FC"
+      ]
+    },
+    {
+      "existing_canonical_teams": [
+        {
+          "canonical_name": "Atalanta",
+          "team_id": "44e329de-5758-5bac-9cf1-d0f778fe36e3"
+        },
+        {
+          "canonical_name": "Bologna",
+          "team_id": "fc746cac-1c0f-5fa7-93c4-78970d7d223c"
+        },
+        {
+          "canonical_name": "Cagliari",
+          "team_id": "3a913936-7c05-553a-80ff-f41546d29aaf"
+        },
+        {
+          "canonical_name": "Como",
+          "team_id": "71cdfd16-58ef-5eac-a010-cf0845f3349e"
+        },
+        {
+          "canonical_name": "Fiorentina",
+          "team_id": "15f1e37e-7e97-562e-951c-c881321a0592"
+        },
+        {
+          "canonical_name": "Frosinone",
+          "team_id": "d463f5bd-51b2-56ac-aa9f-cda1e896379a"
+        },
+        {
+          "canonical_name": "Genoa",
+          "team_id": "1bb95ff8-c591-58d5-8054-5544c3d3745e"
+        },
+        {
+          "canonical_name": "Inter",
+          "team_id": "80cf1b85-f7bc-5ed5-9494-69a916d69b76"
+        },
+        {
+          "canonical_name": "Juventus",
+          "team_id": "0ec38267-349d-5bcb-85b9-d42978d507d6"
+        },
+        {
+          "canonical_name": "Lazio",
+          "team_id": "477766c0-9f60-5358-88da-05fa28cf4a60"
+        },
+        {
+          "canonical_name": "Lecce",
+          "team_id": "149ae96b-da42-5a4c-8bf2-14904e71ed6c"
+        },
+        {
+          "canonical_name": "Milan",
+          "team_id": "665f4390-bc19-5a3d-abb5-43da06c0f4de"
+        },
+        {
+          "canonical_name": "Monza",
+          "team_id": "36f3d588-2cb3-50c9-9a31-42876cdd6159"
+        },
+        {
+          "canonical_name": "Napoli",
+          "team_id": "f32eb93a-88de-5c7c-a2a8-216bf383fc2c"
+        },
+        {
+          "canonical_name": "Parma",
+          "team_id": "e3124fdd-d515-59fb-a24a-bfc821aa090e"
+        },
+        {
+          "canonical_name": "Roma",
+          "team_id": "2876aa97-fd00-5433-ae45-7d2c95113d1e"
+        },
+        {
+          "canonical_name": "Sassuolo",
+          "team_id": "85ea2339-736f-5fda-9323-71821ca4b167"
+        },
+        {
+          "canonical_name": "Torino",
+          "team_id": "08cfa11a-5fa7-5ce2-9674-a5d7d02f7722"
+        },
+        {
+          "canonical_name": "Udinese",
+          "team_id": "d58ca08f-dfbd-5cef-8c6a-029b39d8672d"
+        },
+        {
+          "canonical_name": "Venezia",
+          "team_id": "ca91855d-55b8-5f43-bc90-cbc0957f3c7c"
+        }
+      ],
+      "league_key": "serie_a",
+      "season": "2026-27",
+      "source_lineage": "openfootball",
+      "source_spellings": [
+        "ACF Fiorentina",
+        "AS Roma",
+        "Atalanta BC",
+        "Bologna FC 1909",
+        "Cagliari Calcio",
+        "Como 1907",
+        "FC Internazionale Milano",
+        "Frosinone Calcio",
+        "Genoa CFC",
+        "Parma Calcio 1913",
+        "SSC Napoli",
+        "US Lecce",
+        "US Sassuolo Calcio",
+        "Udinese Calcio"
+      ]
+    },
+    {
+      "existing_canonical_teams": [
+        {
+          "canonical_name": "Alaves",
+          "team_id": "6c486a61-54b3-5517-9cf5-39816a8cf84b"
+        },
+        {
+          "canonical_name": "Ath Bilbao",
+          "team_id": "fb5db78e-0333-5af4-9936-52a4b711a363"
+        },
+        {
+          "canonical_name": "Ath Madrid",
+          "team_id": "37d9bf76-36b2-5464-9ac5-90e294915cda"
+        },
+        {
+          "canonical_name": "Barcelona",
+          "team_id": "e18ab5b0-0271-5c48-a0cb-50b6f41724ea"
+        },
+        {
+          "canonical_name": "Betis",
+          "team_id": "548db594-69ca-5b4a-a49c-75505c549470"
+        },
+        {
+          "canonical_name": "Celta",
+          "team_id": "217a48e6-3fec-585e-91a0-9da2a86ca4a8"
+        },
+        {
+          "canonical_name": "Elche",
+          "team_id": "371051e6-bed7-5cd3-a424-d6fb43245498"
+        },
+        {
+          "canonical_name": "Espanol",
+          "team_id": "d83e59d7-87a2-5134-9c3b-52fc0dc623c9"
+        },
+        {
+          "canonical_name": "Getafe",
+          "team_id": "55dd2fba-87b4-5434-b464-3d4bac464c83"
+        },
+        {
+          "canonical_name": "La Coruna",
+          "team_id": "f8488c8f-6cc9-5d2e-8962-e70b6f730cae"
+        },
+        {
+          "canonical_name": "Levante",
+          "team_id": "45d4a71e-c427-5c24-aae1-7145a95e26ea"
+        },
+        {
+          "canonical_name": "Malaga",
+          "team_id": "ef713cb0-1c9d-5fe6-b682-9aac9b545cb3"
+        },
+        {
+          "canonical_name": "Osasuna",
+          "team_id": "3b8c9743-f567-5ed6-8c90-81a49be1280e"
+        },
+        {
+          "canonical_name": "Real Madrid",
+          "team_id": "a51430ae-b226-5d82-a99b-2038f1d3162e"
+        },
+        {
+          "canonical_name": "Santander",
+          "team_id": "4e6a5760-9f13-508b-b665-b267e6bf032f"
+        },
+        {
+          "canonical_name": "Sevilla",
+          "team_id": "7a2c760f-cc71-5e64-b694-8d66d53896e8"
+        },
+        {
+          "canonical_name": "Sociedad",
+          "team_id": "450186c9-ef28-5b2e-a273-445f2548e7d7"
+        },
+        {
+          "canonical_name": "Valencia",
+          "team_id": "20ebcd3b-e009-5c6b-b1b2-1061d932c318"
+        },
+        {
+          "canonical_name": "Vallecano",
+          "team_id": "892b6308-1499-50b6-afcd-0a9c19dae4a5"
+        },
+        {
+          "canonical_name": "Villarreal",
+          "team_id": "35864904-3e62-5491-959a-7b96dcaed571"
+        }
+      ],
+      "league_key": "la_liga",
+      "season": "2026-27",
+      "source_lineage": "openfootball",
+      "source_spellings": [
+        "Athletic Club",
+        "CA Osasuna",
+        "Club Atlético de Madrid",
+        "Deportivo Alavés",
+        "Levante UD",
+        "Málaga CF",
+        "RC Celta de Vigo",
+        "RC Deportivo La Coruña",
+        "RCD Espanyol de Barcelona",
+        "Rayo Vallecano de Madrid",
+        "Real Betis Balompié",
+        "Real Racing Club de Santander",
+        "Real Sociedad de Fútbol"
+      ]
+    },
+    {
+      "existing_canonical_teams": [
+        {
+          "canonical_name": "Augsburg",
+          "team_id": "dbf627dd-8c8b-55ce-87dc-317c55bd6e10"
+        },
+        {
+          "canonical_name": "Bayern Munich",
+          "team_id": "5c51f5d5-417e-5237-b6cf-7cd05c04c279"
+        },
+        {
+          "canonical_name": "Dortmund",
+          "team_id": "08496b0f-4d8d-5f8c-9f64-0f13c23ff892"
+        },
+        {
+          "canonical_name": "Ein Frankfurt",
+          "team_id": "cde882d1-a5f1-5266-8c85-3864f5fc6409"
+        },
+        {
+          "canonical_name": "Elversberg",
+          "team_id": "269a3868-9d7a-5f12-b5dc-9580423d6d6f"
+        },
+        {
+          "canonical_name": "FC Koln",
+          "team_id": "7fd91dfd-06f0-53d3-8435-c231558ea3ff"
+        },
+        {
+          "canonical_name": "Freiburg",
+          "team_id": "f67c408e-f018-5e6e-a4de-504fd15d7287"
+        },
+        {
+          "canonical_name": "Hamburg",
+          "team_id": "50ba8f0c-b1cd-592c-a77e-7ce3aa65d637"
+        },
+        {
+          "canonical_name": "Hoffenheim",
+          "team_id": "1512e988-79f5-5d94-9f78-272e5f3deea0"
+        },
+        {
+          "canonical_name": "Leverkusen",
+          "team_id": "e1f5feba-007f-52d1-9724-94e6ad88e983"
+        },
+        {
+          "canonical_name": "M'gladbach",
+          "team_id": "a33aae9e-8926-5522-9009-eca266c1e8a2"
+        },
+        {
+          "canonical_name": "Mainz",
+          "team_id": "c1178ed2-9c5d-5995-876e-272e3c754fab"
+        },
+        {
+          "canonical_name": "Paderborn",
+          "team_id": "3e50b3bd-490e-574d-9f69-a903140dd77a"
+        },
+        {
+          "canonical_name": "RB Leipzig",
+          "team_id": "92dba4e7-8f54-580d-afde-fdf6ced0996d"
+        },
+        {
+          "canonical_name": "Schalke 04",
+          "team_id": "a286ed0b-279d-59a3-b436-d017aeae5c45"
+        },
+        {
+          "canonical_name": "Stuttgart",
+          "team_id": "3df4fb9e-5187-5f1d-97c5-901318d0fda8"
+        },
+        {
+          "canonical_name": "Union Berlin",
+          "team_id": "f13887dd-b577-5fab-b6c4-bda9216bc68a"
+        },
+        {
+          "canonical_name": "Werder Bremen",
+          "team_id": "793c75b7-6377-5737-bdf9-42fbd0d5582b"
+        }
+      ],
+      "league_key": "bundesliga",
+      "season": "2026-27",
+      "source_lineage": "openfootball",
+      "source_spellings": [
+        "1. FC Köln",
+        "1. FSV Mainz 05",
+        "Bayer 04 Leverkusen",
+        "Borussia Dortmund",
+        "Borussia Mönchengladbach",
+        "Eintracht Frankfurt",
+        "FC Bayern München",
+        "Hamburger SV",
+        "SC Freiburg",
+        "SC Paderborn 07",
+        "SV 07 Elversberg",
+        "SV Werder Bremen",
+        "TSG 1899 Hoffenheim",
+        "VfB Stuttgart"
+      ]
+    },
+    {
+      "existing_canonical_teams": [
+        {
+          "canonical_name": "Angers",
+          "team_id": "123176e0-ddda-523e-971c-8aabe7e945d0"
+        },
+        {
+          "canonical_name": "Auxerre",
+          "team_id": "d201e825-6e32-52d5-879a-2c3dcc3099f6"
+        },
+        {
+          "canonical_name": "Brest",
+          "team_id": "b130e12c-2f57-5378-9d81-c6de7105e467"
+        },
+        {
+          "canonical_name": "Le Havre",
+          "team_id": "e954d7d4-0973-58ca-8186-91902929bef4"
+        },
+        {
+          "canonical_name": "Le Mans",
+          "team_id": "f6e0f7e0-d6ad-5327-93a4-fa6094644690"
+        },
+        {
+          "canonical_name": "Lens",
+          "team_id": "04024996-bfb5-5bb0-98df-48d452c729e3"
+        },
+        {
+          "canonical_name": "Lille",
+          "team_id": "7258de3d-1907-591f-bc6d-b375cd1884bd"
+        },
+        {
+          "canonical_name": "Lorient",
+          "team_id": "4980464e-ff2d-5234-b30f-202574e1f253"
+        },
+        {
+          "canonical_name": "Lyon",
+          "team_id": "9f7a5bc4-8ade-5196-8e9a-eb58aed7c7c1"
+        },
+        {
+          "canonical_name": "Marseille",
+          "team_id": "13df9a46-a5f6-5a97-8a32-eae440cd026f"
+        },
+        {
+          "canonical_name": "Monaco",
+          "team_id": "43114240-b715-5634-9adc-c20ac7a24142"
+        },
+        {
+          "canonical_name": "Nice",
+          "team_id": "49d56b8e-67ac-5fa3-9dc0-2845dde7b1c0"
+        },
+        {
+          "canonical_name": "Paris FC",
+          "team_id": "fe5d2ef0-34a1-574d-ad1b-3d2abf5feda2"
+        },
+        {
+          "canonical_name": "Paris SG",
+          "team_id": "690aea03-5ecd-531d-8813-4974effee0c6"
+        },
+        {
+          "canonical_name": "Rennes",
+          "team_id": "bf516684-1ce3-584e-b48a-149d58d5da9a"
+        },
+        {
+          "canonical_name": "Strasbourg",
+          "team_id": "035503f1-7460-5f35-85e9-0ab4291cbc79"
+        },
+        {
+          "canonical_name": "Toulouse",
+          "team_id": "8f175bd6-b66a-504b-9483-e8f436b82c42"
+        },
+        {
+          "canonical_name": "Troyes",
+          "team_id": "3b93ef1d-aded-50c6-b9f7-de4c546d70d0"
+        }
+      ],
+      "league_key": "ligue_1",
+      "season": "2026-27",
+      "source_lineage": "openfootball",
+      "source_spellings": [
+        "AJ Auxerre",
+        "AS Monaco FC",
+        "Angers SCO",
+        "ES Troyes AC",
+        "Lille OSC",
+        "OGC Nice",
+        "Olympique Lyonnais",
+        "Olympique de Marseille",
+        "Paris Saint-Germain FC",
+        "RC Strasbourg Alsace",
+        "Racing Club de Lens",
+        "Stade Brestois 29",
+        "Stade Rennais FC 1901"
+      ]
+    },
+    {
+      "existing_canonical_teams": [
+        {
+          "canonical_name": "Academico Viseu",
+          "team_id": "475322fa-dd1e-5e89-9a84-ab30733e4a6d"
+        },
+        {
+          "canonical_name": "Alverca",
+          "team_id": "11a1d65a-6124-5842-8f13-733e2136f1ff"
+        },
+        {
+          "canonical_name": "Arouca",
+          "team_id": "553797d9-a216-565d-a4e2-2116eb4f5294"
+        },
+        {
+          "canonical_name": "Benfica",
+          "team_id": "c7a4ddcf-b311-5ad2-8158-89a46e502509"
+        },
+        {
+          "canonical_name": "Casa Pia",
+          "team_id": "ef4c9e22-a0be-55fc-87da-1bc602bc370a"
+        },
+        {
+          "canonical_name": "Estoril",
+          "team_id": "43db2b38-d0b8-53e7-b2ed-bea25897059f"
+        },
+        {
+          "canonical_name": "Estrela",
+          "team_id": "b3e9de59-41e2-5d02-9963-d1574816d38a"
+        },
+        {
+          "canonical_name": "Famalicao",
+          "team_id": "4b119679-e73c-51ef-a927-29aa397c8d18"
+        },
+        {
+          "canonical_name": "Gil Vicente",
+          "team_id": "35bfa7f4-b8df-5954-8d37-031303cd50c1"
+        },
+        {
+          "canonical_name": "Guimaraes",
+          "team_id": "a145bdae-c562-5462-a237-a0e0802b0593"
+        },
+        {
+          "canonical_name": "Maritimo",
+          "team_id": "d3d383ad-0677-5bd1-962c-b09522b0d9f8"
+        },
+        {
+          "canonical_name": "Moreirense",
+          "team_id": "09d83af6-ee28-56bb-a79a-3a7af5d2d6d1"
+        },
+        {
+          "canonical_name": "Nacional",
+          "team_id": "3be76aeb-8e0e-5838-8d0b-dd3c0e6a25cc"
+        },
+        {
+          "canonical_name": "Porto",
+          "team_id": "65220a29-2d09-5dcc-8d33-28e72426b8d4"
+        },
+        {
+          "canonical_name": "Rio Ave",
+          "team_id": "2210cb64-55db-573a-82ae-f0bdc3efc524"
+        },
+        {
+          "canonical_name": "Santa Clara",
+          "team_id": "813de5f7-3eb5-54d0-a428-19d76ce1201c"
+        },
+        {
+          "canonical_name": "Sp Braga",
+          "team_id": "842fc6d2-ccf3-5f6b-9df0-c4d240bd779e"
+        },
+        {
+          "canonical_name": "Sp Lisbon",
+          "team_id": "dc8e7d77-534a-5443-a553-14f000d937b8"
+        }
+      ],
+      "league_key": "liga_portugal",
+      "season": "2026-27",
+      "source_lineage": "openfootball",
+      "source_spellings": [
+        "Académico de Viseu FC",
+        "CD Nacional",
+        "CD Santa Clara",
+        "CF Estrela da Amadora",
+        "CS Marítimo",
+        "FC Famalicão",
+        "GD Estoril Praia",
+        "Gil Vicente FC           [postponed]",
+        "Sport Lisboa e Benfica",
+        "Sporting Clube de Braga",
+        "Sporting Clube de Portugal",
+        "Vitória Guimarães"
+      ]
+    }
+  ],
+  "provenance": "Offline export of distinct UNKNOWN OpenFootball source team spellings and existing 2026-27 canonical team rows from the user-authorized read-only validation store. This file is temporary and is not an automated-test dependency."
+}

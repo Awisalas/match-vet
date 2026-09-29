@@ -12,10 +12,48 @@ from matchvet.ingestion import (
     TARGET_LEAGUES,
     UNKNOWN,
     FootballDataCSVParser,
+    LeagueConfig,
     SourceParseError,
+    canonical_key,
+    deterministic_identifier,
     football_data_url,
     league_by_key,
 )
+from matchvet.store import CanonicalIdentifier, Store
+
+
+def _seed_existing_teams(store: Store, league: LeagueConfig, names: tuple[str, ...]) -> None:
+    """Create test fixture identities before KNOWN_ONLY scheduled acquisition."""
+    league_id = deterministic_identifier("league", league.key)
+    now = "2026-09-01T00:00:00+00:00"
+    with store.transaction() as tx:
+        tx.add_identifier_if_missing(CanonicalIdentifier("league", league_id))
+        tx.execute(
+            """INSERT INTO target_leagues (
+                league_id, league_key, canonical_name, country, football_data_code,
+                openfootball_code, source_timezone, created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(league_id) DO NOTHING""",
+            (
+                league_id,
+                league.key,
+                league.name,
+                league.country,
+                league.football_data_code,
+                league.openfootball_code,
+                league.timezone,
+                now,
+            ),
+        )
+        for name in names:
+            team_id = deterministic_identifier("team", f"{league.key}:{canonical_key(name)}")
+            tx.add_identifier_if_missing(CanonicalIdentifier("team", team_id))
+            tx.execute(
+                """INSERT INTO teams (team_id, league_id, canonical_name,
+                    normalized_name, created_at_utc) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(team_id) DO NOTHING""",
+                (team_id, league_id, name, canonical_key(name), now),
+            )
+
 
 FOOTBALL_DATA_SAMPLE = """\
 Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HTHG,HTAG,HTR,Referee,HxG,AxG,HS,AS,HST,AST,HF,AF,HC,AC,HY,AY,HR,AR,B365H
@@ -850,6 +888,7 @@ def test_date_only_text_fixture_is_included_by_f01_matchweek_scope(tmp_path: Pat
     )
 
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        _seed_existing_teams(store, league, ("Northside", "Harbor United"))
         importer = FixtureHistoryImporter(
             store,
             private_root=private_root,
@@ -1003,6 +1042,7 @@ def test_date_only_text_fixture_crossing_f01_boundary_is_not_assigned_to_scope(
     )
 
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        _seed_existing_teams(store, league, ("Northside", "Harbor United"))
         importer = FixtureHistoryImporter(
             store,
             private_root=private_root,
@@ -1213,6 +1253,7 @@ def test_schedule_import_is_idempotent_and_reschedules_append_revisions(tmp_path
     )
 
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        _seed_existing_teams(store, league, ("Northside", "Harbor FC"))
         importer = FixtureHistoryImporter(
             store,
             private_root=private_root,
