@@ -204,6 +204,9 @@ def _parser() -> argparse.ArgumentParser:
     policy_validate.add_argument(
         "--json", action="store_true", dest="as_json", help="print JSON summary"
     )
+    from matchvet.operator_fixture_attestation_cli import add_fixture_attestation_parser
+
+    add_fixture_attestation_parser(commands)
     return parser
 
 
@@ -331,6 +334,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
             parsed.resume,
             parsed.as_json,
         )
+    if parsed.command == "fixtures":
+        from matchvet.operator_fixture_attestation_cli import handle_fixture_attestation
+
+        return handle_fixture_attestation(parsed)
     return _resume_command(parsed.run_id, parsed.store, parsed.as_json)
 
 

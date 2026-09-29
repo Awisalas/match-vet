@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import cast
+from typing import Protocol, cast, runtime_checkable
 
 from matchvet.ingestion import TARGET_LEAGUES
 from matchvet.matchweek import MatchweekWindow
@@ -326,6 +326,44 @@ class FixtureCoverageAssessment:
         if self.digest and self.digest != expected:
             raise ValueError("Fixture Coverage Assessment digest does not match its contents.")
         object.__setattr__(self, "digest", expected)
+
+
+@runtime_checkable
+class SupportedFixtureCoverageAssessment(Protocol):
+    """Ordinary immutable F01 fields shared by the exact supported versions."""
+
+    @property
+    def contract_version(self) -> str: ...
+
+    @property
+    def schema_version(self) -> int: ...
+
+    @property
+    def freshness_policy_id(self) -> str | None: ...
+
+    @property
+    def scope_assessments(self) -> tuple[FixtureScopeAssessment, ...]: ...
+
+    @property
+    def provider_attempts(self) -> tuple[ProviderAttempt, ...]: ...
+
+    @property
+    def coverage_evidence(self) -> tuple[ProviderCoverageEvidence, ...]: ...
+
+    @property
+    def fixture_revisions(self) -> tuple[FixtureRevisionReference, ...]: ...
+
+    @property
+    def identity_resolutions(self) -> tuple[FixtureIdentityResolution, ...]: ...
+
+    @property
+    def freshness_results(self) -> tuple[CoverageFreshnessResult, ...]: ...
+
+    @property
+    def schedule_state(self) -> MatchweekScheduleState: ...
+
+    @property
+    def digest(self) -> str: ...
 
 
 @dataclass(frozen=True)

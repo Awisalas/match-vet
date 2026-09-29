@@ -58,6 +58,28 @@ def _unknown_assessment() -> FixtureCoverageAssessment:
     )
 
 
+def test_legacy_v2_canonical_bytes_and_digest_remain_replayable(tmp_path: Path) -> None:
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    assessment = _unknown_assessment()
+    expected_bytes = (
+        Path(__file__).parent / "fixtures" / "f01_v2_unknown_2026_09_25.json"
+    ).read_bytes()
+
+    assert (
+        assessment.digest
+        == "sha256:b3b4fada3f37449f48895467fd7f0964679cd31682cc4439bac82fa075c8ee78"
+    )
+    assert fixture_coverage_assessment_to_canonical_json(assessment).encode("utf-8") == (
+        expected_bytes
+    )
+
+    with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        repository = FixtureCoverageRepository(store)
+        assert repository.persist(assessment) == assessment.digest
+        assert repository.get(assessment.digest) == assessment
+
+
 def _all_state_assessment(store: Store, private_root: Path) -> FixtureCoverageAssessment:
     importer = FixtureHistoryImporter(store, private_root=private_root)
     scopes = fixture_scopes_for_matchweek("2026-09-25", season="2026-27")

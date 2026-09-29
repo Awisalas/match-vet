@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -1476,3 +1477,129 @@ def test_restore_rejects_incompatible_manifest_and_sqlite_foreign_key_failure(
     with pytest.raises(T17Error) as fk_error:
         verify_backup(fk_source)
     assert fk_error.value.code == "MV-T17-BACKUP-SQLITE_FK_FAILED"
+
+
+def test_t17_backup_restore_replays_v2_v3_and_attestation_artifacts(tmp_path: Path) -> None:
+    from matchvet.fixture_coverage import (
+        ProviderAttempt,
+        ProviderAttemptState,
+        assess_fixture_coverage,
+        fixture_scopes_for_matchweek,
+    )
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.operator_fixture_attestation import (
+        OperatorAttestationOutcome,
+        OperatorComparisonConfirmations,
+        derive_attested_fixture_coverage,
+        make_operator_coverage_attestation,
+        policy_publications_for_scope,
+    )
+    from matchvet.provider_health_acquisition import build_provider_health_records
+    from matchvet.provider_health_repository import ProviderHealthRepository
+
+    private_root, database_path = _private_store(tmp_path)
+    scopes = fixture_scopes_for_matchweek("2026-09-25", season="2026-27")
+    attempts = tuple(
+        ProviderAttempt(
+            attempt_id=f"attempt-{scope.league_key}",
+            scope_id=scope.scope_id,
+            provider_id="openfootball-json",
+            capability_id="scheduled-fixtures",
+            state=ProviderAttemptState.UNAVAILABLE,
+            retrieved_at_utc="2026-09-16T12:00:00.000000+00:00",
+        )
+        for scope in scopes
+    )
+    base = assess_fixture_coverage(
+        scopes=scopes,
+        provider_attempts=attempts,
+        coverage_evidence=(),
+        fixture_revisions=(),
+        identity_resolutions=(),
+        freshness_results=(),
+    )
+    with open_store(database_path, private_root=private_root) as store:
+        repository = FixtureCoverageRepository(store)
+        repository.persist(base)
+        confirmations = OperatorComparisonConfirmations(
+            all_official_fixtures_represented=True,
+            no_extra_matchvet_fixture=True,
+            complete_official_publication_covers_scope=True,
+            pairing_calendar_layer_checked=True,
+            exact_schedule_layer_checked=True,
+            latest_applicable_update_checked=True,
+            complete_publication_affirms_empty_scope=True,
+        )
+        references = []
+        for item in base.scope_assessments:
+            manifest = repository.build_candidate_manifest(base, item.scope.scope_id)
+            test_urls = {
+                "ligue-1-programmation": (
+                    "https://ligue1.com/fr/articles/l1_article_90001-programmation-de-la-journee"
+                ),
+                "liga-portugal-round-updates": (
+                    "https://www.ligaportugal.pt/news/90001/horarios-da-jornada-da-liga"
+                ),
+            }
+            publications = tuple(
+                replace(publication, official_url=test_urls[publication.publication_id])
+                if publication.publication_id in test_urls
+                else publication
+                for publication in policy_publications_for_scope(item.scope)
+            )
+            attestation = make_operator_coverage_attestation(
+                base_assessment=base,
+                candidate_manifest=manifest,
+                operator_id="backup-test-operator",
+                verified_at_utc="2026-09-17T12:00:00.000000+00:00",
+                publications=publications,
+                expected_official_fixture_count=0,
+                candidate_confirmations=(),
+                confirmations=confirmations,
+                outcome=OperatorAttestationOutcome.CERTIFIED,
+                reason=None,
+            )
+            references.append(repository.persist_attestation(attestation))
+        derived = derive_attested_fixture_coverage(base, tuple(references))
+        repository.persist(derived)
+        ProviderHealthRepository(store).persist_many(build_provider_health_records(derived))
+
+    source = tmp_path.parent / "shared" / "operator-v3-backup"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    backup_store(
+        database_path,
+        source,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+    assert verify_backup(source).details["schema_version"] == 13
+    original_bundle = {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    }
+
+    target = private_root / "restored-v3" / "matchvet.sqlite3"
+    restored = restore_backup(
+        source,
+        target,
+        private_root=private_root,
+        resource_observation=_safe_resource_observation(),
+    )
+    assert restored.status == "COMPLETE"
+    assert restored.verification.details["fixture_coverage_assessments_verified"] == 2
+    with open_store(target, private_root=private_root) as store:
+        repository = FixtureCoverageRepository(store)
+        assert repository.get(base.digest) == base
+        assert repository.get(derived.digest) == derived
+        for reference in references:
+            assert (
+                repository.get_attestation_artifact(reference.artifact_digest)
+                == reference.attestation
+            )
+        assert ProviderHealthRepository(store).list_for_assessment(derived.digest)
+    assert {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    } == original_bundle

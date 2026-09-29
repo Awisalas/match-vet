@@ -12,13 +12,13 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from matchvet.fixture_coverage import (
-    FixtureCoverageAssessment,
     FixtureIdentityResolution,
     FixtureIdentityState,
     FixtureRevisionReference,
     FixtureScope,
     MatchweekScheduleState,
     ScopeCoverageState,
+    SupportedFixtureCoverageAssessment,
     fixture_scopes_for_matchweek,
 )
 from matchvet.fixture_coverage_repository import (
@@ -394,7 +394,7 @@ class MatchweekMembershipRepository:
                 f"F06 observation {observation.observation_id} differs from its exact F01 facts."
             )
 
-    def _load_assessment(self, assessment_digest: str) -> FixtureCoverageAssessment:
+    def _load_assessment(self, assessment_digest: str) -> SupportedFixtureCoverageAssessment:
         try:
             assessment = FixtureCoverageRepository(self._store).get(assessment_digest)
         except FixtureCoverageIntegrityError as error:
@@ -418,7 +418,7 @@ class MatchweekMembershipRepository:
         return assessment
 
     def _exact_health_references(
-        self, assessment: FixtureCoverageAssessment
+        self, assessment: SupportedFixtureCoverageAssessment
     ) -> tuple[ProviderHealthReference, ...]:
         try:
             records = ProviderHealthRepository(self._store).list_for_assessment(assessment.digest)
@@ -762,7 +762,7 @@ def _requested_scopes(season: str, matchweek_friday: str) -> tuple[FixtureScope,
 
 
 def _validate_assessment_gate(
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
     season: str,
     friday: str,
     expected_scopes: tuple[FixtureScope, ...],
@@ -847,7 +847,7 @@ def _validate_assessment_gate(
 
 def _build_memberships(
     store: Store,
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
     freeze_id: str,
     policy: PolicySnapshot,
 ) -> tuple[MembershipDecision, ...]:
@@ -956,7 +956,7 @@ _MEMBERSHIP_CRITICAL_PREDICATES = frozenset(
 def _load_revision_snapshot(
     store: Store,
     reference: FixtureRevisionReference,
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
 ) -> FixtureRevisionSnapshot:
     connection = store._connection_for_repository()
     row = connection.execute(
@@ -1101,7 +1101,7 @@ def _load_revision_snapshot(
     )
 
 
-def _league_for_scope(assessment: FixtureCoverageAssessment, scope_id: str) -> str:
+def _league_for_scope(assessment: SupportedFixtureCoverageAssessment, scope_id: str) -> str:
     for item in assessment.scope_assessments:
         if item.scope.scope_id == scope_id:
             return item.scope.league_key
@@ -1458,7 +1458,7 @@ def _new_freeze(
     freeze_id: str,
     season: str,
     matchweek_friday: str,
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
     policy: PolicySnapshot,
     health_references: tuple[ProviderHealthReference, ...],
     memberships: tuple[MembershipDecision, ...],
@@ -1484,7 +1484,9 @@ def _new_freeze(
     return replace(provisional, freeze_digest=freeze_digest(provisional))
 
 
-def _scope_snapshots(assessment: FixtureCoverageAssessment) -> tuple[ScopeSnapshot, ...]:
+def _scope_snapshots(
+    assessment: SupportedFixtureCoverageAssessment,
+) -> tuple[ScopeSnapshot, ...]:
     return tuple(
         ScopeSnapshot(
             scope_id=item.scope.scope_id,
@@ -1501,7 +1503,7 @@ def _scope_snapshots(assessment: FixtureCoverageAssessment) -> tuple[ScopeSnapsh
 
 def _validate_observation_matchweek(
     freeze: MatchweekMembershipFreeze,
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
 ) -> None:
     scope = assessment.scope_assessments[0].scope
     if assessment.digest == freeze.assessment_digest:
@@ -1522,7 +1524,7 @@ def _validate_observation_matchweek(
 def _build_observation_changes(
     store: Store,
     freeze: MatchweekMembershipFreeze,
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
 ) -> tuple[MembershipObservationChange, ...]:
     original_assessment = FixtureCoverageRepository(store).get(freeze.assessment_digest)
     if original_assessment is None:

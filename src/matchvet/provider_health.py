@@ -926,10 +926,12 @@ class FixtureCoverageAssessmentReference:
         if not isinstance(fixture_scope, F01FixtureScopeReference):
             raise ValueError("F01 assessment projection requires a typed FixtureScope reference.")
         try:
-            from matchvet.fixture_coverage import FixtureCoverageAssessment
+            from matchvet.fixture_coverage_codec import is_supported_f01_assessment
 
-            if not isinstance(assessment, FixtureCoverageAssessment):
-                raise ValueError("Expected a typed F01 FixtureCoverageAssessment.")
+            if not is_supported_f01_assessment(assessment):
+                raise ValueError(
+                    "Expected a typed F01 FixtureCoverageAssessment or supported F01 v3 assessment."
+                )
             matching = tuple(
                 value
                 for value in _field(assessment, "scope_assessments")

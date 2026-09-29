@@ -42,6 +42,15 @@ from matchvet.ingestion import (
     openfootball_url,
 )
 from matchvet.matchweek_membership import MatchweekMembershipError
+from matchvet.operator_fixture_attestation import (
+    CandidateComparisonConfirmation,
+    OfficialPublicationReference,
+    OperatorAttestationOutcome,
+    OperatorComparisonConfirmations,
+    derive_attested_fixture_coverage,
+    make_operator_coverage_attestation,
+    policy_publications_for_scope,
+)
 from matchvet.provider_health import ProviderAttemptReference, ProviderHealthRecord
 from matchvet.provider_health_acquisition import build_provider_health_records
 from matchvet.provider_health_repository import ProviderHealthRepository
@@ -56,6 +65,25 @@ def _assessment(attempts: tuple[ProviderAttempt, ...]) -> FixtureCoverageAssessm
         fixture_revisions=(),
         identity_resolutions=(),
         freshness_results=(),
+    )
+
+
+def _certification_publications_for_scope(
+    scope: FixtureScope,
+) -> tuple[OfficialPublicationReference, ...]:
+    test_urls = {
+        "ligue-1-programmation": (
+            "https://ligue1.com/fr/articles/l1_article_90001-programmation-de-la-journee"
+        ),
+        "liga-portugal-round-updates": (
+            "https://www.ligaportugal.pt/news/90001/horarios-da-jornada-da-liga"
+        ),
+    }
+    return tuple(
+        replace(item, official_url=test_urls[item.publication_id])
+        if item.publication_id in test_urls
+        else item
+        for item in policy_publications_for_scope(scope)
     )
 
 
@@ -930,6 +958,76 @@ def test_all_seven_confirmed_empty_scopes_create_immutable_zero_member_freeze(
     assert len(frozen.provider_health_references) == len(health_records) == 7
     assert frozen.created_at_utc == "2026-09-24T12:00:00.000000+00:00"
     assert replay == frozen
+
+
+def test_freeze_exact_accepts_all_seven_persisted_attested_v3_scopes(
+    tmp_path: Path,
+) -> None:
+    from matchvet.matchweek_membership_repository import MatchweekMembershipRepository
+
+    now = datetime(2026, 9, 24, 12, tzinfo=UTC)
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        base = _persistable_schedule_assessment(
+            store,
+            tmp_path,
+            (("2026-09-25", "20:00", "Arsenal", "Coventry"),),
+        )
+        repository = FixtureCoverageRepository(store)
+        repository.persist(base)
+        attestations = []
+        for scope_assessment in base.scope_assessments:
+            manifest = repository.build_candidate_manifest(base, scope_assessment.scope.scope_id)
+            candidate_confirmations = tuple(
+                CandidateComparisonConfirmation(
+                    candidate_id=entry.candidate_id,
+                    identity_matches=True,
+                    date_matches=True,
+                    kickoff_matches=True,
+                    status_matches=True,
+                )
+                for entry in manifest.entries
+            )
+            confirmations = OperatorComparisonConfirmations(
+                all_official_fixtures_represented=True,
+                no_extra_matchvet_fixture=True,
+                complete_official_publication_covers_scope=True,
+                pairing_calendar_layer_checked=True,
+                exact_schedule_layer_checked=True,
+                latest_applicable_update_checked=True,
+                complete_publication_affirms_empty_scope=manifest.candidate_count == 0,
+            )
+            attestation = make_operator_coverage_attestation(
+                base_assessment=base,
+                candidate_manifest=manifest,
+                operator_id="offline-operator-1",
+                verified_at_utc="2026-09-17T12:00:00.000000+00:00",
+                publications=_certification_publications_for_scope(scope_assessment.scope),
+                expected_official_fixture_count=manifest.candidate_count,
+                candidate_confirmations=candidate_confirmations,
+                confirmations=confirmations,
+                outcome=OperatorAttestationOutcome.CERTIFIED,
+                reason=None,
+            )
+            attestations.append(repository.persist_attestation(attestation))
+
+        derived = derive_attested_fixture_coverage(base, tuple(attestations))
+        repository.persist(derived)
+        records = build_provider_health_records(derived)
+        ProviderHealthRepository(store).persist_many(records)
+        frozen = MatchweekMembershipRepository(store, clock=lambda: now).freeze_exact(
+            season="2026-27",
+            matchweek_friday="2026-09-25",
+            assessment_digest=derived.digest,
+            policy_id="matchvet:matchweek-membership",
+            policy_version="1",
+        )
+
+        assert repository.get(base.digest) == base
+        assert repository.get(derived.digest) == derived
+        assert frozen.assessment_digest == derived.digest
+        assert len(frozen.scopes) == 7
+        assert len(frozen.provider_health_references) == 7
+        assert len(frozen.memberships) == 1
 
 
 @pytest.mark.parametrize(

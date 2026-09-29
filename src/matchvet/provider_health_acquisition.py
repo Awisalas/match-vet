@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from matchvet.fixture_coverage import (
-    FixtureCoverageAssessment,
     ProviderAttempt,
     ProviderAttemptState,
     ProviderCoverageEvidence,
+    SupportedFixtureCoverageAssessment,
 )
+from matchvet.fixture_coverage_codec import is_supported_f01_assessment
 from matchvet.provider_health import (
     CapabilityAvailabilityAssessment,
     CapabilityAvailabilityState,
@@ -60,13 +61,13 @@ _OPENFOOTBALL_SOURCE_KINDS = {
 
 
 def build_provider_health_records(
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
     *,
     attempt_diagnostics: Mapping[str, str] | None = None,
 ) -> tuple[ProviderHealthRecord, ...]:
     """Create exactly one F04 observation for every attempt in the F01 assessment."""
-    if not isinstance(assessment, FixtureCoverageAssessment):
-        raise TypeError("F05 requires a typed F01 FixtureCoverageAssessment.")
+    if not is_supported_f01_assessment(assessment):
+        raise TypeError("F05 requires a supported typed F01 assessment.")
     diagnostics = dict(attempt_diagnostics or {})
     attempts_by_id = {attempt.attempt_id: attempt for attempt in assessment.provider_attempts}
     if not set(diagnostics).issubset(attempts_by_id):
@@ -80,7 +81,7 @@ def build_provider_health_records(
 
 
 def _record_for_attempt(
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
     attempt: ProviderAttempt,
     diagnostic: str | None,
 ) -> ProviderHealthRecord:
@@ -205,7 +206,7 @@ def _record_for_attempt(
 
 
 def _matching_coverage_evidence(
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
     attempt: ProviderAttempt,
     scope: F01FixtureScopeReference,
 ) -> tuple[ProviderCoverageEvidence, ...]:

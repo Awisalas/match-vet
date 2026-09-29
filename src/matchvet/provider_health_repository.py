@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from matchvet.fixture_coverage import (
-    FixtureCoverageAssessment,
+    SupportedFixtureCoverageAssessment,
     fixture_scopes_for_matchweek,
 )
 from matchvet.fixture_coverage_repository import FixtureCoverageRepository
@@ -87,7 +87,7 @@ class ProviderHealthRepository:
         metadata_by_digest: dict[str, _RecordMetadata] = {}
         records_by_digest: dict[str, ProviderHealthRecord] = {}
         logical_keys: dict[tuple[str, str], str] = {}
-        assessments: dict[str, FixtureCoverageAssessment] = {}
+        assessments: dict[str, SupportedFixtureCoverageAssessment] = {}
 
         for record in records:
             if not isinstance(record, ProviderHealthRecord):
@@ -302,13 +302,13 @@ class ProviderHealthRepository:
             """,
             parameters,
         ).fetchall()
-        assessment_cache: dict[str, FixtureCoverageAssessment] = {}
+        assessment_cache: dict[str, SupportedFixtureCoverageAssessment] = {}
         return tuple(self._decode_row(tuple(row), assessment_cache) for row in rows)
 
     def _decode_row(
         self,
         row: tuple[object, ...],
-        assessment_cache: dict[str, FixtureCoverageAssessment],
+        assessment_cache: dict[str, SupportedFixtureCoverageAssessment],
     ) -> ProviderHealthRecord:
         if len(row) != 14:
             raise ProviderHealthIntegrityError("Stored F05 row has an unsupported shape.")
@@ -409,7 +409,7 @@ def _record_references(record: ProviderHealthRecord) -> tuple[object, ...]:
 
 def _validate_record_references(
     record: ProviderHealthRecord,
-    assessment: FixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment,
 ) -> None:
     fixture_scope = record.requested_scope.fixture_scope
     if fixture_scope is None:

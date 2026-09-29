@@ -17,6 +17,7 @@ import sqlite3
 import stat
 import uuid
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
@@ -1343,6 +1344,13 @@ def restore_backup(
             readback=False,
             database_path_override=target,
         )
+        f01_assessment_count = _verify_restored_f01_assessments(
+            target,
+            private_root=root,
+            source=source_path,
+            destination=target,
+            manifest_digest=manifest.digest,
+        )
         target_inspection = inspect_store(target, private_root=root)
         if target_inspection.status is not InspectionStatus.HEALTHY:
             issue = target_inspection.issues[0] if target_inspection.issues else None
@@ -1357,7 +1365,11 @@ def restore_backup(
                 manifest_digest=manifest.digest,
                 recovery_command=f"matchvet doctor --store {target}",
             )
-        target_details = {**staged_details, **target_details}
+        target_details = {
+            **staged_details,
+            **target_details,
+            "fixture_coverage_assessments_verified": f01_assessment_count,
+        }
     except BaseException as error:
         _cleanup_restore_failure(
             private_stage,
@@ -1390,6 +1402,51 @@ def restore_backup(
         manifest_digest=manifest.digest,
         verification=restore_verification,
     )
+
+
+def _verify_restored_f01_assessments(
+    database_path: Path,
+    *,
+    private_root: Path,
+    source: Path,
+    destination: Path,
+    manifest_digest: str,
+) -> int:
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+
+    replay_path = database_path.with_name(
+        f".{database_path.name}.f01-replay-{uuid.uuid4().hex}.sqlite3"
+    )
+    try:
+        shutil.copyfile(database_path, replay_path)
+        with open_store(replay_path, private_root=private_root) as store:
+            rows = (
+                store._connection_for_repository()
+                .execute(
+                    "SELECT assessment_digest FROM fixture_coverage_assessments "
+                    "ORDER BY assessment_digest"
+                )
+                .fetchall()
+            )
+            repository = FixtureCoverageRepository(store)
+            for row in rows:
+                digest = str(row[0])
+                if repository.get(digest) is None:
+                    raise ValueError(f"F01 assessment {digest} is missing after restore.")
+        return len(rows)
+    except Exception as error:
+        raise T17Error(
+            "MV-T17-RESTORE-F01_REPLAY_FAILED",
+            "Restored F01 v2/v3 assessments or attestation artifacts failed exact replay.",
+            source=source,
+            destination=destination,
+            manifest_digest=manifest_digest,
+            recovery_command=f"matchvet backup --verify {source}",
+        ) from error
+    finally:
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            with suppress(OSError):
+                Path(f"{replay_path}{suffix}").unlink(missing_ok=True)
 
 
 def _build_backup_manifest(
