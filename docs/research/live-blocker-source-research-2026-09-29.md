@@ -25,3 +25,68 @@ OpenFootAPI's [Starter plan](https://openfootapi.com/pricing) costs $0 and inclu
 Football-Data.co.uk says its data are free but “made available for the purposes of league match prediction only” on its [data page](https://football-data.co.uk/data.php). Its [weekly fixtures page](https://football-data.co.uk/matches.php) describes a latest-fixtures CSV with betting odds and said the latest upload was 2026-09-25 08:45 UK time. A read of the linked CSV on 2026-09-29 contained 41 rows dated 2026-09-25 through 2026-09-28 and no Belgian division rows. The published pages do not state a retained-data licence or an automated-ingestion grant. The weekly feed therefore does not supply the target Belgian facts or clear the retention and automation requirements.
 
 No reviewed zero-cost automated source both supplied the target Belgian candidate rows and documented the upstream rights needed for automated retained research. OpenFootAPI is worth re-evaluating if it publishes clear upstream terms and returns the relevant fixtures; it is not approved on the current evidence. Do not use an undocumented/private endpoint or scrape the Pro League pages.
+
+## Final live blockers: team identity and schedule precision
+
+Reviewed against code `4e703c9b896165673cb54e23e74d40b7744cc044` and the exact F01 v2 base `sha256:bf181cd113b679d7918bd69732a13548bb3d66fbc53d95c0beb456947d1565c5`. The supplied validation database was opened with SQLite `mode=ro` and `PRAGMA query_only=ON`. It reports schema version 13. No database writes, LF05 observations, or LF02 attestations were made.
+
+### Serie A identity trace
+
+The exact assessment has 18 unresolved Serie A identity candidates and one resolved canonical fixture. The 14 spellings below each have one direct canonical-name or alias lookup hit. For 13 spellings, that hit is a source-specific OpenFootball team ID distinct from the existing LF03 target. Frosinone’s LF03 target ID is absent from both `teams` and `canonical_identifiers` in this store.
+
+| Source spelling | `canonical_key()` | LF03 target | Current canonical-name or alias hit |
+| --- | --- | --- | --- |
+| ACF Fiorentina | `acf fiorentina` | Fiorentina `15f1e37e-7e97-562e-951c-c881321a0592` | ACF Fiorentina `882d79cc-b9f4-51df-a57d-6e3f968d129c` |
+| AS Roma | `as roma` | Roma `2876aa97-fd00-5433-ae45-7d2c95113d1e` | AS Roma `9359abc9-3078-52bf-89f0-0429f560cbb7` |
+| Atalanta BC | `atalanta bc` | Atalanta `44e329de-5758-5bac-9cf1-d0f778fe36e3` | Atalanta BC `839077fb-daf2-59c9-a8a1-d68dbf36ec36` |
+| Bologna FC 1909 | `bologna 1909` | Bologna `fc746cac-1c0f-5fa7-93c4-78970d7d223c` | Bologna FC 1909 `4a0b33f7-3557-5944-8645-5cda340b0cff` |
+| Cagliari Calcio | `cagliari calcio` | Cagliari `3a913936-7c05-553a-80ff-f41546d29aaf` | Cagliari Calcio `8d50b1ca-e9a4-5418-a9b5-3604a5efb018` |
+| Como 1907 | `como 1907` | Como `71cdfd16-58ef-5eac-a010-cf0845f3349e` | Como 1907 `696726a5-5026-56ef-be79-132ffff200c7` |
+| FC Internazionale Milano | `internazionale milano` | Inter `80cf1b85-f7bc-5ed5-9494-69a916d69b76` | FC Internazionale Milano `47f3bce7-8393-5623-be2f-c710cfbfa86b` |
+| Frosinone Calcio | `frosinone calcio` | Frosinone `d463f5bd-51b2-56ac-aa9f-cda1e896379a` (missing) | Frosinone Calcio `bf9905a0-223a-5860-ac80-98f8faf94ffd` |
+| Genoa CFC | `genoa cfc` | Genoa `1bb95ff8-c591-58d5-8054-5544c3d3745e` | Genoa CFC `5a2e90a3-9807-5632-a907-d60d24b2bbaa` |
+| Parma Calcio 1913 | `parma calcio 1913` | Parma `e3124fdd-d515-59fb-a24a-bfc821aa090e` | Parma Calcio 1913 `d5ac4988-c624-5070-91ed-936cf34ef42d` |
+| SSC Napoli | `ssc napoli` | Napoli `f32eb93a-88de-5c7c-a2a8-216bf383fc2c` | SSC Napoli `263ca920-b1a4-524c-addc-96b158c388bc` |
+| US Lecce | `us lecce` | Lecce `149ae96b-da42-5a4c-8bf2-14904e71ed6c` | US Lecce `48080dd4-cecc-58b0-abb6-73a12170aeaa` |
+| US Sassuolo Calcio | `us sassuolo calcio` | Sassuolo `85ea2339-736f-5fda-9323-71821ca4b167` | US Sassuolo Calcio `ecb8d354-ae77-5a5d-a96f-54e7e73dd0d1` |
+| Udinese Calcio | `udinese calcio` | Udinese `d58ca08f-dfbd-5cef-8c6a-029b39d8672d` | Udinese Calcio `dc335a29-22cd-5d7c-a13d-8ef553b48fbe` |
+
+The 13 valid LF03 targets were created from Football-Data `I1.csv`, season 2025-26. Their team rows and source mappings were created at `2026-09-29T15:54:29.650383+00:00`; their source capture is `02499e65-9b94-5728-818a-9444aa805fb9` (`football-data:serie_a:2025-26`). Each first appears in a 2025-26 fixture. Their source mappings use `matchvet-t06-team-v1`, which the code writes for `REGISTER_UNKNOWN`. The Football-Data target teams were also registered through that policy.
+
+All 14 direct lookup hits were created from OpenFootball JSON `2026-27/it.1.json` at `2026-09-29T15:56:46.840469+00:00`. Their source capture is `080f70f2-8da2-56e3-9b62-aff4a7c9e5aa` (`openfootball:serie_a:2026-27`). Each first appears in a 2026-27 fixture. Each source mapping uses `matchvet-t06-team-v1`, the rule version `_insert_source_team_mapping()` writes for `REGISTER_UNKNOWN`. Thus 13 names have two competing database IDs: the Football-Data canonical team and the OpenFootball source-spelling team. Frosinone has one OpenFootball team row, but the reviewed target recorded in `team_alias_registry_v1.json` is missing. Its registry confirmation claims that target exists, so the current `KNOWN_ONLY` resolver correctly refuses that invalid target.
+
+The hypothesis is confirmed for the 13 duplicates. `_resolve_team()` uses the database and registry only in the `KNOWN_ONLY` branch (`src/matchvet/ingestion.py:1814-1862`). `REGISTER_UNKNOWN` falls through to `TeamCanonicalizer.resolve_or_register()` (`src/matchvet/ingestion.py:1863-1868`), which registers an unknown spelling without registry evidence (`src/matchvet/ingestion.py:892-897`). The importer loads its in-memory canonicalizer once at construction (`src/matchvet/ingestion.py:1141-1156`). The scheduled F02 path explicitly passes `KNOWN_ONLY` (`src/matchvet/ingestion.py:3177-3182`), while ordinary imports default to `REGISTER_UNKNOWN` (`src/matchvet/ingestion.py:1158-1165`).
+
+I ran the real `FixtureHistoryImporter._resolve_team()` against an in-memory canonicalizer loaded from the pre-OpenFootball team rows and a fake transaction that captured, but did not execute, SQL writes. All 14 calls produced the same team IDs stored in the database. Thirteen differed from existing registry targets; one target was missing. The fake transaction captured 42 insert statements and executed none. The validation database remained query-only. This proves the old path creates the observed IDs without modifying the store.
+
+The phrase “stale in-memory snapshot” is only partly accurate. The importer’s construction time is not persisted, so its age at registration cannot be proven. A fresh `TeamCanonicalizer` still lacks LF03 registry evidence and would miss these differently normalized spellings. The proven root cause is that `REGISTER_UNKNOWN` bypasses the current database-backed LF03 resolver. LF06 therefore uses one shared resolver and keeps ambiguity fail-closed. It does not repair existing IDs in place. Registry-only aliases stay season-scoped and do not become global `team_aliases` rows.
+
+### DATE and INSTANT schedule comparison
+
+I built manifest entries from the exact F01 v2 revision references and ran the real `_with_manifest_fact_flags()` function. It reproduces 4 Premier League, 4 Bundesliga, and 3 Ligue 1 conflicts. Every listed fixture has one JSON INSTANT and one TXT DATE revision, the same ordered teams, `SCHEDULED` status on both revisions, the same league-local date, and only one exact INSTANT. No listed fixture has a competing exact INSTANT or an explicit provisional marker. This Termux environment lacks the Europe zoneinfo database, so conversion used the application’s deterministic `_source_timezone()` fallback and matched the stored source-local offsets.
+
+| League | Teams | JSON revision | TXT revision | Local date | Classification |
+| --- | --- | --- | --- | --- | --- |
+| Premier League | Chelsea – Bournemouth | INSTANT `2026-10-10T15:00+01:00` (`14:00Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Premier League | Crystal Palace – Nottingham Forest FC | INSTANT `2026-10-11T14:00+01:00` (`13:00Z`), SCHEDULED | DATE `2026-10-11`, SCHEDULED | 2026-10-11 | LESS_PRECISE_BUT_COMPATIBLE |
+| Premier League | Aston Villa – Brentford | INSTANT `2026-10-10T15:00+01:00` (`14:00Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Premier League | Ipswich Town FC – Fulham | INSTANT `2026-10-10T15:00+01:00` (`14:00Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Bundesliga | Paderborn – Stuttgart | INSTANT `2026-10-10T15:30+02:00` (`13:30Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Bundesliga | Union Berlin – Elversberg | INSTANT `2026-10-10T15:30+02:00` (`13:30Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Bundesliga | Hoffenheim – Hamburg | INSTANT `2026-10-10T15:30+02:00` (`13:30Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Bundesliga | Augsburg – Bayern Munich | INSTANT `2026-10-10T15:30+02:00` (`13:30Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Ligue 1 | Paris SG – Le Mans | INSTANT `2026-10-10T20:45+02:00` (`18:45Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Ligue 1 | Lorient – Paris FC | INSTANT `2026-10-10T20:45+02:00` (`18:45Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+| Ligue 1 | Monaco – Toulouse | INSTANT `2026-10-10T20:45+02:00` (`18:45Z`), SCHEDULED | DATE `2026-10-10`, SCHEDULED | 2026-10-10 | LESS_PRECISE_BUT_COMPATIBLE |
+
+One additional compatible pair in the same exact base is outside the reported 11-conflict summary: Lazio – AC Monza has JSON INSTANT `2026-10-11T15:00+02:00` (`13:00Z`) and TXT DATE `2026-10-11`, both SCHEDULED. The same current flag helper would call it a conflict. Across the exact base, all 12 DATE/INSTANT pairs found by the helper are compatible; none is a genuine schedule conflict. The report’s 11 entries are 11 compatible and 0 genuine conflicts, with this extra Serie A pair noted separately.
+
+`_with_manifest_fact_flags()` is the right fixture-level seam because it already groups revisions by canonical fixture (`src/matchvet/operator_fixture_attestation.py:909-947`). Its current tuple compares `kickoff_utc` directly, so `None` for DATE differs from the instant string. `_revision_is_provisional()` is also in scope because it marks every non-INSTANT revision provisional (`src/matchvet/operator_fixture_attestation.py:951-960`). LF07 adds a fixture-level schedule relation, keeps both revisions, clears conflict and provisional flags only for compatible layering with a valid INSTANT, and leaves real material disagreements conflicting. The operator still checks the official date, kickoff, and status.
+
+### Blast radius and validation order
+
+LF06 changes future team resolution in ingestion. It must preserve current team and fixture IDs, `source_team_mappings`, `team_aliases`, F01/F03 records, and existing digests. The team and alias schema has no season column (`src/matchvet/store.py:872-908`), so registry-only evidence must not be copied into a global alias. Current F05 records, the F06 gate, and T17 table shape remain unchanged. Deterministic IDs and replay must remain stable. No migration is needed.
+
+LF07 changes only the derived LF02 candidate-manifest classification and its versioned serialization. It does not rewrite F01 revisions or the F01 v2 assessment. Keep old manifest versions readable for deterministic replay. F05 provider health and F06’s exact assessment gate remain unchanged. Schema 13 remains unchanged.
+
+The corrective tickets are independent: [LF06 #49](https://github.com/Awisalas/match-vet/issues/49) and [LF07 #50](https://github.com/Awisalas/match-vet/issues/50). Both are outside the original 53-ticket roadmap; F01–F21 retain their numbers. After both finish, use a fresh isolated store for the 2026-10-09 reacquisition. Require zero unresolved identities across the six automated leagues and no false DATE/INSTANT conflicts. Validate Belgian team spellings before recording LF05 observations. Then persist the final v2 base, make all seven LF02 attestations, persist v3, write exact F05 records, and produce the real all-seven F06 freeze. Only then may #44 close and original F07 be unparked.
