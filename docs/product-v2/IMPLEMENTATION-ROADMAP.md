@@ -54,8 +54,8 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Type:** Corrective source-contract and product-decision blocker; outside the original 53-ticket count.
 - **Goal:** Preserve F01's proof bar after the audit found no reviewed all-seven automated path satisfying both completeness and use/retention requirements. The product owner selected operator-attested official publications as a temporary Research-Only bridge; this does not approve an automated source or clear rights for Product Promotion.
 - **Tracked by:** [#44](https://github.com/Awisalas/match-vet/issues/44).
-- **Blocked by:** None; the product-owner bridge decision is recorded in #44.
-- **Status:** Keep #44 open until LF02, corrective LF03–LF06, and corrective LF07 are complete and the fresh all-seven validation sequence below succeeds. The automated/licensed source requirement remains tracked for Product Promotion.
+- **Blocked by:** LF08 #51 and the fresh all-seven validation gate; the product-owner bridge decision is recorded in #44.
+- **Status:** Keep #44 open until LF02, corrective LF03–LF07, and LF08 #51 are complete and the fresh all-seven validation sequence below succeeds. The automated/licensed source requirement remains tracked for Product Promotion.
 
 ### LF02 Add Research-Only operator-attested official fixture completeness
 - **Type:** Corrective Research-Only implementation ticket; outside the original 53-ticket count.
@@ -105,10 +105,17 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Blocked by:** None; LF02 #45 and LF04 #47 are complete. LF07 is independent of LF06.
 - **Status:** `ready-for-agent`. Preserve F01 v2 bytes and schema 13; keep prior manifest versions readable and replayable.
 
+### LF08 Complete Premier League fresh-store alias coverage
+- **Type:** Corrective registry coverage and snapshot-versioning ticket; outside the original 53-ticket count.
+- **Goal:** Audit all 20 current Premier League source spellings and add four proven scoped aliases in an append-only v2 registry. Preserve v1 bytes, policy provenance, frozen normalization, LF06 semantics, and schema 13.
+- **Tracked by:** [#51](https://github.com/Awisalas/match-vet/issues/51).
+- **Blocked by:** None; corrective LF06 #49 and LF07 #50 are complete.
+- **Status:** Implementation and offline verification recorded in #51. A new real all-seven validation still gates #44 and original F07.
+
 ### F07 Persist per-match Match Evidence Cutoff
 - **Goal:** Add an immutable cutoff for each frozen match, tied to its fixture revision and a versioned policy. Leave the numeric lead time undecided.
-- **Blocked by:** F06, LF01, LF02, LF03, LF04, LF05, corrective LF06 #49, corrective LF07 #50.
-- **Status:** Parked until both corrective tickets and the fresh all-seven validation sequence succeed. Do not start original F07 before then.
+- **Blocked by:** F06, LF01, LF02, LF03, LF04, LF05, corrective LF06 #49, corrective LF07 #50, LF08 #51.
+- **Status:** Parked until all corrective tickets and the fresh all-seven validation sequence succeed. Do not start original F07 before then.
 - **Fresh all-seven validation sequence:** Create a new isolated store and reacquire 2026-10-09. Require zero unresolved identities across the six automated leagues and no false DATE-versus-INSTANT conflicts. Validate Belgian team spellings. Only then record LF05 observations, persist the final F01 v2 base, make seven LF02 attestations, persist the derived v3 assessment, write exact F05 records, and produce the real all-seven F06 freeze. Only after the freeze succeeds may #44 close and original F07 be unparked. The automated/licensed-source requirement remains separate for Product Promotion.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$tdd`, `$blast-radius`.

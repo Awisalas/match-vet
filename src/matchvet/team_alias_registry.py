@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from matchvet.ingestion import SourceKind
 
-REGISTRY_VERSION = "matchvet-team-alias-registry-v1"
+REGISTRY_VERSION = "matchvet-team-alias-registry-v2"
+SUPPORTED_REGISTRY_VERSIONS = ("matchvet-team-alias-registry-v1", REGISTRY_VERSION)
 OPENFOOTBALL_LINEAGE = "openfootball-schedule"
 
 
@@ -56,7 +57,9 @@ class TeamAliasRegistry:
             raise ValueError("Malformed team alias registry JSON") from error
         if not isinstance(payload, dict) or set(payload) != {"version", "digest", "entries"}:
             raise ValueError("Invalid team alias registry envelope")
-        if payload["version"] != REGISTRY_VERSION or not isinstance(payload["entries"], list):
+        if payload["version"] not in SUPPORTED_REGISTRY_VERSIONS or not isinstance(
+            payload["entries"], list
+        ):
             raise ValueError("Unsupported team alias registry version or entries")
         if not isinstance(payload["digest"], str) or not re.fullmatch(
             r"sha256:[0-9a-f]{64}", payload["digest"]
@@ -119,7 +122,7 @@ class TeamAliasRegistry:
             ),
         ):
             raise ValueError("Team alias registry entries must be sorted")
-        return cls(REGISTRY_VERSION, digest, tuple(entries))
+        return cls(payload["version"], digest, tuple(entries))
 
     def candidates(
         self, league_key: str, season: str, lineage: str, source_name: str
@@ -140,5 +143,5 @@ class TeamAliasRegistry:
 
 def default_registry() -> TeamAliasRegistry:
     return TeamAliasRegistry.from_json(
-        files("matchvet").joinpath("team_alias_registry_v1.json").read_bytes()
+        files("matchvet").joinpath("team_alias_registry_v2.json").read_bytes()
     )

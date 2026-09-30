@@ -90,3 +90,83 @@ LF06 changes future team resolution in ingestion. It must preserve current team 
 LF07 changes only the derived LF02 candidate-manifest classification and its versioned serialization. It does not rewrite F01 revisions or the F01 v2 assessment. Keep old manifest versions readable for deterministic replay. F05 provider health and F06’s exact assessment gate remain unchanged. Schema 13 remains unchanged.
 
 The corrective tickets are independent: [LF06 #49](https://github.com/Awisalas/match-vet/issues/49) and [LF07 #50](https://github.com/Awisalas/match-vet/issues/50). Both are outside the original 53-ticket roadmap; F01–F21 retain their numbers. After both finish, use a fresh isolated store for the 2026-10-09 reacquisition. Require zero unresolved identities across the six automated leagues and no false DATE/INSTANT conflicts. Validate Belgian team spellings before recording LF05 observations. Then persist the final v2 base, make all seven LF02 attestations, persist v3, write exact F05 records, and produce the real all-seven F06 freeze. Only then may #44 close and original F07 be unparked.
+
+
+## LF08 Premier League fresh-store audit
+
+[LF08 #51](https://github.com/Awisalas/match-vet/issues/51) is outside the original 53-ticket roadmap. Baseline `8f0c73b49d7e566923b65f0c7705f2410b8b733c`. The failed store `~/.local/share/matchvet/lf-live-2026-10-09-post-lf07/matchvet.sqlite3` was inspected with SQLite `mode=ro` and `PRAGMA query_only=ON`. The exact assessment was `sha256:aa60cf020414983aded52522124b7e5b3bc9f1caface7f332aca3f567aa72553`. No existing database, LF05 observation, or LF02 attestation was changed.
+
+The assessment has eight unresolved Premier League source candidates, all `TEAM_MAPPING_UNRESOLVED`, representing four fixtures across JSON and TXT. Serie A has ten resolved fixtures and no unresolved identities. Bundesliga, La Liga, Liga Portugal, and Ligue 1 also have no unresolved identities.
+
+### All 20 identities
+
+The matrix uses the exact source spellings and current Football-Data-created teams from the failed store. Direct resolution compares frozen normalized names. Persisted aliases use the whole normalized name and yield the same canonical ID as direct evidence. LF03 v1 contains no Premier League entries. Baseline state was also checked by running the existing resolver against the read-only connection with explicit v1 registry evidence.
+
+| OpenFootball spelling | canonical_key | Current canonical name | Canonical ID | Direct | Persisted alias | LF03 v1 | Baseline state |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| AFC Bournemouth | `bournemouth` | Bournemouth | `ff2bcf77-6123-5e62-9516-09c9514315c1` | yes | yes | no | CONFIRMED |
+| Arsenal FC | `arsenal` | Arsenal | `db616fb4-3858-533b-9cd7-520cafcf2e25` | yes | yes | no | CONFIRMED |
+| Aston Villa FC | `aston villa` | Aston Villa | `4008a4d7-0e6a-5dac-93d3-d371d2eb0cca` | yes | yes | no | CONFIRMED |
+| Brentford FC | `brentford` | Brentford | `2142677e-3678-566b-b35c-d1a7893e1059` | yes | yes | no | CONFIRMED |
+| Brighton & Hove Albion FC | `brighton` | Brighton | `5f235a5b-6064-5d00-bd66-f8eec7831eaa` | yes | yes | no | CONFIRMED |
+| Chelsea FC | `chelsea` | Chelsea | `af6d6294-832a-5dce-868b-8ade29327f8c` | yes | yes | no | CONFIRMED |
+| Coventry City FC | `coventry` | Coventry | `e44b25fe-09c7-5297-a25d-976ce4d924e3` | yes | yes | no | CONFIRMED |
+| Crystal Palace FC | `crystal palace` | Crystal Palace | `f6f37531-1205-5dcb-a9fc-fbaf1bd81468` | yes | yes | no | CONFIRMED |
+| Everton FC | `everton` | Everton | `465b0970-d1d3-5204-85ce-74db81c04dfd` | yes | yes | no | CONFIRMED |
+| Fulham FC | `fulham` | Fulham | `a3006cad-b766-5108-8369-fa892c5212b2` | yes | yes | no | CONFIRMED |
+| Hull City AFC | `hull city` | Hull | `61dd1b63-6d24-5671-b081-333a42ac0227` | no | no | no | UNKNOWN |
+| Ipswich Town FC | `ipswich town` | Ipswich | `dacfb3b4-f83e-597d-9b62-3d1e9f01d85f` | no | no | no | UNKNOWN |
+| Leeds United FC | `leeds` | Leeds | `b07d235b-3192-52f5-9b1a-7aa2aca72d10` | yes | yes | no | CONFIRMED |
+| Liverpool FC | `liverpool` | Liverpool | `f1a2fae4-cd8b-5c84-896d-b005b5fe7cfd` | yes | yes | no | CONFIRMED |
+| Manchester City FC | `man city` | Man City | `85cc0f6e-4930-501d-876a-6f70ff8cbe48` | yes | yes | no | CONFIRMED |
+| Manchester United FC | `man united` | Man United | `23532f0f-5d04-592e-96f5-4d4f99907cfe` | yes | yes | no | CONFIRMED |
+| Newcastle United FC | `newcastle united` | Newcastle | `1d46f53a-8900-511c-ad5c-2c9916d59e6e` | no | no | no | UNKNOWN |
+| Nottingham Forest FC | `nottingham` | Nott'm Forest | `2b4920b0-3bd7-591e-9eae-e4cda32d7b6e` | no | no | no | UNKNOWN |
+| Sunderland AFC | `sunderland` | Sunderland | `71c9fcc4-8e1b-5232-9911-0361a158ebed` | yes | yes | no | CONFIRMED |
+| Tottenham Hotspur FC | `tottenham` | Tottenham | `04603c5f-a432-5ee8-8a66-02424a853c61` | yes | yes | no | CONFIRMED |
+
+Twenty clubs checked: 16 resolve without a registry, four require reviewed registry aliases, and zero are ambiguous or unprovable. The canonical target for each new alias occurs exactly once in the current league and is confirmed by a Football-Data source mapping.
+
+| Matchweek fixture | Failing name and normalized key | Independently resolved opponent |
+| --- | --- | --- |
+| Hull City AFC vs Everton FC, October 11 | Hull City AFC, `hull city` | Everton FC → Everton |
+| Ipswich Town FC vs Fulham FC, October 10 | Ipswich Town FC, `ipswich town` | Fulham FC → Fulham |
+| Crystal Palace FC vs Nottingham Forest FC, October 11 | Nottingham Forest FC, `nottingham` | Crystal Palace FC → Crystal Palace |
+| Coventry City FC vs Newcastle United FC, October 12 | Newcastle United FC, `newcastle united` | Coventry City FC → Coventry |
+
+### Pinned alias provenance
+
+The LF03-adopted clubs revision remains `ae3800227c449447b3a337fc0aac79a8f02f4c8b`. Exact English file bytes have SHA-256 `272bf00c7cc8991a0dc98493d0963fab18f07435098637a968f700015e83e93e`. Each club header has the exact OpenFootball spelling; its following alias line explicitly names the current canonical team. Both the exact header and canonical alias occur once in this file. No similarity or fuzzy inference was used.
+
+| Source spelling | Pinned club header | Explicit canonical alias line |
+| --- | --- | --- |
+| Hull City AFC | [line 288](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/england/eng.clubs.txt#L288) | [Hull, line 289](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/england/eng.clubs.txt#L289) |
+| Ipswich Town FC | [line 372](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/england/eng.clubs.txt#L372) | [Ipswich, line 373](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/england/eng.clubs.txt#L373) |
+| Newcastle United FC | [line 181](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/england/eng.clubs.txt#L181) | [Newcastle, line 182](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/england/eng.clubs.txt#L182) |
+| Nottingham Forest FC | [line 378](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/england/eng.clubs.txt#L378) | [Nott'm Forest, line 379](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/england/eng.clubs.txt#L379) |
+
+Each entry retains `OPENFOOTBALL_CLUBS_CANDIDATE`, the pinned locator and digest, an existing canonical team ID, and the review confirmation. Scope is exactly `premier_league`, `2026-27`, and `openfootball-schedule`. Operator observations do not inherit this lineage.
+
+### Snapshot compatibility and blast radius
+
+`team_alias_registry_v1.json` remains byte-for-byte unchanged. Its file SHA-256 is `252e7eb14f628573b2122844b41f64f8f72ffeec0ef9e2f0026e5698132dac98`; its policy digest remains `sha256:1bdae3b0888acc35e03f691739c16a7930bcf3ff42d7c3d9619842d16a90b86a`.
+
+The append-only successor `matchvet-team-alias-registry-v2` contains every v1 entry unchanged plus the four entries above. Its policy digest is `sha256:7ceb69ae874d8e83f8358960d347b7bedf3a5e229c29b9f50ef7d5e63d0fbccd`; its file SHA-256 is `df3d635d4f9e1d6b9d41ab1305f3d77c99b39043661cb35117b4f62b2747a635`. Both files remain packaged. Decoding returns the declared version, verifies its digest with that version, and applies the same strict entry validation. `default_registry()` selects v2.
+
+The safety condition is that adding registry evidence cannot override a different current team ID. The unchanged LF06 resolver combines current canonical names, persisted aliases, and exact scoped registry evidence by ID, resolving one supported ID and refusing multiple IDs. It also refuses a different current identity when the reviewed target is missing. The historical LF03 corpus deliberately retains its original source-created Premier League IDs: explicit v1 resolves 85 of 86 names, while v2 refuses the four conflicting Premier League identities and the original malformed Gil Vicente spelling. This is expected fail-closed behavior, not an ID migration.
+
+The regression calls the public importer and normal scheduled acquirer in temporary stores. With explicit v1 it produces the original eight unresolved candidates. With v2 it produces four unique canonical fixtures, eight source observations, zero unresolved candidates, matching JSON/TXT fixture IDs, and both feed provenances. It checks all 20 spellings through both source kinds, no historical seasons, unchanged existing fixtures, exactly 20 unchanged canonical teams, unchanged global alias rows, schema 13, and migrations 1–13. A separate replay test verifies that old v1 source mappings and their policy provenance remain unchanged under v2. These are executed-code proofs, not claims about a new live acquisition.
+
+The offline JSON fixture is a four-match reduction of captured OpenFootball JSON digest `bb91f0ab3e8359df163bb9ec98549bfed85e200dd4c32f3bd606b5890d932dd2`. TXT preserves the four corresponding rows and blank kickoff fields from capture `a2366ea9f7f55b8afd666e455666ba9019f9c62da8864f6bcf3adff65300b445`, with the year made explicit after removing earlier rounds. The Football-Data test input uses synthetic results and the audited current canonical names; it contains no historical seasons or redistributed protected result capture.
+
+`canonical_key()`, resolver code, store schema, migrations, F01/F03 serialization, F05/F06 behavior, and T17 implementation are unchanged. The F01 v2 golden remains `sha256:b3b4fada3f37449f48895467fd7f0964679cd31682cc4439bac82fa075c8ee78`.
+
+### Remaining live gate
+
+#44 remains open and original F07 remains parked. After LF08 verification, another fresh isolated real validation must establish zero unresolved identities across all six automated leagues and no false schedule conflicts. The separate all-seven validation sequence, including Belgian spelling validation and later authorized LF05/LF02 work, still gates the real F06 freeze and closure of #44. LF08 itself records no observations or attestations and does not certify live completeness.
+
+### LF08 verification results
+
+The LF08/LF03/LF06 focused identity run passed 61 tests. The requested ingestion, LF05, LF02/LF07, F01/F03, F05/F06, and T17 compatibility selection passed 296 tests under system Python; its remaining test required the repository environment's `requests` dependency and passed there. The full isolated suite passed all 827 tests under `.venv/bin/python`, with network connections disabled and the default store redirected into a temporary Termux private root.
+
+Mypy 1.18.2 passed all 69 source files in the repository environment. Ruff check and format check passed for all 100 files outside the explicitly excluded `.audit/` and `.f02-work/` directories. `git diff --check` passed. An offline wheel build retained both registry files with exact source bytes. Independent standards and spec reviews found no issues. The registry, normalization, store, migration, and golden-file comparisons against the supplied baseline confirmed the preservation claims above.

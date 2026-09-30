@@ -599,7 +599,7 @@ def test_reacquiring_identical_schedule_keeps_original_revision_provenance(
 
 def test_registry_digest_and_duplicate_entries_fail_closed() -> None:
     registry = default_registry()
-    assert registry.version == "matchvet-team-alias-registry-v1"
+    assert registry.version == "matchvet-team-alias-registry-v2"
     assert registry.digest == default_registry().digest
     registry_path = Path(__file__).parents[1] / "src/matchvet/team_alias_registry_v1.json"
     raw = json.loads(registry_path.read_text())
@@ -689,8 +689,16 @@ def test_historical_openfootball_lommel_collision_stays_unresolved(tmp_path: Pat
         assert importer.fixtures() == ()
 
 
-def test_offline_live_source_name_corpus_resolves_85_of_86(tmp_path: Path) -> None:
+@pytest.mark.parametrize("snapshot", ("v1", "v2"))
+def test_offline_live_source_name_corpus_preserves_snapshot_semantics(
+    tmp_path: Path, snapshot: str
+) -> None:
     corpus = json.loads((Path(__file__).parent / "fixtures/lf03_live_names.json").read_text())
+    registry = TeamAliasRegistry.from_json(
+        (
+            Path(__file__).parents[1] / f"src/matchvet/team_alias_registry_{snapshot}.json"
+        ).read_bytes()
+    )
     root = tmp_path / "private"
     root.mkdir()
     unresolved: list[tuple[str, str]] = []
@@ -702,13 +710,12 @@ def test_offline_live_source_name_corpus_resolves_85_of_86(tmp_path: Path) -> No
                 league_record["league_key"],
                 tuple(team["canonical_name"] for team in league_record["existing_canonical_teams"]),
             )
-        importer = FixtureHistoryImporter(store, private_root=root)
+        importer = FixtureHistoryImporter(store, private_root=root, team_alias_registry=registry)
         for league_record in corpus["leagues"]:
             league_key = league_record["league_key"]
             league = league_by_key(league_key)
             first, second = league_record["existing_canonical_teams"][:2]
             names = league_record["source_spellings"]
-            registry = default_registry()
 
             content = json.dumps(
                 {
@@ -744,5 +751,18 @@ def test_offline_live_source_name_corpus_resolves_85_of_86(tmp_path: Path) -> No
                     unresolved.append((league_key, name))
                 else:
                     resolved += 1
-    assert resolved == 85
-    assert unresolved == [("liga_portugal", "Gil Vicente FC           [postponed]")]
+    expected_unresolved = [("liga_portugal", "Gil Vicente FC           [postponed]")]
+    if snapshot == "v2":
+        # This historical corpus has source-created PL identities, not the
+        # Football-Data targets reviewed by LF08. Preserve fail-closed behavior.
+        expected_unresolved.extend(
+            ("premier_league", name)
+            for name in (
+                "Hull City AFC",
+                "Ipswich Town FC",
+                "Newcastle United FC",
+                "Nottingham Forest FC",
+            )
+        )
+    assert resolved == 86 - len(expected_unresolved)
+    assert sorted(unresolved) == sorted(expected_unresolved)

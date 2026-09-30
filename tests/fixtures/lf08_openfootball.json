@@ -1,0 +1,32 @@
+{
+  "matches": [
+    {
+      "round": "Matchday 6",
+      "date": "2026-10-10",
+      "time": "15:00",
+      "team1": "Ipswich Town FC",
+      "team2": "Fulham FC"
+    },
+    {
+      "round": "Matchday 6",
+      "date": "2026-10-11",
+      "time": "14:00",
+      "team1": "Hull City AFC",
+      "team2": "Everton FC"
+    },
+    {
+      "round": "Matchday 6",
+      "date": "2026-10-11",
+      "time": "14:00",
+      "team1": "Crystal Palace FC",
+      "team2": "Nottingham Forest FC"
+    },
+    {
+      "round": "Matchday 6",
+      "date": "2026-10-12",
+      "time": "20:00",
+      "team1": "Coventry City FC",
+      "team2": "Newcastle United FC"
+    }
+  ]
+}

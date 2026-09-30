@@ -1,0 +1,122 @@
+[
+  {
+    "source_name": "AFC Bournemouth",
+    "normalized_name": "bournemouth",
+    "canonical_name": "Bournemouth",
+    "team_id": "ff2bcf77-6123-5e62-9516-09c9514315c1"
+  },
+  {
+    "source_name": "Arsenal FC",
+    "normalized_name": "arsenal",
+    "canonical_name": "Arsenal",
+    "team_id": "db616fb4-3858-533b-9cd7-520cafcf2e25"
+  },
+  {
+    "source_name": "Aston Villa FC",
+    "normalized_name": "aston villa",
+    "canonical_name": "Aston Villa",
+    "team_id": "4008a4d7-0e6a-5dac-93d3-d371d2eb0cca"
+  },
+  {
+    "source_name": "Brentford FC",
+    "normalized_name": "brentford",
+    "canonical_name": "Brentford",
+    "team_id": "2142677e-3678-566b-b35c-d1a7893e1059"
+  },
+  {
+    "source_name": "Brighton & Hove Albion FC",
+    "normalized_name": "brighton",
+    "canonical_name": "Brighton",
+    "team_id": "5f235a5b-6064-5d00-bd66-f8eec7831eaa"
+  },
+  {
+    "source_name": "Chelsea FC",
+    "normalized_name": "chelsea",
+    "canonical_name": "Chelsea",
+    "team_id": "af6d6294-832a-5dce-868b-8ade29327f8c"
+  },
+  {
+    "source_name": "Coventry City FC",
+    "normalized_name": "coventry",
+    "canonical_name": "Coventry",
+    "team_id": "e44b25fe-09c7-5297-a25d-976ce4d924e3"
+  },
+  {
+    "source_name": "Crystal Palace FC",
+    "normalized_name": "crystal palace",
+    "canonical_name": "Crystal Palace",
+    "team_id": "f6f37531-1205-5dcb-a9fc-fbaf1bd81468"
+  },
+  {
+    "source_name": "Everton FC",
+    "normalized_name": "everton",
+    "canonical_name": "Everton",
+    "team_id": "465b0970-d1d3-5204-85ce-74db81c04dfd"
+  },
+  {
+    "source_name": "Fulham FC",
+    "normalized_name": "fulham",
+    "canonical_name": "Fulham",
+    "team_id": "a3006cad-b766-5108-8369-fa892c5212b2"
+  },
+  {
+    "source_name": "Hull City AFC",
+    "normalized_name": "hull city",
+    "canonical_name": "Hull",
+    "team_id": "61dd1b63-6d24-5671-b081-333a42ac0227"
+  },
+  {
+    "source_name": "Ipswich Town FC",
+    "normalized_name": "ipswich town",
+    "canonical_name": "Ipswich",
+    "team_id": "dacfb3b4-f83e-597d-9b62-3d1e9f01d85f"
+  },
+  {
+    "source_name": "Leeds United FC",
+    "normalized_name": "leeds",
+    "canonical_name": "Leeds",
+    "team_id": "b07d235b-3192-52f5-9b1a-7aa2aca72d10"
+  },
+  {
+    "source_name": "Liverpool FC",
+    "normalized_name": "liverpool",
+    "canonical_name": "Liverpool",
+    "team_id": "f1a2fae4-cd8b-5c84-896d-b005b5fe7cfd"
+  },
+  {
+    "source_name": "Manchester City FC",
+    "normalized_name": "man city",
+    "canonical_name": "Man City",
+    "team_id": "85cc0f6e-4930-501d-876a-6f70ff8cbe48"
+  },
+  {
+    "source_name": "Manchester United FC",
+    "normalized_name": "man united",
+    "canonical_name": "Man United",
+    "team_id": "23532f0f-5d04-592e-96f5-4d4f99907cfe"
+  },
+  {
+    "source_name": "Newcastle United FC",
+    "normalized_name": "newcastle united",
+    "canonical_name": "Newcastle",
+    "team_id": "1d46f53a-8900-511c-ad5c-2c9916d59e6e"
+  },
+  {
+    "source_name": "Nottingham Forest FC",
+    "normalized_name": "nottingham",
+    "canonical_name": "Nott'm Forest",
+    "team_id": "2b4920b0-3bd7-591e-9eae-e4cda32d7b6e"
+  },
+  {
+    "source_name": "Sunderland AFC",
+    "normalized_name": "sunderland",
+    "canonical_name": "Sunderland",
+    "team_id": "71c9fcc4-8e1b-5232-9911-0361a158ebed"
+  },
+  {
+    "source_name": "Tottenham Hotspur FC",
+    "normalized_name": "tottenham",
+    "canonical_name": "Tottenham",
+    "team_id": "04603c5f-a432-5ee8-8a66-02424a853c61"
+  }
+]
