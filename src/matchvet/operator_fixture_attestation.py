@@ -7,9 +7,9 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
-from typing import cast
+from typing import TypedDict, cast
 from urllib.parse import unquote, urlsplit
 
 from matchvet.fixture_coverage import (
@@ -40,20 +40,31 @@ from matchvet.fixture_coverage import (
     _scope_assessment_from_json,
     fixture_scopes_for_matchweek,
 )
-from matchvet.ingestion import deterministic_identifier
+from matchvet.ingestion import (
+    _parse_date,
+    _source_timezone,
+    deterministic_identifier,
+    league_by_key,
+)
 
 OPERATOR_ATTESTATION_CONTRACT_VERSION = "operator-fixture-attestation-v1"
 OPERATOR_ATTESTATION_SCHEMA_VERSION = 1
 OPERATOR_ATTESTATION_POLICY_ID = "matchvet:operator-fixture-attestation"
 OPERATOR_ATTESTATION_POLICY_VERSION = "1"
 OPERATOR_ATTESTATION_MEDIA_TYPE = "application/vnd.matchvet.operator-fixture-attestation-v1+json"
+OPERATOR_ATTESTATION_V2_CONTRACT_VERSION = "operator-fixture-attestation-v2"
+OPERATOR_ATTESTATION_V2_SCHEMA_VERSION = 2
+OPERATOR_ATTESTATION_V2_MEDIA_TYPE = "application/vnd.matchvet.operator-fixture-attestation-v2+json"
 OPERATOR_CANDIDATE_MANIFEST_CONTRACT_VERSION = "operator-fixture-candidate-manifest-v1"
 OPERATOR_CANDIDATE_MANIFEST_SCHEMA_VERSION = 1
+OPERATOR_CANDIDATE_MANIFEST_V2_CONTRACT_VERSION = "operator-fixture-candidate-manifest-v2"
+OPERATOR_CANDIDATE_MANIFEST_V2_SCHEMA_VERSION = 2
 OPERATOR_FRESHNESS_CONTRACT_VERSION = "operator-fixture-attestation-freshness-v1"
 OPERATOR_FRESHNESS_SCHEMA_VERSION = 1
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_SCHEDULE_MARKER_RE = re.compile(r"\b(?:TBC|TBA|TBD|PROVISIONAL)\b", re.IGNORECASE)
 _MAX_OPERATOR_ID_LENGTH = 100
 _MAX_CITATION_VALUE_LENGTH = 512
 _MAX_PAGE_SIZE = 20
@@ -63,6 +74,13 @@ class OperatorAttestationOutcome(StrEnum):
     CERTIFIED = "CERTIFIED"
     REFUSED = "REFUSED"
     UNCERTAIN = "UNCERTAIN"
+
+
+class ScheduleRelation(StrEnum):
+    EXACT = "EXACT"
+    LESS_PRECISE_BUT_COMPATIBLE = "LESS_PRECISE_BUT_COMPATIBLE"
+    PROVISIONAL = "PROVISIONAL"
+    CONFLICTING = "CONFLICTING"
 
 
 @dataclass(frozen=True)
@@ -208,6 +226,8 @@ class CandidateManifest:
             raise ValueError("Candidate Manifest requires a typed exact scope and bounds.")
         if self.bounds != CoverageBounds(self.scope.window_start_utc, self.scope.window_end_utc):
             raise ValueError("Candidate Manifest bounds differ from its Fixture Scope.")
+        if any(type(item) is not CandidateManifestEntry for item in self.entries):
+            raise ValueError("Candidate Manifest v1 requires only v1 entry values.")
         candidate_ids = tuple(item.candidate_id for item in self.entries)
         if candidate_ids != tuple(sorted(set(candidate_ids))):
             raise ValueError("Candidate Manifest entries must be sorted and unique.")
@@ -221,6 +241,96 @@ class CandidateManifest:
         if self.digest and self.digest != expected:
             raise ValueError("Candidate Manifest digest does not match its contents.")
         object.__setattr__(self, "digest", expected)
+
+
+@dataclass(frozen=True)
+class CandidateManifestEntryV2(CandidateManifestEntry):
+    """One v2 candidate with an explicit fixture-level schedule relation."""
+
+    schedule_relation: ScheduleRelation
+
+    def __post_init__(self) -> None:
+        CandidateManifestEntry.__post_init__(self)
+        if not isinstance(self.schedule_relation, ScheduleRelation):
+            raise ValueError("Candidate Manifest v2 requires a typed schedule relation.")
+        expected_conflict = self.schedule_relation is ScheduleRelation.CONFLICTING
+        expected_provisional = self.schedule_relation is ScheduleRelation.PROVISIONAL
+        if (
+            self.has_schedule_conflict is not expected_conflict
+            or self.has_provisional_scheduling is not expected_provisional
+        ):
+            raise ValueError("Candidate Manifest v2 flags must project its schedule relation.")
+
+
+@dataclass(frozen=True)
+class CandidateManifestV2:
+    """Canonical v2 manifest of candidates in one exact F01 scope."""
+
+    contract_version: str
+    schema_version: int
+    base_assessment_digest: str
+    scope: FixtureScope
+    bounds: CoverageBounds
+    entries: tuple[CandidateManifestEntryV2, ...]
+    candidate_count: int
+    digest: str = ""
+
+    def __post_init__(self) -> None:
+        if (
+            self.contract_version != OPERATOR_CANDIDATE_MANIFEST_V2_CONTRACT_VERSION
+            or type(self.schema_version) is not int
+            or self.schema_version != OPERATOR_CANDIDATE_MANIFEST_V2_SCHEMA_VERSION
+        ):
+            raise ValueError("Candidate Manifest v2 uses unsupported contract versions.")
+        if _DIGEST_RE.fullmatch(self.base_assessment_digest) is None:
+            raise ValueError("Candidate Manifest requires an exact F01 assessment digest.")
+        if not isinstance(self.scope, FixtureScope) or not isinstance(self.bounds, CoverageBounds):
+            raise ValueError("Candidate Manifest requires a typed exact scope and bounds.")
+        if self.bounds != CoverageBounds(self.scope.window_start_utc, self.scope.window_end_utc):
+            raise ValueError("Candidate Manifest bounds differ from its Fixture Scope.")
+        if any(type(item) is not CandidateManifestEntryV2 for item in self.entries):
+            raise ValueError("Candidate Manifest v2 requires only v2 entry values.")
+        candidate_ids = tuple(item.candidate_id for item in self.entries)
+        if candidate_ids != tuple(sorted(set(candidate_ids))):
+            raise ValueError("Candidate Manifest entries must be sorted and unique.")
+        if any(item.scope_id != self.scope.scope_id for item in self.entries):
+            raise ValueError("Candidate Manifest entries must use its exact Fixture Scope.")
+        if type(self.candidate_count) is not int or self.candidate_count != _candidate_count(
+            self.entries
+        ):
+            raise ValueError("Candidate Manifest count must be computed from its entries.")
+        expected = _model_digest(self)
+        if self.digest and self.digest != expected:
+            raise ValueError("Candidate Manifest digest does not match its contents.")
+        object.__setattr__(self, "digest", expected)
+
+
+CandidateManifestValue = CandidateManifest | CandidateManifestV2
+CandidateManifestEntryValue = CandidateManifestEntry | CandidateManifestEntryV2
+
+
+class _ManifestEntryArgs(TypedDict):
+    candidate_id: str
+    scope_id: str
+    identity_state: FixtureIdentityState
+    canonical_fixture_id: str | None
+    revision_facts: tuple[CandidateRevisionFact, ...]
+    assertion_facts: tuple[CandidateAssertionFact, ...]
+    source_capture_ids: tuple[str, ...]
+    source_assertion_ids: tuple[str, ...]
+    reason_code: str | None
+    has_schedule_conflict: bool
+    has_provisional_scheduling: bool
+
+
+class _ManifestArgs(TypedDict):
+    contract_version: str
+    schema_version: int
+    base_assessment_digest: str
+    scope: FixtureScope
+    bounds: CoverageBounds
+    candidate_count: int
+    digest: str
 
 
 @dataclass(frozen=True)
@@ -341,7 +451,7 @@ class OperatorCoverageAttestation:
     base_assessment_digest: str
     scope: FixtureScope
     bounds: CoverageBounds
-    candidate_manifest: CandidateManifest
+    candidate_manifest: CandidateManifestValue
     candidate_manifest_digest: str
     observed_candidate_count: int
     operator_id: str
@@ -357,10 +467,31 @@ class OperatorCoverageAttestation:
     digest: str = ""
 
     def __post_init__(self) -> None:
+        attestation_version = (self.contract_version, self.schema_version)
+        manifest_version = (
+            self.candidate_manifest.contract_version,
+            self.candidate_manifest.schema_version,
+        )
+        supported_versions = {
+            (
+                OPERATOR_ATTESTATION_CONTRACT_VERSION,
+                OPERATOR_ATTESTATION_SCHEMA_VERSION,
+            ): (
+                OPERATOR_CANDIDATE_MANIFEST_CONTRACT_VERSION,
+                OPERATOR_CANDIDATE_MANIFEST_SCHEMA_VERSION,
+            ),
+            (
+                OPERATOR_ATTESTATION_V2_CONTRACT_VERSION,
+                OPERATOR_ATTESTATION_V2_SCHEMA_VERSION,
+            ): (
+                OPERATOR_CANDIDATE_MANIFEST_V2_CONTRACT_VERSION,
+                OPERATOR_CANDIDATE_MANIFEST_V2_SCHEMA_VERSION,
+            ),
+        }
         if (
-            self.contract_version != OPERATOR_ATTESTATION_CONTRACT_VERSION
-            or type(self.schema_version) is not int
-            or self.schema_version != OPERATOR_ATTESTATION_SCHEMA_VERSION
+            type(self.schema_version) is not int
+            or attestation_version not in supported_versions
+            or manifest_version != supported_versions[attestation_version]
         ):
             raise ValueError("Operator Coverage Attestation uses unsupported versions.")
         _non_empty(self.attestation_id, "Operator Coverage Attestation ID")
@@ -826,7 +957,7 @@ def build_candidate_manifest(
     *,
     revision_facts: tuple[CandidateRevisionFact, ...],
     assertion_facts: tuple[CandidateAssertionFact, ...] = (),
-) -> CandidateManifest:
+) -> CandidateManifestV2:
     """Build a deterministic manifest from only references already retained by the v2 base."""
     _require_v2_base(base_assessment)
     selected_scope = _scope_for_id(base_assessment, scope_id)
@@ -892,15 +1023,59 @@ def build_candidate_manifest(
         )
     if used_revision_ids != set(base_revisions) or used_assertion_ids != set(assertion_by_id):
         raise ValueError("Candidate Manifest includes facts outside exact scoped F01 references.")
-    entries = _with_manifest_fact_flags(entries)
-    manifest = CandidateManifest(
-        contract_version=OPERATOR_CANDIDATE_MANIFEST_CONTRACT_VERSION,
-        schema_version=OPERATOR_CANDIDATE_MANIFEST_SCHEMA_VERSION,
+    classified_entries = _with_manifest_schedule_relations(entries, selected_scope)
+    manifest = CandidateManifestV2(
+        contract_version=OPERATOR_CANDIDATE_MANIFEST_V2_CONTRACT_VERSION,
+        schema_version=OPERATOR_CANDIDATE_MANIFEST_V2_SCHEMA_VERSION,
         base_assessment_digest=base_assessment.digest,
         scope=selected_scope,
         bounds=CoverageBounds(selected_scope.window_start_utc, selected_scope.window_end_utc),
-        entries=tuple(entries),
-        candidate_count=_candidate_count(tuple(entries)),
+        entries=tuple(classified_entries),
+        candidate_count=_candidate_count(tuple(classified_entries)),
+    )
+    _validate_manifest_binding(base_assessment, manifest)
+    return manifest
+
+
+def _build_candidate_manifest_v1_for_replay(
+    base_assessment: FixtureCoverageAssessment,
+    scope_id: str,
+    *,
+    revision_facts: tuple[CandidateRevisionFact, ...],
+    assertion_facts: tuple[CandidateAssertionFact, ...],
+) -> CandidateManifest:
+    """Rebuild an old manifest with its original v1 raw-fact classification."""
+    current = build_candidate_manifest(
+        base_assessment,
+        scope_id,
+        revision_facts=revision_facts,
+        assertion_facts=assertion_facts,
+    )
+    entries = [
+        CandidateManifestEntry(
+            candidate_id=item.candidate_id,
+            scope_id=item.scope_id,
+            identity_state=item.identity_state,
+            canonical_fixture_id=item.canonical_fixture_id,
+            revision_facts=item.revision_facts,
+            assertion_facts=item.assertion_facts,
+            source_capture_ids=item.source_capture_ids,
+            source_assertion_ids=item.source_assertion_ids,
+            reason_code=item.reason_code,
+            has_schedule_conflict=False,
+            has_provisional_scheduling=False,
+        )
+        for item in current.entries
+    ]
+    classified = _with_manifest_fact_flags(entries)
+    manifest = CandidateManifest(
+        contract_version=OPERATOR_CANDIDATE_MANIFEST_CONTRACT_VERSION,
+        schema_version=OPERATOR_CANDIDATE_MANIFEST_SCHEMA_VERSION,
+        base_assessment_digest=current.base_assessment_digest,
+        scope=current.scope,
+        bounds=current.bounds,
+        entries=tuple(classified),
+        candidate_count=_candidate_count(tuple(classified)),
     )
     _validate_manifest_binding(base_assessment, manifest)
     return manifest
@@ -960,10 +1135,172 @@ def _revision_is_provisional(value: CandidateRevisionFact) -> bool:
     )
 
 
+def _with_manifest_schedule_relations(
+    entries: list[CandidateManifestEntry], scope: FixtureScope
+) -> list[CandidateManifestEntryV2]:
+    revisions_by_fixture: dict[str, list[CandidateManifestEntry]] = {}
+    for entry in entries:
+        fixture_key = entry.canonical_fixture_id or entry.candidate_id
+        revisions_by_fixture.setdefault(fixture_key, []).append(entry)
+    relations = {
+        fixture_key: _classify_fixture_schedule(scope, fixture_entries)
+        for fixture_key, fixture_entries in revisions_by_fixture.items()
+    }
+    output: list[CandidateManifestEntryV2] = []
+    for entry in entries:
+        fixture_key = entry.canonical_fixture_id or entry.candidate_id
+        relation = relations[fixture_key]
+        output.append(
+            CandidateManifestEntryV2(
+                candidate_id=entry.candidate_id,
+                scope_id=entry.scope_id,
+                identity_state=entry.identity_state,
+                canonical_fixture_id=entry.canonical_fixture_id,
+                revision_facts=entry.revision_facts,
+                assertion_facts=entry.assertion_facts,
+                source_capture_ids=entry.source_capture_ids,
+                source_assertion_ids=entry.source_assertion_ids,
+                reason_code=entry.reason_code,
+                has_schedule_conflict=relation is ScheduleRelation.CONFLICTING,
+                has_provisional_scheduling=relation is ScheduleRelation.PROVISIONAL,
+                schedule_relation=relation,
+            )
+        )
+    return output
+
+
+def _classify_fixture_schedule(
+    scope: FixtureScope, entries: list[CandidateManifestEntry]
+) -> ScheduleRelation:
+    revisions = [revision for entry in entries for revision in entry.revision_facts]
+    if any(entry.identity_state is not FixtureIdentityState.RESOLVED for entry in entries):
+        identity_resolved = False
+    else:
+        identity_resolved = True
+    if not revisions:
+        return ScheduleRelation.PROVISIONAL
+
+    if len({(item.home_team_id, item.away_team_id) for item in revisions}) > 1:
+        return ScheduleRelation.CONFLICTING
+    if any(
+        item.reference.fixture_id
+        != deterministic_identifier(
+            "fixture",
+            f"{scope.league_key}:{scope.season}:{item.home_team_id}:{item.away_team_id}",
+        )
+        for item in revisions
+    ):
+        return ScheduleRelation.CONFLICTING
+    fixture_ids = {item.reference.fixture_id for item in revisions}
+    canonical_ids = {entry.canonical_fixture_id for entry in entries}
+    if len(fixture_ids) > 1 or len(canonical_ids) != 1 or None in canonical_ids:
+        return ScheduleRelation.CONFLICTING
+    has_provisional_marker = any(
+        _SCHEDULE_MARKER_RE.search(value or "") is not None
+        for entry in entries
+        for revision in entry.revision_facts
+        for value in (revision.kickoff_local_text, revision.fixture_status)
+    ) or _has_source_schedule_marker(entries)
+
+    concrete_statuses = {
+        item.fixture_status.strip().upper()
+        for item in revisions
+        if item.fixture_status.strip().upper() != "UNKNOWN"
+    }
+    if len(concrete_statuses) > 1:
+        return ScheduleRelation.CONFLICTING
+
+    instant_values: list[datetime] = []
+    date_values: list[date] = []
+    unusable_schedule = False
+    for revision in revisions:
+        if revision.kickoff_state != "OBSERVED":
+            unusable_schedule = True
+        elif revision.kickoff_precision == "INSTANT":
+            parsed = _candidate_instant(revision.kickoff_utc)
+            if parsed is None:
+                unusable_schedule = True
+            else:
+                instant_values.append(parsed)
+        elif revision.kickoff_precision == "DATE":
+            parsed_date = _candidate_date(revision.kickoff_local_text)
+            if parsed_date is None:
+                unusable_schedule = True
+            else:
+                date_values.append(parsed_date)
+        else:
+            unusable_schedule = True
+
+    if len(set(instant_values)) > 1 or len(set(date_values)) > 1:
+        return ScheduleRelation.CONFLICTING
+    if instant_values and date_values:
+        league_timezone = league_by_key(scope.league_key).timezone
+        instant = instant_values[0]
+        for date_value in date_values:
+            local_date = instant.astimezone(_source_timezone(league_timezone, date_value)).date()
+            if local_date != date_value:
+                return ScheduleRelation.CONFLICTING
+
+    if has_provisional_marker:
+        return ScheduleRelation.PROVISIONAL
+    if not identity_resolved or unusable_schedule or not instant_values or not concrete_statuses:
+        return ScheduleRelation.PROVISIONAL
+    if date_values:
+        return ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE
+    return ScheduleRelation.EXACT
+
+
+def _candidate_instant(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _candidate_date(value: str | None) -> date | None:
+    return _parse_date(value)
+
+
+def _has_source_schedule_marker(entries: list[CandidateManifestEntry]) -> bool:
+    for entry in entries:
+        for assertion in entry.assertion_facts:
+            if not _is_schedule_assertion(assertion):
+                continue
+            if any(
+                _SCHEDULE_MARKER_RE.search(value or "") is not None
+                for value in (
+                    assertion.raw_value_json,
+                    assertion.normalized_value_json,
+                    assertion.unknown_reason,
+                )
+            ):
+                return True
+    return False
+
+
+def _is_schedule_assertion(value: CandidateAssertionFact) -> bool:
+    predicate = value.predicate.casefold().replace("-", "_")
+    field_name = re.sub(r"[^a-z]", "", value.raw_field_name.casefold())
+    return predicate in {"kickoff", "fixture_status", "status", "date", "time"} or field_name in {
+        "date",
+        "time",
+        "datetime",
+        "kickoff",
+        "fixturestatus",
+        "scheduleddate",
+        "scheduledtime",
+    }
+
+
 def make_operator_coverage_attestation(
     *,
     base_assessment: FixtureCoverageAssessment,
-    candidate_manifest: CandidateManifest,
+    candidate_manifest: CandidateManifestValue,
     operator_id: str,
     verified_at_utc: str,
     publications: tuple[OfficialPublicationReference, ...],
@@ -1014,8 +1351,16 @@ def make_operator_coverage_attestation(
         verified_at,
     )
     return OperatorCoverageAttestation(
-        contract_version=OPERATOR_ATTESTATION_CONTRACT_VERSION,
-        schema_version=OPERATOR_ATTESTATION_SCHEMA_VERSION,
+        contract_version=(
+            OPERATOR_ATTESTATION_V2_CONTRACT_VERSION
+            if isinstance(candidate_manifest, CandidateManifestV2)
+            else OPERATOR_ATTESTATION_CONTRACT_VERSION
+        ),
+        schema_version=(
+            OPERATOR_ATTESTATION_V2_SCHEMA_VERSION
+            if isinstance(candidate_manifest, CandidateManifestV2)
+            else OPERATOR_ATTESTATION_SCHEMA_VERSION
+        ),
         attestation_id=attestation_id,
         base_assessment_digest=base_assessment.digest,
         scope=candidate_manifest.scope,
@@ -1039,7 +1384,7 @@ def make_operator_coverage_attestation(
 def _certification_failures(
     *,
     base_assessment: FixtureCoverageAssessment,
-    manifest: CandidateManifest,
+    manifest: CandidateManifestValue,
     publications: tuple[OfficialPublicationReference, ...],
     expected_official_fixture_count: int | None,
     candidate_confirmations: tuple[CandidateComparisonConfirmation, ...],
@@ -1101,9 +1446,17 @@ def _certification_failures(
         for item in manifest.entries
     ):
         failures.append("Unresolved fixture identity prevents exact official membership.")
-    if any(item.has_schedule_conflict for item in manifest.entries):
+    if isinstance(manifest, CandidateManifestV2):
+        schedule_relations = tuple(item.schedule_relation for item in manifest.entries)
+        if ScheduleRelation.CONFLICTING in schedule_relations:
+            failures.append("Conflicting immutable fixture revisions prevent exact membership.")
+        if ScheduleRelation.PROVISIONAL in schedule_relations:
+            failures.append("Provisional or TBC MatchVet scheduling prevents exact membership.")
+    elif any(item.has_schedule_conflict for item in manifest.entries):
         failures.append("Conflicting immutable fixture revisions prevent exact membership.")
-    if any(item.has_provisional_scheduling for item in manifest.entries):
+    if not isinstance(manifest, CandidateManifestV2) and any(
+        item.has_provisional_scheduling for item in manifest.entries
+    ):
         failures.append("Provisional or TBC MatchVet scheduling prevents exact membership.")
 
     if manifest.candidate_count == 0:
@@ -1383,7 +1736,7 @@ def validate_operator_coverage_attestation(
 
 def _validate_manifest_binding(
     base_assessment: FixtureCoverageAssessment,
-    manifest: CandidateManifest,
+    manifest: CandidateManifestValue,
 ) -> None:
     if manifest.base_assessment_digest != base_assessment.digest:
         raise ValueError("Candidate manifest cannot be reused with a changed base assessment.")
@@ -1448,7 +1801,9 @@ def _validate_manifest_binding(
                 "fixture",
                 f"{scope.league_key}:{scope.season}:{fact.home_team_id}:{fact.away_team_id}",
             )
-            if expected_fixture_id != fact.reference.fixture_id:
+            if expected_fixture_id != fact.reference.fixture_id and not isinstance(
+                manifest, CandidateManifestV2
+            ):
                 raise ValueError("Candidate manifest teams differ from its exact base fixture ID.")
             if fact.reference.revision_digest != _revision_fact_digest(fact):
                 raise ValueError("Candidate manifest revision facts do not match their digest.")
@@ -1466,8 +1821,28 @@ def _validate_manifest_binding(
             for item in entry.assertion_facts
         ):
             raise ValueError("Candidate manifest assertions differ from exact capture provenance.")
-    expected_entries = _with_manifest_fact_flags(list(manifest.entries))
-    if tuple(expected_entries) != manifest.entries:
+    expected_entries: tuple[CandidateManifestEntryValue, ...]
+    if isinstance(manifest, CandidateManifestV2):
+        unclassified_entries = [
+            CandidateManifestEntry(
+                candidate_id=item.candidate_id,
+                scope_id=item.scope_id,
+                identity_state=item.identity_state,
+                canonical_fixture_id=item.canonical_fixture_id,
+                revision_facts=item.revision_facts,
+                assertion_facts=item.assertion_facts,
+                source_capture_ids=item.source_capture_ids,
+                source_assertion_ids=item.source_assertion_ids,
+                reason_code=item.reason_code,
+                has_schedule_conflict=False,
+                has_provisional_scheduling=False,
+            )
+            for item in manifest.entries
+        ]
+        expected_entries = tuple(_with_manifest_schedule_relations(unclassified_entries, scope))
+    else:
+        expected_entries = tuple(_with_manifest_fact_flags(list(manifest.entries)))
+    if expected_entries != manifest.entries:
         raise ValueError("Candidate manifest conflict or provisional indicators changed.")
     if manifest.candidate_count != _candidate_count(manifest.entries):
         raise ValueError("Candidate manifest count differs from distinct MatchVet fixtures.")
@@ -1784,8 +2159,10 @@ def _revision_fact_from_json(value: object) -> CandidateRevisionFact:
     )
 
 
-def _manifest_entry_from_json(value: object) -> CandidateManifestEntry:
-    keys = (
+def _manifest_entry_from_json(
+    value: object, *, version2: bool = False
+) -> CandidateManifestEntryValue:
+    keys: tuple[str, ...] = (
         "candidate_id",
         "scope_id",
         "identity_state",
@@ -1798,41 +2175,53 @@ def _manifest_entry_from_json(value: object) -> CandidateManifestEntry:
         "has_schedule_conflict",
         "has_provisional_scheduling",
     )
+    if version2:
+        keys = (*keys, "schedule_relation")
     root = _object(value, keys, "Candidate Manifest Entry")
-    return CandidateManifestEntry(
-        candidate_id=_payload_string(root["candidate_id"], "candidate_id"),
-        scope_id=_payload_string(root["scope_id"], "scope_id"),
-        identity_state=FixtureIdentityState(
+    common: _ManifestEntryArgs = {
+        "candidate_id": _payload_string(root["candidate_id"], "candidate_id"),
+        "scope_id": _payload_string(root["scope_id"], "scope_id"),
+        "identity_state": FixtureIdentityState(
             _payload_string(root["identity_state"], "identity_state")
         ),
-        canonical_fixture_id=_payload_optional_string(
+        "canonical_fixture_id": _payload_optional_string(
             root["canonical_fixture_id"], "canonical_fixture_id"
         ),
-        revision_facts=tuple(
+        "revision_facts": tuple(
             _revision_fact_from_json(item)
             for item in _payload_list(root["revision_facts"], "revision_facts")
         ),
-        assertion_facts=tuple(
+        "assertion_facts": tuple(
             _assertion_fact_from_json(item)
             for item in _payload_list(root["assertion_facts"], "assertion_facts")
         ),
-        source_capture_ids=tuple(
+        "source_capture_ids": tuple(
             _payload_string(item, "source_capture_id")
             for item in _payload_list(root["source_capture_ids"], "source_capture_ids")
         ),
-        source_assertion_ids=tuple(
+        "source_assertion_ids": tuple(
             _payload_string(item, "source_assertion_id")
             for item in _payload_list(root["source_assertion_ids"], "source_assertion_ids")
         ),
-        reason_code=_payload_optional_string(root["reason_code"], "reason_code"),
-        has_schedule_conflict=_payload_bool(root["has_schedule_conflict"], "has_schedule_conflict"),
-        has_provisional_scheduling=_payload_bool(
+        "reason_code": _payload_optional_string(root["reason_code"], "reason_code"),
+        "has_schedule_conflict": _payload_bool(
+            root["has_schedule_conflict"], "has_schedule_conflict"
+        ),
+        "has_provisional_scheduling": _payload_bool(
             root["has_provisional_scheduling"], "has_provisional_scheduling"
         ),
-    )
+    }
+    if version2:
+        return CandidateManifestEntryV2(
+            **common,
+            schedule_relation=ScheduleRelation(
+                _payload_string(root["schedule_relation"], "schedule_relation")
+            ),
+        )
+    return CandidateManifestEntry(**common)
 
 
-def _manifest_from_json(value: object) -> CandidateManifest:
+def _manifest_from_json(value: object) -> CandidateManifestValue:
     keys = (
         "contract_version",
         "schema_version",
@@ -1844,20 +2233,36 @@ def _manifest_from_json(value: object) -> CandidateManifest:
         "digest",
     )
     root = _object(value, keys, "Candidate Manifest")
-    return CandidateManifest(
-        contract_version=_payload_string(root["contract_version"], "contract_version"),
-        schema_version=_payload_int(root["schema_version"], "schema_version"),
-        base_assessment_digest=_payload_string(
+    contract_version = _payload_string(root["contract_version"], "contract_version")
+    schema_version = _payload_int(root["schema_version"], "schema_version")
+    common: _ManifestArgs = {
+        "contract_version": contract_version,
+        "schema_version": schema_version,
+        "base_assessment_digest": _payload_string(
             root["base_assessment_digest"], "base_assessment_digest"
         ),
-        scope=_scope_from_json(root["scope"]),
-        bounds=_bounds_from_json(root["bounds"]),
-        entries=tuple(
-            _manifest_entry_from_json(item) for item in _payload_list(root["entries"], "entries")
-        ),
-        candidate_count=_payload_int(root["candidate_count"], "candidate_count"),
-        digest=_payload_string(root["digest"], "digest"),
+        "scope": _scope_from_json(root["scope"]),
+        "bounds": _bounds_from_json(root["bounds"]),
+        "candidate_count": _payload_int(root["candidate_count"], "candidate_count"),
+        "digest": _payload_string(root["digest"], "digest"),
+    }
+    version2 = (
+        contract_version == OPERATOR_CANDIDATE_MANIFEST_V2_CONTRACT_VERSION
+        and schema_version == OPERATOR_CANDIDATE_MANIFEST_V2_SCHEMA_VERSION
     )
+    if version2:
+        entries_v2 = tuple(
+            cast(
+                CandidateManifestEntryV2,
+                _manifest_entry_from_json(item, version2=True),
+            )
+            for item in _payload_list(root["entries"], "entries")
+        )
+        return CandidateManifestV2(**common, entries=entries_v2)
+    entries_v1 = tuple(
+        _manifest_entry_from_json(item) for item in _payload_list(root["entries"], "entries")
+    )
+    return CandidateManifest(**common, entries=entries_v1)
 
 
 def _policy_rule_from_json(value: object) -> OperatorPublicationRule:

@@ -24,8 +24,9 @@ from matchvet.operator_fixture_attestation import (
     AttestationArtifactReference,
     CandidateAssertionFact,
     CandidateComparisonConfirmation,
-    CandidateManifest,
-    CandidateManifestEntry,
+    CandidateManifestEntryV2,
+    CandidateManifestEntryValue,
+    CandidateManifestValue,
     OfficialPublicationReference,
     OperatorAttestationOutcome,
     OperatorComparisonConfirmations,
@@ -143,7 +144,9 @@ def _prepare(arguments: argparse.Namespace) -> int:
                     "mode": "RESEARCH_ONLY",
                     "base_assessment_digest": base.digest,
                     "candidate_count": manifest.candidate_count,
+                    "candidate_manifest_contract": manifest.contract_version,
                     "candidate_manifest_digest": manifest.digest,
+                    "candidate_manifest_schema": manifest.schema_version,
                     "entries": [_entry_json(item) for item in selected_entries],
                     "entry_count": len(manifest.entries),
                     "friday": scope.matchweek_friday,
@@ -391,8 +394,8 @@ def _rules_for_scope(scope: FixtureScope) -> tuple[OperatorPublicationRule, ...]
 
 
 def _page_entries(
-    entries: tuple[CandidateManifestEntry, ...], page: int
-) -> tuple[CandidateManifestEntry, ...]:
+    entries: tuple[CandidateManifestEntryValue, ...], page: int
+) -> tuple[CandidateManifestEntryValue, ...]:
     if page < 1:
         raise ValueError("Candidate page must be at least 1.")
     page_count = max(1, (len(entries) + _PAGE_SIZE - 1) // _PAGE_SIZE)
@@ -401,7 +404,9 @@ def _page_entries(
     return entries[(page - 1) * _PAGE_SIZE : page * _PAGE_SIZE]
 
 
-def _print_candidate_page(entries: tuple[CandidateManifestEntry, ...], start_index: int) -> None:
+def _print_candidate_page(
+    entries: tuple[CandidateManifestEntryValue, ...], start_index: int
+) -> None:
     selected = entries
     if not selected:
         print("  (no MatchVet candidates)")
@@ -420,7 +425,10 @@ def _print_candidate_page(entries: tuple[CandidateManifestEntry, ...], start_ind
             )
             or "OK"
         )
-        print(f"  {index}. {entry.candidate_id} {identity} [{flags}]")
+        relation = (
+            entry.schedule_relation.value if isinstance(entry, CandidateManifestEntryV2) else flags
+        )
+        print(f"  {index}. {entry.candidate_id} {identity} [{relation}; {flags}]")
         for revision in entry.revision_facts:
             kickoff = revision.kickoff_utc or revision.kickoff_local_text or revision.kickoff_state
             home = _team_label(entry.assertion_facts, "home_team") or revision.home_team_id
@@ -461,7 +469,7 @@ def _short_assertion_value(encoded: str | None) -> str | None:
 def _print_record_checklist(
     base: FixtureCoverageAssessment,
     scope: FixtureScope,
-    manifest: CandidateManifest,
+    manifest: CandidateManifestValue,
     rules: tuple[OperatorPublicationRule, ...],
 ) -> None:
     print("MatchVet fixture attestation | RESEARCH_ONLY")
@@ -473,7 +481,7 @@ def _print_record_checklist(
 
 
 def _candidate_comparison_pages(
-    entries: tuple[CandidateManifestEntry, ...],
+    entries: tuple[CandidateManifestEntryValue, ...],
 ) -> tuple[CandidateComparisonConfirmation, ...]:
     page_count = max(1, (len(entries) + _PAGE_SIZE - 1) // _PAGE_SIZE)
     confirmations: list[CandidateComparisonConfirmation] = []
@@ -586,8 +594,8 @@ def _read_nonnegative_int(prompt: str) -> int:
     return int(value)
 
 
-def _entry_json(entry: CandidateManifestEntry) -> dict[str, object]:
-    return {
+def _entry_json(entry: CandidateManifestEntryValue) -> dict[str, object]:
+    result: dict[str, object] = {
         "candidate_id": entry.candidate_id,
         "canonical_fixture_id": entry.canonical_fixture_id,
         "identity_state": entry.identity_state.value,
@@ -609,6 +617,9 @@ def _entry_json(entry: CandidateManifestEntry) -> dict[str, object]:
             for item in entry.revision_facts
         ],
     }
+    if isinstance(entry, CandidateManifestEntryV2):
+        result["schedule_relation"] = entry.schedule_relation.value
+    return result
 
 
 def _rule_json(rule: OperatorPublicationRule) -> dict[str, object]:

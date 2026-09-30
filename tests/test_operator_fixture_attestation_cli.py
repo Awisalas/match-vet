@@ -238,11 +238,16 @@ def test_prepare_accepts_legacy_premier_league_date_only_kickoff(
     output = capsys.readouterr().out
     manifest_result = json.loads(output)
     assert manifest_result["candidate_count"] == 1
+    assert (
+        manifest_result["candidate_manifest_contract"] == "operator-fixture-candidate-manifest-v2"
+    )
+    assert manifest_result["candidate_manifest_schema"] == 2
     assert manifest_result["candidate_manifest_digest"].startswith("sha256:")
     prepared_revision = manifest_result["entries"][0]["revisions"][0]
     assert prepared_revision["kickoff_precision"] == "DATE"
     assert prepared_revision["kickoff_utc"] is None
     assert prepared_revision["kickoff_local_text"] == "2026-10-10"
+    assert manifest_result["entries"][0]["schedule_relation"] == "PROVISIONAL"
 
     with open_store(store_path, private_root=private_root) as store:
         repository = FixtureCoverageRepository(store)
@@ -483,7 +488,7 @@ def test_record_can_persist_a_clear_refusal_without_an_official_reference(
             .execute("SELECT media_type FROM artifacts")
             .fetchone()
         )
-        assert row == ("application/vnd.matchvet.operator-fixture-attestation-v1+json",)
+        assert row == ("application/vnd.matchvet.operator-fixture-attestation-v2+json",)
 
 
 def test_assemble_uses_seven_explicit_artifacts_and_prints_compact_freeze_result(

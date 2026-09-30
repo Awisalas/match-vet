@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import shutil
@@ -1492,6 +1493,7 @@ def test_t17_backup_restore_replays_v2_v3_and_attestation_artifacts(tmp_path: Pa
         OperatorComparisonConfirmations,
         derive_attested_fixture_coverage,
         make_operator_coverage_attestation,
+        operator_attestation_from_canonical_json,
         policy_publications_for_scope,
     )
     from matchvet.provider_health_acquisition import build_provider_health_records
@@ -1560,7 +1562,22 @@ def test_t17_backup_restore_replays_v2_v3_and_attestation_artifacts(tmp_path: Pa
                 reason=None,
             )
             references.append(repository.persist_attestation(attestation))
-        derived = derive_attested_fixture_coverage(base, tuple(references))
+        golden_path = Path(__file__).parent / "fixtures" / "lf07_v1_empty_attestations.json.gz"
+        golden_v1 = json.loads(gzip.decompress(golden_path.read_bytes()))
+        assert golden_v1["base_assessment_digest"] == base.digest
+        legacy_references = tuple(
+            repository.persist_attestation(
+                operator_attestation_from_canonical_json(
+                    golden_v1["attestations"][item.scope.scope_id]
+                )
+            )
+            for item in base.scope_assessments
+        )
+        mixed_references = tuple(
+            legacy_references[index] if index == 0 else references[index]
+            for index in range(len(references))
+        )
+        derived = derive_attested_fixture_coverage(base, mixed_references)
         repository.persist(derived)
         ProviderHealthRepository(store).persist_many(build_provider_health_records(derived))
 
@@ -1592,7 +1609,7 @@ def test_t17_backup_restore_replays_v2_v3_and_attestation_artifacts(tmp_path: Pa
         repository = FixtureCoverageRepository(store)
         assert repository.get(base.digest) == base
         assert repository.get(derived.digest) == derived
-        for reference in references:
+        for reference in (*references, *legacy_references):
             assert (
                 repository.get_attestation_artifact(reference.artifact_digest)
                 == reference.attestation

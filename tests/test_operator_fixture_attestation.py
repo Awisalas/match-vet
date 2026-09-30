@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 from dataclasses import replace
@@ -34,10 +35,15 @@ from matchvet.operator_fixture_attestation import (
     CandidateComparisonConfirmation,
     CandidateManifest,
     CandidateManifestEntry,
+    CandidateManifestEntryV2,
+    CandidateManifestV2,
     CandidateRevisionFact,
     OfficialPublicationReference,
     OperatorAttestationOutcome,
     OperatorComparisonConfirmations,
+    ScheduleRelation,
+    _canonical_json,
+    _manifest_from_json,
     build_candidate_manifest,
     derive_attested_fixture_coverage,
     make_operator_coverage_attestation,
@@ -55,8 +61,12 @@ from matchvet.provider_health_repository import ProviderHealthRepository
 from matchvet.store import open_store
 
 
-def _base_assessment() -> FixtureCoverageAssessment:
-    scopes = fixture_scopes_for_matchweek("2026-09-25", season="2026-27")
+def _lf07_fixture_bytes(filename: str) -> bytes:
+    return gzip.decompress((Path(__file__).parent / "fixtures" / filename).read_bytes())
+
+
+def _base_assessment(friday: str = "2026-09-25") -> FixtureCoverageAssessment:
+    scopes = fixture_scopes_for_matchweek(friday, season="2026-27")
     attempts = tuple(
         ProviderAttempt(
             attempt_id=f"attempt-{scope.league_key}",
@@ -101,18 +111,29 @@ def _base_with_candidate(
     *,
     kickoff_local_text: str = "2026-09-25 20:00",
     resolved: bool = True,
+    league_key: str = "premier_league",
+    matchweek_friday: str = "2026-09-25",
+    home_team_name: str = "North FC",
+    away_team_name: str = "South FC",
+    home_team_id: str = "team-north",
+    away_team_id: str = "team-south",
+    kickoff_utc: str = "2026-09-25T19:00:00.000000+00:00",
 ) -> tuple[
     FixtureCoverageAssessment,
     FixtureScope,
     tuple[CandidateRevisionFact, ...],
     tuple[CandidateAssertionFact, ...],
 ]:
-    base = _base_assessment()
-    scope = base.scope_assessments[0].scope
-    capture_id = "capture-premier-test"
+    base = _base_assessment(matchweek_friday)
+    scope = next(
+        item.scope for item in base.scope_assessments if item.scope.league_key == league_key
+    )
+    capture_id = (
+        "capture-premier-test" if league_key == "premier_league" else f"capture-{league_key}-test"
+    )
     capture_digest = "a" * 64
-    team_home = "team-north"
-    team_away = "team-south"
+    team_home = home_team_id
+    team_away = away_team_id
     fixture_id = deterministic_identifier(
         "fixture", f"{scope.league_key}:{scope.season}:{team_home}:{team_away}"
     )
@@ -150,14 +171,14 @@ def _base_with_candidate(
                 assertion_ids[0],
                 "away_team",
                 "team2",
-                "South FC",
+                away_team_name,
                 {"team_id": team_away},
             ),
             (
                 assertion_ids[1],
                 "home_team",
                 "team1",
-                "North FC",
+                home_team_name,
                 {"team_id": team_home},
             ),
             (
@@ -165,12 +186,12 @@ def _base_with_candidate(
                 "kickoff",
                 "time",
                 kickoff_local_text,
-                {"kickoff_utc": "2026-09-25T19:00:00.000000+00:00"},
+                {"kickoff_utc": kickoff_utc},
             ),
         )
     )
     attempt = ProviderAttempt(
-        attempt_id="attempt-premier-league",
+        attempt_id=f"attempt-{scope.league_key}",
         scope_id=scope.scope_id,
         provider_id="openfootball-json",
         capability_id="scheduled-fixtures",
@@ -180,11 +201,13 @@ def _base_with_candidate(
         capture_id=capture_id,
         capture_digest=capture_digest,
     )
-    attempts = (attempt, *base.provider_attempts[1:])
+    attempts = tuple(
+        attempt if item.scope_id == scope.scope_id else item for item in base.provider_attempts
+    )
     revisions: tuple[FixtureRevisionReference, ...] = ()
     identities = (
         FixtureIdentityResolution(
-            candidate_id="candidate-premier-1",
+            candidate_id=f"candidate-{scope.league_key}-1",
             scope_id=scope.scope_id,
             state=(
                 FixtureIdentityState.RESOLVED
@@ -192,7 +215,7 @@ def _base_with_candidate(
                 else FixtureIdentityState.UNRESOLVED_FIXTURE_IDENTITY
             ),
             canonical_fixture_id=fixture_id if resolved else None,
-            revision_ids=("revision-premier-1",) if resolved else (),
+            revision_ids=(f"revision-{scope.league_key}-1",) if resolved else (),
             reason_code=None if resolved else "TEAM_IDENTITY_UNRESOLVED",
             source_capture_ids=(capture_id,),
             source_assertion_ids=assertion_ids,
@@ -205,7 +228,7 @@ def _base_with_candidate(
             "kickoff_local_text": kickoff_local_text,
             "kickoff_precision": "INSTANT",
             "kickoff_state": "OBSERVED",
-            "kickoff_utc": "2026-09-25T19:00:00.000000+00:00",
+            "kickoff_utc": kickoff_utc,
             "source_round": "1",
         }
         revision_digest = hashlib.sha256(
@@ -219,7 +242,7 @@ def _base_with_candidate(
         revision = FixtureRevisionReference(
             scope_id=scope.scope_id,
             fixture_id=fixture_id,
-            revision_id="revision-premier-1",
+            revision_id=f"revision-{scope.league_key}-1",
             revision_digest=revision_digest,
             source_capture_ids=(capture_id,),
             source_assertion_ids=assertion_ids,
@@ -231,7 +254,7 @@ def _base_with_candidate(
                 home_team_id=team_home,
                 away_team_id=team_away,
                 kickoff_state="OBSERVED",
-                kickoff_utc="2026-09-25T19:00:00.000000+00:00",
+                kickoff_utc=kickoff_utc,
                 kickoff_local_text=kickoff_local_text,
                 kickoff_precision="INSTANT",
                 fixture_status="SCHEDULED",
@@ -261,7 +284,7 @@ def _candidate_attestation(
     publications: tuple[OfficialPublicationReference, ...] | None = None,
     expected_count: int | None = None,
     verified_at_utc: str = "2026-09-17T12:00:00.000000+00:00",
-) -> tuple[CandidateManifest, AttestationArtifactReference]:
+) -> tuple[CandidateManifestV2, AttestationArtifactReference]:
     manifest = build_candidate_manifest(
         base,
         scope.scope_id,
@@ -308,6 +331,650 @@ def _candidate_attestation(
         attestation=attestation,
         artifact_digest=hashlib.sha256(content).hexdigest(),
     )
+
+
+def _revision_with_schedule(
+    source: CandidateRevisionFact,
+    *,
+    revision_id: str,
+    kickoff_state: str,
+    kickoff_utc: str | None,
+    kickoff_local_text: str | None,
+    kickoff_precision: str,
+    fixture_status: str = "SCHEDULED",
+) -> CandidateRevisionFact:
+    fact = replace(
+        source,
+        reference=replace(
+            source.reference,
+            revision_id=revision_id,
+            revision_digest="0" * 64,
+        ),
+        kickoff_state=kickoff_state,
+        kickoff_utc=kickoff_utc,
+        kickoff_local_text=kickoff_local_text,
+        kickoff_precision=kickoff_precision,
+        fixture_status=fixture_status,
+    )
+    payload = {
+        "fixture_status": fact.fixture_status,
+        "kickoff_local_text": fact.kickoff_local_text,
+        "kickoff_precision": fact.kickoff_precision,
+        "kickoff_state": fact.kickoff_state,
+        "kickoff_utc": fact.kickoff_utc,
+        "source_round": fact.source_round,
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    return replace(fact, reference=replace(fact.reference, revision_digest=digest))
+
+
+def _base_with_revision_facts(
+    base: FixtureCoverageAssessment,
+    revision_facts: tuple[CandidateRevisionFact, ...],
+) -> FixtureCoverageAssessment:
+    candidate_id = base.identity_resolutions[0].candidate_id
+    identity = next(item for item in base.identity_resolutions if item.candidate_id == candidate_id)
+    original_revision_ids = set(identity.revision_ids)
+    identity = replace(
+        identity,
+        revision_ids=tuple(sorted(item.reference.revision_id for item in revision_facts)),
+    )
+    other_revisions = tuple(
+        item for item in base.fixture_revisions if item.revision_id not in original_revision_ids
+    )
+    other_identities = tuple(
+        item for item in base.identity_resolutions if item.candidate_id != candidate_id
+    )
+    return assess_fixture_coverage(
+        scopes=tuple(item.scope for item in base.scope_assessments),
+        provider_attempts=base.provider_attempts,
+        coverage_evidence=base.coverage_evidence,
+        fixture_revisions=(*other_revisions, *(item.reference for item in revision_facts)),
+        identity_resolutions=(*other_identities, identity),
+        freshness_results=base.freshness_results,
+    )
+
+
+def test_lf07_compatible_date_and_instant_use_v2_relation() -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    original_instant = revision_facts[0]
+    instant = original_instant
+    date_revision = _revision_with_schedule(
+        instant,
+        revision_id="revision-premier-date",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text="2026-09-25",
+        kickoff_precision="DATE",
+    )
+    facts = (date_revision, instant)
+    base = _base_with_revision_facts(base, facts)
+
+    manifest = build_candidate_manifest(
+        base,
+        scope.scope_id,
+        revision_facts=facts,
+        assertion_facts=assertions,
+    )
+
+    assert manifest.contract_version == "operator-fixture-candidate-manifest-v2"
+    assert manifest.schema_version == 2
+    entry = manifest.entries[0]
+    assert isinstance(manifest, CandidateManifestV2)
+    assert isinstance(entry, CandidateManifestEntryV2)
+    assert entry.schedule_relation is ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE
+    assert entry.has_schedule_conflict is False
+    assert entry.has_provisional_scheduling is False
+    assert {item.kickoff_precision for item in entry.revision_facts} == {"DATE", "INSTANT"}
+
+
+def test_lf07_manifest_versions_reject_the_other_versions_entry_type() -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    manifest = build_candidate_manifest(
+        base,
+        scope.scope_id,
+        revision_facts=revision_facts,
+        assertion_facts=assertions,
+    )
+    v2_entry = manifest.entries[0]
+    v1_entry = CandidateManifestEntry(
+        candidate_id=v2_entry.candidate_id,
+        scope_id=v2_entry.scope_id,
+        identity_state=v2_entry.identity_state,
+        canonical_fixture_id=v2_entry.canonical_fixture_id,
+        revision_facts=v2_entry.revision_facts,
+        assertion_facts=v2_entry.assertion_facts,
+        source_capture_ids=v2_entry.source_capture_ids,
+        source_assertion_ids=v2_entry.source_assertion_ids,
+        reason_code=v2_entry.reason_code,
+        has_schedule_conflict=v2_entry.has_schedule_conflict,
+        has_provisional_scheduling=v2_entry.has_provisional_scheduling,
+    )
+
+    with pytest.raises(ValueError, match="only v1 entry values"):
+        CandidateManifest(
+            contract_version="operator-fixture-candidate-manifest-v1",
+            schema_version=1,
+            base_assessment_digest=base.digest,
+            scope=manifest.scope,
+            bounds=manifest.bounds,
+            entries=(v2_entry,),
+            candidate_count=1,
+        )
+    with pytest.raises(ValueError, match="only v2 entry values"):
+        CandidateManifestV2(
+            contract_version="operator-fixture-candidate-manifest-v2",
+            schema_version=2,
+            base_assessment_digest=base.digest,
+            scope=manifest.scope,
+            bounds=manifest.bounds,
+            entries=cast(tuple[CandidateManifestEntryV2, ...], (v1_entry,)),
+            candidate_count=1,
+        )
+
+
+@pytest.mark.parametrize("date_text", ("2026-10-09", "09/10/2026", "09/10/26"))
+def test_lf07_compatible_date_uses_ingestion_date_formats(date_text: str) -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate(
+        matchweek_friday="2026-10-09",
+        kickoff_local_text="2026-10-09 16:00",
+        kickoff_utc="2026-10-09T15:00:00+00:00",
+    )
+    instant = revision_facts[0]
+    date_revision = _revision_with_schedule(
+        instant,
+        revision_id="revision-lf07-supported-date-format",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text=date_text,
+        kickoff_precision="DATE",
+    )
+    facts = (instant, date_revision)
+    base = _base_with_revision_facts(base, facts)
+
+    manifest = build_candidate_manifest(
+        base,
+        scope.scope_id,
+        revision_facts=facts,
+        assertion_facts=assertions,
+    )
+
+    assert manifest.entries[0].schedule_relation is ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE
+
+
+@pytest.mark.parametrize("marker", ("tbc", "TBA", "tbd", "PROVISIONAL"))
+def test_lf07_source_local_provisional_marker_prevents_certification(marker: str) -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    instant = revision_facts[0]
+    date_revision = _revision_with_schedule(
+        instant,
+        revision_id="revision-premier-date",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text="2026-09-25",
+        kickoff_precision="DATE",
+    )
+    marked_assertions = tuple(
+        replace(
+            item,
+            raw_value_json=json.dumps(f"2026-09-25 {marker}"),
+            digest="",
+        )
+        if item.predicate == "kickoff"
+        else item
+        for item in assertions
+    )
+    facts = (instant, date_revision)
+    base = _base_with_revision_facts(base, facts)
+
+    manifest = build_candidate_manifest(
+        base,
+        scope.scope_id,
+        revision_facts=facts,
+        assertion_facts=marked_assertions,
+    )
+
+    entry = manifest.entries[0]
+    assert entry.schedule_relation is ScheduleRelation.PROVISIONAL
+    assert entry.has_schedule_conflict is False
+    assert entry.has_provisional_scheduling is True
+    _, attestation_reference = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=facts,
+        assertions=marked_assertions,
+    )
+    assert attestation_reference.attestation.outcome is OperatorAttestationOutcome.REFUSED
+
+
+def test_lf07_date_only_provisional_marker_remains_provisional() -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    date_revision = _revision_with_schedule(
+        revision_facts[0],
+        revision_id="revision-premier-date-tbc",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text="2026-09-25 TBC",
+        kickoff_precision="DATE",
+    )
+    facts = (date_revision,)
+    base = _base_with_revision_facts(base, facts)
+    marked_assertions = tuple(
+        replace(
+            item,
+            raw_value_json=json.dumps("2026-09-25 TBC"),
+            digest="",
+        )
+        if item.predicate == "kickoff"
+        else item
+        for item in assertions
+    )
+
+    manifest, attestation_reference = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=facts,
+        assertions=marked_assertions,
+    )
+
+    assert manifest.entries[0].schedule_relation is ScheduleRelation.PROVISIONAL
+    assert attestation_reference.attestation.outcome is OperatorAttestationOutcome.REFUSED
+
+
+@pytest.mark.parametrize(
+    "disagreement",
+    (
+        "different-instant",
+        "different-local-date",
+        "status-postponed",
+        "status-cancelled",
+        "ordered-teams",
+    ),
+)
+def test_lf07_material_schedule_disagreements_remain_conflicting(
+    disagreement: str,
+) -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    original_instant = revision_facts[0]
+    instant = original_instant
+    date_revision = _revision_with_schedule(
+        instant,
+        revision_id="revision-premier-date",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text="2026-09-25",
+        kickoff_precision="DATE",
+        fixture_status=(
+            "POSTPONED"
+            if disagreement == "status-postponed"
+            else "CANCELLED"
+            if disagreement == "status-cancelled"
+            else "SCHEDULED"
+        ),
+    )
+    if disagreement == "different-local-date":
+        date_revision = _revision_with_schedule(
+            instant,
+            revision_id="revision-premier-date",
+            kickoff_state="OBSERVED",
+            kickoff_utc=None,
+            kickoff_local_text="2026-09-26",
+            kickoff_precision="DATE",
+        )
+    if disagreement == "ordered-teams":
+        date_revision = replace(
+            date_revision,
+            home_team_id=instant.away_team_id,
+            away_team_id=instant.home_team_id,
+        )
+    selected_facts = [instant, date_revision]
+    if disagreement == "different-instant":
+        selected_facts.insert(
+            1,
+            _revision_with_schedule(
+                instant,
+                revision_id="revision-premier-instant-later",
+                kickoff_state="OBSERVED",
+                kickoff_utc="2026-09-25T20:00:00+00:00",
+                kickoff_local_text="2026-09-25 21:00",
+                kickoff_precision="INSTANT",
+            ),
+        )
+    selected_revision_facts = tuple(selected_facts)
+    base = _base_with_revision_facts(base, selected_revision_facts)
+
+    manifest = build_candidate_manifest(
+        base,
+        scope.scope_id,
+        revision_facts=selected_revision_facts,
+        assertion_facts=assertions,
+    )
+
+    entry = manifest.entries[0]
+    assert entry.schedule_relation is ScheduleRelation.CONFLICTING
+    assert entry.has_schedule_conflict is True
+    assert entry.has_provisional_scheduling is False
+    _, attestation_reference = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=selected_revision_facts,
+        assertions=assertions,
+    )
+    assert attestation_reference.attestation.outcome is OperatorAttestationOutcome.REFUSED
+
+
+def test_lf07_identical_instants_and_many_dates_are_order_independent() -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    instant = revision_facts[0]
+    equivalent_instant = _revision_with_schedule(
+        instant,
+        revision_id="revision-premier-instant-offset",
+        kickoff_state="OBSERVED",
+        kickoff_utc="2026-09-25T20:00:00+01:00",
+        kickoff_local_text="2026-09-25 20:00",
+        kickoff_precision="INSTANT",
+    )
+    date_revisions = tuple(
+        _revision_with_schedule(
+            instant,
+            revision_id=f"revision-premier-date-{index}",
+            kickoff_state="OBSERVED",
+            kickoff_utc=None,
+            kickoff_local_text="2026-09-25",
+            kickoff_precision="DATE",
+        )
+        for index in (1, 2)
+    )
+    facts = (instant, equivalent_instant, *date_revisions)
+    base = _base_with_revision_facts(base, facts)
+
+    first, first_reference = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=facts,
+        assertions=assertions,
+    )
+    replay, replay_reference = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=tuple(reversed(facts)),
+        assertions=tuple(reversed(assertions)),
+    )
+
+    assert first.entries[0].schedule_relation is ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE
+    assert replay == first
+    assert replay.digest == first.digest
+    assert _canonical_json(replay).encode("utf-8") == _canonical_json(first).encode("utf-8")
+    assert operator_attestation_to_canonical_json(
+        first_reference.attestation
+    ) == operator_attestation_to_canonical_json(replay_reference.attestation)
+
+
+def test_lf07_real_october_9_fixture_shapes_are_compatible_offline() -> None:
+    fixture_pairs = (
+        ("premier_league", "Chelsea", "Bournemouth"),
+        ("premier_league", "Crystal Palace", "Nottingham Forest FC"),
+        ("premier_league", "Aston Villa", "Brentford"),
+        ("premier_league", "Ipswich Town FC", "Fulham"),
+        ("bundesliga", "Paderborn", "Stuttgart"),
+        ("bundesliga", "Union Berlin", "Elversberg"),
+        ("bundesliga", "Hoffenheim", "Hamburg"),
+        ("bundesliga", "Augsburg", "Bayern Munich"),
+        ("ligue_1", "Paris SG", "Le Mans"),
+        ("ligue_1", "Lorient", "Paris FC"),
+        ("ligue_1", "Monaco", "Toulouse"),
+        ("serie_a", "Lazio", "AC Monza"),
+    )
+    relations: list[ScheduleRelation] = []
+    for index, (league_key, home, away) in enumerate(fixture_pairs, start=1):
+        base, scope, revision_facts, assertions = _base_with_candidate(
+            league_key=league_key,
+            matchweek_friday="2026-10-09",
+            kickoff_local_text="2026-10-09 15:00",
+            home_team_name=home,
+            away_team_name=away,
+            home_team_id=deterministic_identifier("team", home),
+            away_team_id=deterministic_identifier("team", away),
+            kickoff_utc="2026-10-09T15:00:00+00:00",
+        )
+        instant = revision_facts[0]
+        date_revision = _revision_with_schedule(
+            instant,
+            revision_id=f"revision-lf07-{index:02d}-date",
+            kickoff_state="OBSERVED",
+            kickoff_utc=None,
+            kickoff_local_text="2026-10-09",
+            kickoff_precision="DATE",
+        )
+        facts = (instant, date_revision)
+        base = _base_with_revision_facts(base, facts)
+        manifest = build_candidate_manifest(
+            base,
+            scope.scope_id,
+            revision_facts=facts,
+            assertion_facts=assertions,
+        )
+        assert manifest.entries[0].candidate_id
+        assert {item.home_team_id for item in manifest.entries[0].revision_facts} == {
+            instant.home_team_id
+        }
+        relations.append(manifest.entries[0].schedule_relation)
+
+    assert len(relations) == 12
+    assert relations == [ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE] * 12
+
+
+@pytest.mark.parametrize("failed_confirmation", (0, 1, 2, 3))
+def test_lf07_compatible_precision_still_requires_four_operator_checks(
+    failed_confirmation: int,
+) -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    instant = revision_facts[0]
+    date_revision = _revision_with_schedule(
+        instant,
+        revision_id="revision-premier-date-confirmation",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text="2026-09-25",
+        kickoff_precision="DATE",
+    )
+    facts = (instant, date_revision)
+    base = _base_with_revision_facts(base, facts)
+    checks = [True, True, True, True]
+    checks[failed_confirmation] = False
+
+    manifest, reference = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=facts,
+        assertions=assertions,
+        candidate_checks=cast(tuple[bool, bool, bool, bool], tuple(checks)),
+    )
+
+    assert manifest.entries[0].schedule_relation is ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE
+    assert reference.attestation.outcome is OperatorAttestationOutcome.REFUSED
+    assert "disagrees" in reference.attestation.reason
+
+
+def test_lf07_compatible_precision_certifies_only_with_all_explicit_checks() -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    instant = revision_facts[0]
+    date_revision = _revision_with_schedule(
+        instant,
+        revision_id="revision-premier-date-certified",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text="2026-09-25",
+        kickoff_precision="DATE",
+    )
+    facts = (instant, date_revision)
+    base = _base_with_revision_facts(base, facts)
+
+    manifest, reference = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=facts,
+        assertions=assertions,
+    )
+
+    assert manifest.entries[0].schedule_relation is ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE
+    assert reference.attestation.outcome is OperatorAttestationOutcome.CERTIFIED
+
+
+def test_lf07_instant_uses_league_local_date_with_termux_timezone_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zoneinfo import ZoneInfoNotFoundError
+
+    from matchvet import ingestion
+
+    def unavailable_zoneinfo(name: str) -> None:
+        raise ZoneInfoNotFoundError(name)
+
+    monkeypatch.setattr(ingestion, "ZoneInfo", unavailable_zoneinfo)
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    instant = _revision_with_schedule(
+        revision_facts[0],
+        revision_id="revision-premier-local-rollover",
+        kickoff_state="OBSERVED",
+        kickoff_utc="2026-09-24T23:30:00+00:00",
+        kickoff_local_text="2026-09-25T00:30:00+01:00",
+        kickoff_precision="INSTANT",
+    )
+    date_revision = _revision_with_schedule(
+        revision_facts[0],
+        revision_id="revision-premier-local-date",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text="2026-09-25",
+        kickoff_precision="DATE",
+    )
+    facts = (instant, date_revision)
+    base = _base_with_revision_facts(base, facts)
+
+    manifest = build_candidate_manifest(
+        base,
+        scope.scope_id,
+        revision_facts=facts,
+        assertion_facts=assertions,
+    )
+
+    assert instant.kickoff_utc is not None
+    assert instant.kickoff_utc[:10] == "2026-09-24"
+    assert manifest.entries[0].schedule_relation is ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE
+
+
+def test_lf07_exact_instant_and_unknown_status_semantics() -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    instant = revision_facts[0]
+    exact_base = _base_with_revision_facts(base, (instant,))
+    exact = build_candidate_manifest(
+        exact_base,
+        scope.scope_id,
+        revision_facts=(instant,),
+        assertion_facts=assertions,
+    )
+    unknown_status = _revision_with_schedule(
+        instant,
+        revision_id="revision-premier-unknown-status",
+        kickoff_state="OBSERVED",
+        kickoff_utc=None,
+        kickoff_local_text="2026-09-25",
+        kickoff_precision="DATE",
+        fixture_status="UNKNOWN",
+    )
+    facts = (instant, unknown_status)
+    base = _base_with_revision_facts(base, facts)
+    compatible = build_candidate_manifest(
+        base,
+        scope.scope_id,
+        revision_facts=facts,
+        assertion_facts=assertions,
+    )
+
+    assert exact.entries[0].schedule_relation is ScheduleRelation.EXACT
+    assert compatible.entries[0].schedule_relation is ScheduleRelation.LESS_PRECISE_BUT_COMPATIBLE
+
+
+@pytest.mark.parametrize(
+    "case",
+    ("date-only", "unknown-kickoff", "unknown-status"),
+)
+def test_lf07_unusable_kickoff_or_status_stays_provisional(case: str) -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate()
+    instant = revision_facts[0]
+    facts: tuple[CandidateRevisionFact, ...]
+    if case == "date-only":
+        facts = (
+            _revision_with_schedule(
+                instant,
+                revision_id="revision-premier-date-only",
+                kickoff_state="OBSERVED",
+                kickoff_utc=None,
+                kickoff_local_text="2026-09-25",
+                kickoff_precision="DATE",
+            ),
+        )
+    elif case == "unknown-kickoff":
+        facts = (
+            instant,
+            _revision_with_schedule(
+                instant,
+                revision_id="revision-premier-unknown-kickoff",
+                kickoff_state="UNKNOWN",
+                kickoff_utc=None,
+                kickoff_local_text=None,
+                kickoff_precision="UNKNOWN",
+            ),
+        )
+    else:
+        facts = (
+            _revision_with_schedule(
+                instant,
+                revision_id="revision-premier-unknown-status-instant",
+                kickoff_state="OBSERVED",
+                kickoff_utc=instant.kickoff_utc,
+                kickoff_local_text=instant.kickoff_local_text,
+                kickoff_precision="INSTANT",
+                fixture_status="UNKNOWN",
+            ),
+            _revision_with_schedule(
+                instant,
+                revision_id="revision-premier-unknown-status-date",
+                kickoff_state="OBSERVED",
+                kickoff_utc=None,
+                kickoff_local_text="2026-09-25",
+                kickoff_precision="DATE",
+                fixture_status="UNKNOWN",
+            ),
+        )
+    base = _base_with_revision_facts(base, facts)
+
+    manifest = build_candidate_manifest(
+        base,
+        scope.scope_id,
+        revision_facts=facts,
+        assertion_facts=assertions,
+    )
+
+    entry = manifest.entries[0]
+    assert entry.schedule_relation is ScheduleRelation.PROVISIONAL
+    assert entry.has_schedule_conflict is False
+    assert entry.has_provisional_scheduling is True
+    _, attestation_reference = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=facts,
+        assertions=assertions,
+    )
+    assert attestation_reference.attestation.outcome is OperatorAttestationOutcome.REFUSED
 
 
 def _certified_empty_attestations(
@@ -612,7 +1279,7 @@ def test_provisional_unresolved_and_empty_incomplete_evidence_refuse() -> None:
         assertions=assertions,
     )
     assert provisional.attestation.outcome is OperatorAttestationOutcome.REFUSED
-    assert "Provisional or TBC" in provisional.attestation.reason
+    assert "Provisional or TBC MatchVet scheduling" in provisional.attestation.reason
 
     unresolved_base, unresolved_scope, _, unresolved_assertions = _base_with_candidate(
         resolved=False
@@ -676,6 +1343,7 @@ def test_exact_base_manifest_and_policy_bindings_cannot_be_reused() -> None:
         )
 
     manifest = selected.attestation.candidate_manifest
+    assert isinstance(manifest, CandidateManifestV2)
     entry = manifest.entries[0]
     revision = entry.revision_facts[0]
     changed_revision = replace(revision, kickoff_local_text="2026-09-25 21:00")
@@ -769,7 +1437,7 @@ def test_f03_persists_and_replays_v3_with_protected_attestation_artifacts(
         )
         assert len(artifact_rows) == 7
         assert all(
-            row[1] == "application/vnd.matchvet.operator-fixture-attestation-v1+json"
+            row[1] == "application/vnd.matchvet.operator-fixture-attestation-v2+json"
             for row in artifact_rows
         )
         assert {ArtifactStore(store).read_artifact(str(row[0])) for row in artifact_rows} == {
@@ -780,6 +1448,92 @@ def test_f03_persists_and_replays_v3_with_protected_attestation_artifacts(
             ArtifactStore(store).verify_artifact(str(row[0])).retention_class == "PROTECTED"
             for row in artifact_rows
         )
+
+
+def test_lf07_v1_manifest_and_attestation_keep_original_canonical_bytes() -> None:
+    manifest_bytes = _lf07_fixture_bytes("lf07_v1_conflicting_candidate_manifest.json.gz")
+    manifest_root = json.loads(manifest_bytes)
+    manifest = _manifest_from_json(manifest_root)
+    assert isinstance(manifest, CandidateManifest)
+    assert manifest.contract_version == "operator-fixture-candidate-manifest-v1"
+    assert manifest.schema_version == 1
+    assert manifest.digest == (
+        "sha256:a7aed56dba25428a23be8196c9b3028b50c3fb61344409947a4d5b0e0458ba29"
+    )
+    assert _canonical_json(manifest).encode("utf-8") == manifest_bytes
+    assert manifest.entries[0].has_schedule_conflict is True
+    assert manifest.entries[0].has_provisional_scheduling is True
+
+    attestation_bytes = _lf07_fixture_bytes("lf07_v1_conflicting_attestation.json.gz")
+    attestation = operator_attestation_from_canonical_json(attestation_bytes.decode("utf-8"))
+    assert attestation.contract_version == "operator-fixture-attestation-v1"
+    assert attestation.schema_version == 1
+    assert isinstance(attestation.candidate_manifest, CandidateManifest)
+    assert attestation.candidate_manifest.digest == manifest.digest
+    assert attestation.outcome is OperatorAttestationOutcome.REFUSED
+    assert attestation.digest == (
+        "sha256:3c03a73963844e09364a50fe59bc7d7fff70a30d6158379a17fe2d3e236484ba"
+    )
+    assert operator_attestation_to_canonical_json(attestation).encode("utf-8") == attestation_bytes
+
+
+def test_lf07_v1_attestations_and_f01_v3_replay_exactly_in_isolated_store(
+    tmp_path: Path,
+) -> None:
+    golden = json.loads(_lf07_fixture_bytes("lf07_v1_empty_attestations.json.gz"))
+    base = _base_assessment()
+    assert base.digest == golden["base_assessment_digest"]
+    old_references_by_scope: dict[str, AttestationArtifactReference] = {}
+    for scope_id, encoded in golden["attestations"].items():
+        attestation = operator_attestation_from_canonical_json(encoded)
+        assert attestation.contract_version == "operator-fixture-attestation-v1"
+        assert attestation.schema_version == 1
+        assert isinstance(attestation.candidate_manifest, CandidateManifest)
+        assert operator_attestation_to_canonical_json(attestation) == encoded
+        old_references_by_scope[scope_id] = AttestationArtifactReference(
+            attestation=attestation,
+            artifact_digest=hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
+        )
+
+    expected_scope_order = tuple(item.scope.scope_id for item in base.scope_assessments)
+    old_references = tuple(old_references_by_scope[item] for item in expected_scope_order)
+    old_v3_bytes = _lf07_fixture_bytes("lf07_v1_v3_empty_assessment.json.gz")
+    decoded_v3 = decode_f01(old_v3_bytes.decode("utf-8"))
+    assert decoded_v3.digest == golden["v3_assessment_digest"]
+    assert encode_f01(decoded_v3).encode("utf-8") == old_v3_bytes
+
+    private_root = tmp_path / "lf07-v1-private"
+    private_root.mkdir()
+    with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
+        repository = FixtureCoverageRepository(store)
+        assert store.status.schema_version == 13
+        assert store.status.applied_migrations == tuple(range(1, 14))
+        repository.persist(base)
+        persisted_references = tuple(
+            repository.persist_attestation(item.attestation) for item in old_references
+        )
+        for item in persisted_references:
+            replay = repository.get_attestation_artifact(item.artifact_digest)
+            assert operator_attestation_to_canonical_json(
+                replay
+            ) == operator_attestation_to_canonical_json(item.attestation)
+            assert replay.contract_version == "operator-fixture-attestation-v1"
+            assert isinstance(replay.candidate_manifest, CandidateManifest)
+
+        derived = derive_attested_fixture_coverage(base, persisted_references)
+        assert encode_f01(derived).encode("utf-8") == old_v3_bytes
+        assert repository.persist(derived) == derived.digest
+        assert repository.get(derived.digest) == decoded_v3
+
+        artifact_media_types = {
+            str(row[0])
+            for row in store._connection_for_repository()
+            .execute("SELECT DISTINCT media_type FROM artifacts")
+            .fetchall()
+        }
+        assert artifact_media_types == {
+            "application/vnd.matchvet.operator-fixture-attestation-v1+json"
+        }
 
 
 def test_f03_rejects_v3_with_missing_attestation_artifact(tmp_path: Path) -> None:
@@ -815,7 +1569,8 @@ def test_f03_recomputes_candidate_manifest_before_attestation_artifact_publish(
     base = _base_assessment()
     valid = _certified_empty_attestations(base)[0].attestation
     manifest = valid.candidate_manifest
-    forged_entry = CandidateManifestEntry(
+    assert isinstance(manifest, CandidateManifestV2)
+    forged_entry = CandidateManifestEntryV2(
         candidate_id="operator-inserted-candidate",
         scope_id=manifest.scope.scope_id,
         identity_state=FixtureIdentityState.UNRESOLVED_FIXTURE_IDENTITY,
@@ -826,7 +1581,8 @@ def test_f03_recomputes_candidate_manifest_before_attestation_artifact_publish(
         source_assertion_ids=(),
         reason_code="OPERATOR_INSERTED",
         has_schedule_conflict=False,
-        has_provisional_scheduling=False,
+        has_provisional_scheduling=True,
+        schedule_relation=ScheduleRelation.PROVISIONAL,
     )
     forged_manifest = replace(
         manifest,

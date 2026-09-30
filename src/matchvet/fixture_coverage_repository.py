@@ -29,13 +29,21 @@ from matchvet.fixture_coverage_codec import (
 )
 from matchvet.ingestion import TARGET_LEAGUES, _parse_date
 from matchvet.operator_fixture_attestation import (
+    OPERATOR_ATTESTATION_CONTRACT_VERSION,
     OPERATOR_ATTESTATION_MEDIA_TYPE,
+    OPERATOR_ATTESTATION_SCHEMA_VERSION,
+    OPERATOR_ATTESTATION_V2_CONTRACT_VERSION,
+    OPERATOR_ATTESTATION_V2_MEDIA_TYPE,
+    OPERATOR_ATTESTATION_V2_SCHEMA_VERSION,
     AttestationArtifactReference,
     AttestedFixtureCoverageAssessment,
     CandidateAssertionFact,
     CandidateManifest,
+    CandidateManifestV2,
+    CandidateManifestValue,
     CandidateRevisionFact,
     OperatorCoverageAttestation,
+    _build_candidate_manifest_v1_for_replay,
     build_candidate_manifest,
     operator_attestation_from_canonical_json,
     operator_attestation_to_canonical_json,
@@ -50,6 +58,21 @@ if TYPE_CHECKING:
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _ASSESSMENT_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _DATE_ONLY_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+
+
+def _attestation_media_type(attestation: OperatorCoverageAttestation) -> str:
+    version = (attestation.contract_version, attestation.schema_version)
+    if version == (
+        OPERATOR_ATTESTATION_CONTRACT_VERSION,
+        OPERATOR_ATTESTATION_SCHEMA_VERSION,
+    ):
+        return OPERATOR_ATTESTATION_MEDIA_TYPE
+    if version == (
+        OPERATOR_ATTESTATION_V2_CONTRACT_VERSION,
+        OPERATOR_ATTESTATION_V2_SCHEMA_VERSION,
+    ):
+        return OPERATOR_ATTESTATION_V2_MEDIA_TYPE
+    raise ValueError("Unsupported operator attestation contract version.")
 
 
 class FixtureCoverageIntegrityError(ValueError):
@@ -192,7 +215,7 @@ class FixtureCoverageRepository:
             payload = operator_attestation_to_canonical_json(attestation).encode("utf-8")
             artifact = self._artifacts.publish_artifact(
                 payload,
-                media_type=OPERATOR_ATTESTATION_MEDIA_TYPE,
+                media_type=_attestation_media_type(attestation),
                 retention_class="PROTECTED",
             )
             self._verify_attestation_artifact(
@@ -210,12 +233,12 @@ class FixtureCoverageRepository:
             raise ValueError("Operator attestation artifact digest must be SHA-256.")
         try:
             record = self._artifacts.verify_artifact(artifact_digest)
-            if record.media_type != OPERATOR_ATTESTATION_MEDIA_TYPE:
+            content = self._artifacts.read_artifact(artifact_digest)
+            attestation = operator_attestation_from_canonical_json(content.decode("utf-8"))
+            if record.media_type != _attestation_media_type(attestation):
                 raise FixtureCoverageIntegrityError(
                     "Operator attestation artifact uses the wrong media type."
                 )
-            content = self._artifacts.read_artifact(artifact_digest)
-            attestation = operator_attestation_from_canonical_json(content.decode("utf-8"))
             if operator_attestation_to_canonical_json(attestation).encode("utf-8") != content:
                 raise FixtureCoverageIntegrityError(
                     "Operator attestation artifact is not the exact canonical value."
@@ -236,8 +259,23 @@ class FixtureCoverageRepository:
 
     def build_candidate_manifest(
         self, base_assessment: FixtureCoverageAssessment, scope_id: str
-    ) -> CandidateManifest:
+    ) -> CandidateManifestV2:
         """Build a manifest from only exact immutable T04 rows named by persisted v2."""
+        manifest = self._build_candidate_manifest(base_assessment, scope_id, manifest_version=2)
+        if not isinstance(manifest, CandidateManifestV2):
+            raise FixtureCoverageIntegrityError("New candidate manifests must use v2.")
+        return manifest
+
+    def _build_candidate_manifest(
+        self,
+        base_assessment: FixtureCoverageAssessment,
+        scope_id: str,
+        *,
+        manifest_version: int,
+    ) -> CandidateManifestValue:
+        """Build either current v2 facts or original v1 semantics for replay."""
+        if manifest_version not in (1, 2):
+            raise ValueError("Unsupported candidate manifest version.")
         if self.get(base_assessment.digest) != base_assessment:
             raise FixtureCoverageIntegrityError(
                 "Candidate manifest requires the exact persisted automatic F01 v2 assessment."
@@ -352,6 +390,13 @@ class FixtureCoverageRepository:
                 )
             )
         try:
+            if manifest_version == 1:
+                return _build_candidate_manifest_v1_for_replay(
+                    base_assessment,
+                    scope_id,
+                    revision_facts=tuple(revision_facts),
+                    assertion_facts=tuple(assertion_facts),
+                )
             return build_candidate_manifest(
                 base_assessment,
                 scope_id,
@@ -455,12 +500,12 @@ class FixtureCoverageRepository:
     def _verify_attestation_artifact(self, reference: AttestationArtifactReference) -> None:
         try:
             record = self._artifacts.verify_artifact(reference.artifact_digest)
-            if record.media_type != OPERATOR_ATTESTATION_MEDIA_TYPE:
+            content = self._artifacts.read_artifact(reference.artifact_digest)
+            attestation = operator_attestation_from_canonical_json(content.decode("utf-8"))
+            if record.media_type != _attestation_media_type(attestation):
                 raise FixtureCoverageIntegrityError(
                     "Operator attestation artifact kind is incorrect."
                 )
-            content = self._artifacts.read_artifact(reference.artifact_digest)
-            attestation = operator_attestation_from_canonical_json(content.decode("utf-8"))
         except FixtureCoverageIntegrityError:
             raise
         except (ArtifactError, UnicodeDecodeError, FixtureCoveragePayloadError) as error:
@@ -487,7 +532,14 @@ class FixtureCoverageRepository:
             )
         exact_base = cast(FixtureCoverageAssessment, base)
         try:
-            manifest = self.build_candidate_manifest(exact_base, attestation.scope.scope_id)
+            manifest_version = (
+                1 if isinstance(attestation.candidate_manifest, CandidateManifest) else 2
+            )
+            manifest = self._build_candidate_manifest(
+                exact_base,
+                attestation.scope.scope_id,
+                manifest_version=manifest_version,
+            )
         except FixtureCoverageIntegrityError:
             raise
         except (TypeError, ValueError) as error:
@@ -521,7 +573,16 @@ class FixtureCoverageRepository:
             validate_attested_assessment_base(base, assessment)
             for reference in assessment.operator_attestation_state.evidence:
                 self._verify_attestation_artifact(reference)
-                manifest = self.build_candidate_manifest(base, reference.attestation.scope.scope_id)
+                manifest_version = (
+                    1
+                    if isinstance(reference.attestation.candidate_manifest, CandidateManifest)
+                    else 2
+                )
+                manifest = self._build_candidate_manifest(
+                    base,
+                    reference.attestation.scope.scope_id,
+                    manifest_version=manifest_version,
+                )
                 if manifest != reference.attestation.candidate_manifest:
                     raise FixtureCoverageIntegrityError(
                         "F01 v3 candidate manifest differs from exact immutable T04 facts."
