@@ -51,6 +51,10 @@ if TYPE_CHECKING:
         ProviderAttempt,
         ProviderAttemptState,
     )
+    from matchvet.pro_league_team_alias_registry import (
+        ApprovedProLeagueAlias,
+        ProLeagueTeamAliasRegistry,
+    )
     from matchvet.team_alias_registry import ApprovedAlias, TeamAliasRegistry
 
 
@@ -860,7 +864,8 @@ class _TeamRegistrationDisposition(StrEnum):
 class _TeamIdentityEvidence:
     resolution: TeamResolution
     registration_disposition: _TeamRegistrationDisposition
-    registry_entry: ApprovedAlias | None = None
+    registry_entry: ApprovedAlias | ApprovedProLeagueAlias | None = None
+    registry_rule_version: str | None = None
 
 
 @dataclass
@@ -1157,6 +1162,7 @@ class FixtureHistoryImporter:
         *,
         private_root: Path,
         team_alias_registry: TeamAliasRegistry | None = None,
+        pro_league_team_alias_registry: ProLeagueTeamAliasRegistry | None = None,
     ) -> None:
         if store.status.mode.value != "READ_WRITE":
             raise PermissionError("Fixture history import requires a healthy writable store.")
@@ -1164,6 +1170,10 @@ class FixtureHistoryImporter:
         self._private_root = private_root.resolve()
         from dataclasses import asdict
 
+        from matchvet.pro_league_team_alias_registry import (
+            ProLeagueTeamAliasRegistry,
+            default_pro_league_registry,
+        )
         from matchvet.team_alias_registry import TeamAliasRegistry, default_registry
 
         if team_alias_registry is None:
@@ -1175,6 +1185,20 @@ class FixtureHistoryImporter:
                         "version": team_alias_registry.version,
                         "digest": team_alias_registry.digest,
                         "entries": [asdict(entry) for entry in team_alias_registry.entries],
+                    }
+                )
+            )
+        if pro_league_team_alias_registry is None:
+            self._pro_league_team_alias_registry = default_pro_league_registry()
+        else:
+            self._pro_league_team_alias_registry = ProLeagueTeamAliasRegistry.from_json(
+                _canonical_json(
+                    {
+                        "version": pro_league_team_alias_registry.version,
+                        "digest": pro_league_team_alias_registry.digest,
+                        "entries": [
+                            asdict(entry) for entry in pro_league_team_alias_registry.entries
+                        ],
                     }
                 )
             )
@@ -1662,6 +1686,7 @@ class FixtureHistoryImporter:
         source_kind: SourceKind,
     ) -> _TeamIdentityEvidence:
         """Resolve every supported current identity before registration policy applies."""
+        from matchvet.pro_league_team_alias_registry import LEAGUE_KEY, SEASON
         from matchvet.team_alias_registry import source_lineage
 
         normalized = canonical_key(source_name)
@@ -1680,8 +1705,17 @@ class FixtureHistoryImporter:
         current_team_ids = {str(row[0]) for row in rows}
         evidence: set[str] = set(current_team_ids)
         names = {str(row[0]): str(row[1]) for row in rows}
-        registry_entries = self._team_alias_registry.candidates(
-            league.key, season, source_lineage(source_kind), source_name
+        registry: TeamAliasRegistry | ProLeagueTeamAliasRegistry | None
+        if source_kind is SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION:
+            registry = self._pro_league_team_alias_registry
+        elif source_kind in (SourceKind.OPENFOOTBALL, SourceKind.OPENFOOTBALL_TEXT):
+            registry = self._team_alias_registry
+        else:
+            registry = None
+        registry_entries = (
+            registry.candidates(league.key, season, source_lineage(source_kind), source_name)
+            if registry is not None
+            else ()
         )
         if len(registry_entries) > 1:
             return _TeamIdentityEvidence(
@@ -1689,6 +1723,19 @@ class FixtureHistoryImporter:
                 _TeamRegistrationDisposition.NONE,
             )
         registry_entry = registry_entries[0] if registry_entries else None
+        registry_rule_version = (
+            f"{registry.version}:{registry.digest}"
+            if registry is not None
+            and (
+                registry_entry is not None
+                or (
+                    source_kind is SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION
+                    and league.key == LEAGUE_KEY
+                    and season == SEASON
+                )
+            )
+            else None
+        )
         registry_target_missing = False
         registry_target_invalid = False
         if registry_entry is not None:
@@ -1709,18 +1756,25 @@ class FixtureHistoryImporter:
                 TeamResolution(MappingState.AMBIGUOUS, source_name, None, None, candidates),
                 _TeamRegistrationDisposition.NONE,
                 registry_entry,
+                registry_rule_version,
             )
         if registry_target_invalid or (registry_target_missing and current_team_ids):
             return _TeamIdentityEvidence(
                 TeamResolution(MappingState.UNKNOWN, source_name, None, None),
                 _TeamRegistrationDisposition.BLOCKED,
                 registry_entry,
+                registry_rule_version,
             )
         if registry_target_missing:
             return _TeamIdentityEvidence(
                 TeamResolution(MappingState.UNKNOWN, source_name, None, None),
-                _TeamRegistrationDisposition.REVIEWED_TARGET,
+                (
+                    _TeamRegistrationDisposition.BLOCKED
+                    if source_kind is SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION
+                    else _TeamRegistrationDisposition.REVIEWED_TARGET
+                ),
                 registry_entry,
+                registry_rule_version,
             )
         if len(candidates) == 1:
             team_id = candidates[0]
@@ -1734,11 +1788,13 @@ class FixtureHistoryImporter:
                 ),
                 _TeamRegistrationDisposition.NONE,
                 registry_entry,
+                registry_rule_version,
             )
         return _TeamIdentityEvidence(
             TeamResolution(MappingState.UNKNOWN, source_name, None, None),
             _TeamRegistrationDisposition.SOURCE_NAME,
             registry_entry,
+            registry_rule_version,
         )
 
     def _existing_capture(
@@ -1899,7 +1955,7 @@ class FixtureHistoryImporter:
                 resolution,
                 captured_at,
                 identity_policy,
-                registry_evidence=evidence.registry_entry is not None,
+                registry_rule_version=evidence.registry_rule_version,
             )
             return resolution
         assert resolution.canonical_team_id is not None
@@ -1914,7 +1970,7 @@ class FixtureHistoryImporter:
                 resolution,
                 captured_at,
                 identity_policy,
-                registry_evidence=evidence.registry_entry is not None,
+                registry_rule_version=evidence.registry_rule_version,
             )
             return resolution
         tx.add_identifier_if_missing(CanonicalIdentifier("team", resolution.canonical_team_id))
@@ -1966,7 +2022,7 @@ class FixtureHistoryImporter:
             resolution,
             captured_at,
             identity_policy,
-            registry_evidence=evidence.registry_entry is not None,
+            registry_rule_version=evidence.registry_rule_version,
         )
         return resolution
 
@@ -1981,7 +2037,7 @@ class FixtureHistoryImporter:
         captured_at: str,
         identity_policy: TeamIdentityPolicy,
         *,
-        registry_evidence: bool,
+        registry_rule_version: str | None,
     ) -> None:
         mapping_id = deterministic_identifier(
             "source_team_mapping", f"{source_id}:{league.key}:{canonical_key(source_name)}"
@@ -2005,9 +2061,12 @@ class FixtureHistoryImporter:
                 resolution.canonical_team_id,
                 _canonical_json(sorted(resolution.candidates)).decode("utf-8"),
                 (
-                    f"{self._team_alias_registry.version}:{self._team_alias_registry.digest}"
-                    if identity_policy is TeamIdentityPolicy.KNOWN_ONLY or registry_evidence
-                    else "matchvet-t06-team-v1"
+                    registry_rule_version
+                    or (
+                        f"{self._team_alias_registry.version}:{self._team_alias_registry.digest}"
+                        if identity_policy is TeamIdentityPolicy.KNOWN_ONLY
+                        else "matchvet-t06-team-v1"
+                    )
                 ),
                 captured_at,
             ),

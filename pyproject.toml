@@ -25,7 +25,7 @@ dev = [
 package-dir = { "" = "src" }
 
 [tool.setuptools.package-data]
-matchvet = ["baseline.json", "team_alias_registry_v1.json", "team_alias_registry_v2.json", "py.typed"]
+matchvet = ["baseline.json", "team_alias_registry_v1.json", "team_alias_registry_v2.json", "pro_league_team_alias_registry_v1.json", "py.typed"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
