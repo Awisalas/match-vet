@@ -29,6 +29,7 @@ from matchvet.operator_fixture_observation import (
     OPERATOR_FIXTURE_OBSERVATION_MEDIA_TYPE,
     OPERATOR_FIXTURE_OBSERVATION_POLICY_ID,
     OfficialFixtureObservationInput,
+    OperatorFixtureObservationIntegrityError,
     OperatorFixtureObservationRepository,
     OperatorOfficialFixtureObservation,
     operator_fixture_observation_from_canonical_json,
@@ -157,6 +158,22 @@ def test_observation_contract_has_deterministic_canonical_codec() -> None:
     )
 
 
+def test_baseline_v1_artifact_decodes_and_verifies_unchanged() -> None:
+    # These exact bytes were produced by the codec at the LF10 baseline commit.
+    content = (Path(__file__).parent / "fixtures" / "lf05_v1_observation.json").read_text(
+        encoding="utf-8"
+    )
+    observation = operator_fixture_observation_from_canonical_json(content)
+
+    assert observation == _instant_observation()
+    assert observation.digest == (
+        "sha256:972e8d440d1a1be9a224e9da991e4edc59bd3e74fc2f0c337901f449b89aa8ed"
+    )
+    assert operator_fixture_observation_to_canonical_json(observation) == content
+    later = replace(observation, observed_at_utc="2026-09-30T12:00:00+00:00", digest="")
+    assert later.digest != observation.digest
+
+
 def test_observation_contract_rejects_noncanonical_or_corrupt_bytes() -> None:
     canonical = operator_fixture_observation_to_canonical_json(_instant_observation())
 
@@ -251,6 +268,100 @@ def test_replaying_one_observation_keeps_one_capture_revision_and_assertion_set(
         assert len(importer.source_assertions()) == 4
         assert len(importer.revisions(recorded.fixture_id)) == 1
         assert repository.get(recorded.artifact_digest).observation == recorded.observation
+
+
+def test_record_replay_reuses_all_identities_without_persistence_writes(tmp_path: Path) -> None:
+    private_root, store_context = _open_observation_store(tmp_path)
+    with store_context as store:
+        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        recorded = repository.record(_valid_input())
+        connection = store._connection_for_repository()
+        tables = (
+            "artifacts",
+            "source_captures",
+            "fixtures",
+            "fixture_revisions",
+            "source_assertions",
+        )
+        counts = tuple(
+            connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0] for table in tables
+        )
+        before = connection.serialize()
+        changes = connection.total_changes
+        files = {path.relative_to(private_root) for path in private_root.rglob("*")}
+
+        replayed = repository.record(_valid_input())
+
+        assert replayed.observation == recorded.observation
+        assert replayed.artifact_digest == recorded.artifact_digest
+        assert replayed.capture_id == recorded.capture_id
+        assert replayed.fixture_id == recorded.fixture_id
+        assert replayed.revision_id == recorded.revision_id
+        assert replayed.import_result.from_existing_capture
+        assert (
+            tuple(
+                connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                for table in tables
+            )
+            == counts
+        )
+        assert connection.total_changes == changes
+        assert connection.serialize() == before
+        assert {path.relative_to(private_root) for path in private_root.rglob("*")} == files
+
+
+def test_record_refuses_duplicate_historical_logical_observations(tmp_path: Path) -> None:
+    private_root, store_context = _open_observation_store(tmp_path)
+    with store_context as store:
+        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        first = repository.record(_valid_input())
+        second = repository.persist(
+            replace(first.observation, observed_at_utc="2026-09-30T12:00:00+00:00", digest="")
+        )
+        assert second.artifact_digest != first.artifact_digest
+        assert second.capture_id != first.capture_id
+        connection = store._connection_for_repository()
+        before = connection.serialize()
+        changes = connection.total_changes
+
+        with pytest.raises(OperatorFixtureObservationIntegrityError, match="Multiple existing"):
+            repository.record(_valid_input())
+
+        assert connection.total_changes == changes
+        assert connection.serialize() == before
+        assert len(repository.list_for_scope(first.observation.scope_id)) == 2
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"kickoff": "2026-10-09T21:00:00+02:00"},
+        {"kickoff": "2026-10-09"},
+        {"status": "POSTPONED"},
+        {"status": "CANCELLED"},
+    ],
+)
+def test_record_changed_kickoff_or_status_creates_new_observation(
+    tmp_path: Path, changes: dict[str, str]
+) -> None:
+    private_root, store_context = _open_observation_store(tmp_path)
+    with store_context as store:
+        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        first = repository.record(_valid_input())
+
+        changed = repository.record(_valid_input(**changes))
+
+        assert changed.observation.digest != first.observation.digest
+        assert changed.artifact_digest != first.artifact_digest
+        assert changed.capture_id != first.capture_id
+        assert len(repository.list_for_scope(first.observation.scope_id)) == 2
+        replayed = repository.record(_valid_input(**changes))
+        assert replayed.observation == changed.observation
+        assert replayed.capture_id == changed.capture_id
+        assert repository.record(_valid_input()).observation == first.observation
 
 
 def test_observation_replay_fails_closed_when_artifact_bytes_are_corrupted(
@@ -514,6 +625,9 @@ def test_cli_records_and_lists_one_explicit_scope_compactly(
     assert recorded["status"] == "SCHEDULED"
     assert len(recorded) == 9
     assert "home_team_id" not in recorded
+
+    assert main(common) == 0
+    assert json.loads(capsys.readouterr().out) == recorded
 
     assert (
         main(

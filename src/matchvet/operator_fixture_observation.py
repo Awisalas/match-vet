@@ -487,6 +487,27 @@ class OperatorFixtureObservationRepository:
             access_method="MANUAL_CITATION",
             source_class="OFFICIAL_COMPETITION",
         )
+        # The v1 event digest includes observation time. Command replay instead
+        # compares the facts, retaining canonical team and publication identities.
+        fact_fields = tuple(
+            item.name
+            for item in fields(OperatorOfficialFixtureObservation)
+            if item.name not in {"observed_at_utc", "digest"}
+        )
+        matches = tuple(
+            record
+            for record in self.list_for_scope(scope.scope_id)
+            if all(
+                getattr(record.observation, name) == getattr(observation, name)
+                for name in fact_fields
+            )
+        )
+        if len(matches) > 1:
+            raise OperatorFixtureObservationIntegrityError(
+                "Multiple existing observations match the same logical fixture fact."
+            )
+        if matches:
+            return matches[0]
         return self.persist(observation, kickoff_local_text=local_text)
 
     def persist(
