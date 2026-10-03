@@ -59,6 +59,10 @@ from matchvet.matchweek_membership import (
     observation_payload,
     policy_snapshot,
 )
+from matchvet.operator_fixture_observation import (
+    OperatorFixtureObservationIntegrityError,
+    verify_operator_fixture_observation_capture,
+)
 from matchvet.provider_health import ProviderAttemptReference, ProviderHealthRecord
 from matchvet.provider_health_repository import (
     ProviderHealthIntegrityError,
@@ -1009,13 +1013,47 @@ def _load_revision_snapshot(
             """,
             (capture_id,),
         ).fetchone()
-        if capture is None or attempts.get(capture_id) != str(capture[0]):
+        if capture is None:
             raise MatchweekMembershipError(
                 "MV-F06-REFERENCE-INTEGRITY",
                 "REFERENCE_MISMATCH",
                 f"F01 capture {capture_id} for revision {reference.revision_id} is missing or "
                 "mismatched.",
             )
+        if capture_id in attempts:
+            if attempts[capture_id] != str(capture[0]):
+                raise MatchweekMembershipError(
+                    "MV-F06-REFERENCE-INTEGRITY",
+                    "REFERENCE_MISMATCH",
+                    f"F01 capture {capture_id} for revision {reference.revision_id} is missing or "
+                    "mismatched.",
+                )
+        else:
+            try:
+                manual_observation = verify_operator_fixture_observation_capture(
+                    store,
+                    capture_id,
+                    expected_scope_id=reference.scope_id,
+                )
+            except OperatorFixtureObservationIntegrityError as error:
+                raise MatchweekMembershipError(
+                    "MV-F06-REFERENCE-INTEGRITY",
+                    "REFERENCE_MISMATCH",
+                    f"F01 capture {capture_id} for revision {reference.revision_id} is missing or "
+                    "mismatched.",
+                ) from error
+            if (
+                manual_observation.capture_id != capture_id
+                or manual_observation.artifact_digest != str(capture[0])
+                or manual_observation.fixture_id != reference.fixture_id
+                or manual_observation.revision_id != reference.revision_id
+            ):
+                raise MatchweekMembershipError(
+                    "MV-F06-REFERENCE-INTEGRITY",
+                    "REFERENCE_MISMATCH",
+                    f"F01 capture {capture_id} for revision {reference.revision_id} is missing or "
+                    "mismatched.",
+                )
         source_key = str(capture[2])
         source_class = str(capture[3])
         capture_supports.append(

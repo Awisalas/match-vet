@@ -25,7 +25,10 @@ from matchvet.fixture_coverage import (
     assess_fixture_coverage,
     fixture_scopes_for_matchweek,
 )
-from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+from matchvet.fixture_coverage_repository import (
+    FixtureCoverageIntegrityError,
+    FixtureCoverageRepository,
+)
 from matchvet.ingestion import (
     TARGET_LEAGUES,
     FixtureCaptureObservation,
@@ -1028,6 +1031,262 @@ def test_freeze_exact_accepts_all_seven_persisted_attested_v3_scopes(
         assert len(frozen.scopes) == 7
         assert len(frozen.provider_health_references) == 7
         assert len(frozen.memberships) == 1
+
+
+@pytest.mark.parametrize(
+    ("additional_observation", "fake_manual_capture", "expected_freeze"),
+    (
+        (None, False, True),
+        ({"home": "Synthetic East FC", "away": "Synthetic West FC"}, False, False),
+        ({"kickoff": "2026-09-25T21:00:00+02:00"}, False, False),
+        (None, True, False),
+    ),
+    ids=(
+        "matching-fixture-revision",
+        "different-fixture",
+        "different-revision",
+        "fake-manual-capture",
+    ),
+)
+def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
+    tmp_path: Path,
+    additional_observation: dict[str, str] | None,
+    fake_manual_capture: bool,
+    expected_freeze: bool,
+) -> None:
+    from test_operator_fixture_observation import _seed_belgian_teams, _valid_input
+
+    from matchvet.matchweek_membership_repository import MatchweekMembershipRepository
+    from matchvet.operator_fixture_observation import OperatorFixtureObservationRepository
+
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        team_names = ["Synthetic North FC", "Synthetic South FC"]
+        if additional_observation is not None:
+            team_names.extend(
+                additional_observation.get(name, fallback)
+                for name, fallback in (
+                    ("home", "Synthetic North FC"),
+                    ("away", "Synthetic South FC"),
+                )
+            )
+        _seed_belgian_teams(store, tuple(team_names))
+        observation_repository = OperatorFixtureObservationRepository(
+            store, private_root=tmp_path
+        )
+        input_facts = {
+            "friday": "2026-09-25",
+            "kickoff": "2026-09-25T20:00:00+02:00",
+            "publication_date": "2026-09-16",
+        }
+        recorded = observation_repository.record(_valid_input(**input_facts))
+        extra_capture_ids: tuple[str, ...] = ()
+        if additional_observation is not None:
+            extra_input = {**input_facts, **additional_observation}
+            extra = observation_repository.record(_valid_input(**extra_input))
+            extra_capture_ids = (extra.capture_id,)
+        importer = FixtureHistoryImporter(store, private_root=tmp_path)
+        if fake_manual_capture:
+            fake = importer.retain_capture(
+                source_kind=SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION,
+                league=league_by_key("belgian_pro_league"),
+                season="2026-27",
+                content=b"not a canonical LF05 observation artifact",
+                capture=SourceCaptureInput(
+                    source_url="https://www.proleague.be/jpl-kalender!",
+                    retrieved_at_utc="2026-09-17T12:00:00+00:00",
+                    observed_terms="RESEARCH_ONLY:MANUAL_CITATION",
+                    cache_key="f06-unverified-lf05-capture",
+                ),
+            )
+            assert fake.source_key == "pro-league-official-manual-citation"
+            extra_capture_ids = (fake.capture_id,)
+        observations = importer.observations_for_capture(recorded.capture_id)
+        assert len(observations) == 1
+        observation = observations[0]
+        assert observation.revision_id == recorded.revision_id
+        assert observation.revision_digest is not None
+
+        baseline = _persistable_schedule_assessment(store, tmp_path, ())
+        belgian_scope = next(
+            item.scope
+            for item in baseline.scope_assessments
+            if item.scope.league_key == "belgian_pro_league"
+        )
+        evidence = tuple(
+            replace(item, affirmatively_empty=False)
+            if item.scope_id == belgian_scope.scope_id
+            else item
+            for item in baseline.coverage_evidence
+        )
+        manual_revision = FixtureRevisionReference(
+            scope_id=belgian_scope.scope_id,
+            fixture_id=recorded.fixture_id,
+            revision_id=recorded.revision_id,
+            revision_digest=observation.revision_digest,
+            source_capture_ids=(recorded.capture_id, *extra_capture_ids),
+            source_assertion_ids=observation.source_assertion_ids,
+        )
+        assessment = assess_fixture_coverage(
+            scopes=tuple(item.scope for item in baseline.scope_assessments),
+            provider_attempts=baseline.provider_attempts,
+            coverage_evidence=evidence,
+            fixture_revisions=(*baseline.fixture_revisions, manual_revision),
+            identity_resolutions=(
+                *baseline.identity_resolutions,
+                FixtureIdentityResolution(
+                    candidate_id="candidate-lf05-manual-belgian",
+                    scope_id=belgian_scope.scope_id,
+                    state=FixtureIdentityState.RESOLVED,
+                    canonical_fixture_id=recorded.fixture_id,
+                    revision_ids=(recorded.revision_id,),
+                    source_capture_ids=(recorded.capture_id,),
+                    source_assertion_ids=observation.source_assertion_ids,
+                ),
+            ),
+            freshness_results=baseline.freshness_results,
+        )
+        coverage_repository = FixtureCoverageRepository(store)
+        if fake_manual_capture:
+            with pytest.raises(FixtureCoverageIntegrityError, match="not a verified LF05"):
+                coverage_repository.persist(assessment)
+            return
+        coverage_repository.persist(assessment)
+        attestations = []
+        for scope_assessment in assessment.scope_assessments:
+            manifest = coverage_repository.build_candidate_manifest(
+                assessment, scope_assessment.scope.scope_id
+            )
+            candidate_confirmations = tuple(
+                CandidateComparisonConfirmation(
+                    candidate_id=entry.candidate_id,
+                    identity_matches=True,
+                    date_matches=True,
+                    kickoff_matches=True,
+                    status_matches=True,
+                )
+                for entry in manifest.entries
+            )
+            attestations.append(
+                coverage_repository.persist_attestation(
+                    make_operator_coverage_attestation(
+                        base_assessment=assessment,
+                        candidate_manifest=manifest,
+                        operator_id="offline-operator-1",
+                        verified_at_utc="2026-09-17T12:00:00.000000+00:00",
+                        publications=_certification_publications_for_scope(
+                            scope_assessment.scope
+                        ),
+                        expected_official_fixture_count=manifest.candidate_count,
+                        candidate_confirmations=candidate_confirmations,
+                        confirmations=OperatorComparisonConfirmations(
+                            all_official_fixtures_represented=True,
+                            no_extra_matchvet_fixture=True,
+                            complete_official_publication_covers_scope=True,
+                            pairing_calendar_layer_checked=True,
+                            exact_schedule_layer_checked=True,
+                            latest_applicable_update_checked=True,
+                            complete_publication_affirms_empty_scope=(
+                                manifest.candidate_count == 0
+                            ),
+                        ),
+                        outcome=OperatorAttestationOutcome.CERTIFIED,
+                        reason=None,
+                    )
+                )
+            )
+
+        derived = derive_attested_fixture_coverage(assessment, tuple(attestations))
+        coverage_repository.persist(derived)
+        provider_health = build_provider_health_records(derived)
+        ProviderHealthRepository(store).persist_many(provider_health)
+        if expected_freeze:
+            frozen = MatchweekMembershipRepository(store).freeze_exact(
+                "2026-27",
+                "2026-09-25",
+                derived.digest,
+                "matchvet:matchweek-membership",
+                "1",
+            )
+        else:
+            with pytest.raises(MatchweekMembershipError) as refusal:
+                MatchweekMembershipRepository(store).freeze_exact(
+                    "2026-27",
+                    "2026-09-25",
+                    derived.digest,
+                    "matchvet:matchweek-membership",
+                    "1",
+                )
+            assert refusal.value.reason_code == "REFERENCE_MISMATCH"
+
+    if expected_freeze:
+        assert len(frozen.memberships) == 1
+        assert len(frozen.provider_health_references) == len(derived.provider_attempts)
+        assert {item.attempt_id for item in frozen.provider_health_references} == {
+            item.attempt_id for item in derived.provider_attempts
+        }
+        assert all(
+            item.provider_id != "operator-official-fixture-observation"
+            for item in frozen.provider_health_references
+        )
+        belgian_membership = next(
+            item
+            for item in frozen.memberships
+            if item.scope_id == "belgian_pro_league:2026-27:2026-09-25"
+        )
+        assert belgian_membership.controlling_revision_id == recorded.revision_id
+
+
+@pytest.mark.parametrize("attempt_change", ("missing", "wrong_digest"))
+def test_automated_fixture_revision_requires_an_exact_provider_attempt(
+    tmp_path: Path,
+    attempt_change: str,
+) -> None:
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        baseline = _persistable_schedule_assessment(
+            store,
+            tmp_path,
+            (("2026-09-25", "20:00", "Arsenal", "Coventry"),),
+        )
+        reference = baseline.fixture_revisions[0]
+        capture_id = reference.source_capture_ids[0]
+        source_attempt = next(
+            item for item in baseline.provider_attempts if item.capture_id == capture_id
+        )
+        if attempt_change == "missing":
+            attempts = tuple(
+                item
+                for item in baseline.provider_attempts
+                if item.attempt_id != source_attempt.attempt_id
+            )
+            evidence = tuple(
+                item
+                for item in baseline.coverage_evidence
+                if item.attempt_id != source_attempt.attempt_id
+            )
+            evidence_ids = {item.evidence_id for item in evidence}
+            freshness = tuple(
+                item for item in baseline.freshness_results if item.evidence_id in evidence_ids
+            )
+        else:
+            attempts = tuple(
+                replace(item, capture_digest="0" * 64)
+                if item.attempt_id == source_attempt.attempt_id
+                else item
+                for item in baseline.provider_attempts
+            )
+            evidence = baseline.coverage_evidence
+            freshness = baseline.freshness_results
+        changed = assess_fixture_coverage(
+            scopes=tuple(item.scope for item in baseline.scope_assessments),
+            provider_attempts=attempts,
+            coverage_evidence=evidence,
+            fixture_revisions=baseline.fixture_revisions,
+            identity_resolutions=baseline.identity_resolutions,
+            freshness_results=freshness,
+        )
+
+        with pytest.raises(FixtureCoverageIntegrityError):
+            FixtureCoverageRepository(store).persist(changed)
 
 
 @pytest.mark.parametrize(
