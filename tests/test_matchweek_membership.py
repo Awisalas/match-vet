@@ -46,6 +46,7 @@ from matchvet.ingestion import (
 )
 from matchvet.matchweek_membership import MatchweekMembershipError
 from matchvet.operator_fixture_attestation import (
+    AttestedFixtureCoverageAssessment,
     CandidateComparisonConfirmation,
     OfficialPublicationReference,
     OperatorAttestationOutcome,
@@ -88,6 +89,55 @@ def _certification_publications_for_scope(
         else item
         for item in policy_publications_for_scope(scope)
     )
+
+
+def _persist_attested_assessment(
+    store: Store,
+    repository: FixtureCoverageRepository,
+    assessment: FixtureCoverageAssessment,
+) -> AttestedFixtureCoverageAssessment:
+    attestations = []
+    for scope_assessment in assessment.scope_assessments:
+        manifest = repository.build_candidate_manifest(
+            assessment, scope_assessment.scope.scope_id
+        )
+        candidate_confirmations = tuple(
+            CandidateComparisonConfirmation(
+                candidate_id=entry.candidate_id,
+                identity_matches=True,
+                date_matches=True,
+                kickoff_matches=True,
+                status_matches=True,
+            )
+            for entry in manifest.entries
+        )
+        confirmations = OperatorComparisonConfirmations(
+            all_official_fixtures_represented=True,
+            no_extra_matchvet_fixture=True,
+            complete_official_publication_covers_scope=True,
+            pairing_calendar_layer_checked=True,
+            exact_schedule_layer_checked=True,
+            latest_applicable_update_checked=True,
+            complete_publication_affirms_empty_scope=manifest.candidate_count == 0,
+        )
+        attestation = make_operator_coverage_attestation(
+            base_assessment=assessment,
+            candidate_manifest=manifest,
+            operator_id="offline-operator-1",
+            verified_at_utc="2026-09-17T12:00:00.000000+00:00",
+            publications=_certification_publications_for_scope(scope_assessment.scope),
+            expected_official_fixture_count=manifest.candidate_count,
+            candidate_confirmations=candidate_confirmations,
+            confirmations=confirmations,
+            outcome=OperatorAttestationOutcome.CERTIFIED,
+            reason=None,
+        )
+        attestations.append(repository.persist_attestation(attestation))
+
+    derived = derive_attested_fixture_coverage(assessment, tuple(attestations))
+    repository.persist(derived)
+    ProviderHealthRepository(store).persist_many(build_provider_health_records(derived))
+    return derived
 
 
 def test_f05_exact_assessment_read_is_scope_ordered_and_never_substitutes(
@@ -977,46 +1027,7 @@ def test_freeze_exact_accepts_all_seven_persisted_attested_v3_scopes(
         )
         repository = FixtureCoverageRepository(store)
         repository.persist(base)
-        attestations = []
-        for scope_assessment in base.scope_assessments:
-            manifest = repository.build_candidate_manifest(base, scope_assessment.scope.scope_id)
-            candidate_confirmations = tuple(
-                CandidateComparisonConfirmation(
-                    candidate_id=entry.candidate_id,
-                    identity_matches=True,
-                    date_matches=True,
-                    kickoff_matches=True,
-                    status_matches=True,
-                )
-                for entry in manifest.entries
-            )
-            confirmations = OperatorComparisonConfirmations(
-                all_official_fixtures_represented=True,
-                no_extra_matchvet_fixture=True,
-                complete_official_publication_covers_scope=True,
-                pairing_calendar_layer_checked=True,
-                exact_schedule_layer_checked=True,
-                latest_applicable_update_checked=True,
-                complete_publication_affirms_empty_scope=manifest.candidate_count == 0,
-            )
-            attestation = make_operator_coverage_attestation(
-                base_assessment=base,
-                candidate_manifest=manifest,
-                operator_id="offline-operator-1",
-                verified_at_utc="2026-09-17T12:00:00.000000+00:00",
-                publications=_certification_publications_for_scope(scope_assessment.scope),
-                expected_official_fixture_count=manifest.candidate_count,
-                candidate_confirmations=candidate_confirmations,
-                confirmations=confirmations,
-                outcome=OperatorAttestationOutcome.CERTIFIED,
-                reason=None,
-            )
-            attestations.append(repository.persist_attestation(attestation))
-
-        derived = derive_attested_fixture_coverage(base, tuple(attestations))
-        repository.persist(derived)
-        records = build_provider_health_records(derived)
-        ProviderHealthRepository(store).persist_many(records)
+        derived = _persist_attested_assessment(store, repository, base)
         frozen = MatchweekMembershipRepository(store, clock=lambda: now).freeze_exact(
             season="2026-27",
             matchweek_friday="2026-09-25",
@@ -1151,54 +1162,7 @@ def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
                 coverage_repository.persist(assessment)
             return
         coverage_repository.persist(assessment)
-        attestations = []
-        for scope_assessment in assessment.scope_assessments:
-            manifest = coverage_repository.build_candidate_manifest(
-                assessment, scope_assessment.scope.scope_id
-            )
-            candidate_confirmations = tuple(
-                CandidateComparisonConfirmation(
-                    candidate_id=entry.candidate_id,
-                    identity_matches=True,
-                    date_matches=True,
-                    kickoff_matches=True,
-                    status_matches=True,
-                )
-                for entry in manifest.entries
-            )
-            attestations.append(
-                coverage_repository.persist_attestation(
-                    make_operator_coverage_attestation(
-                        base_assessment=assessment,
-                        candidate_manifest=manifest,
-                        operator_id="offline-operator-1",
-                        verified_at_utc="2026-09-17T12:00:00.000000+00:00",
-                        publications=_certification_publications_for_scope(
-                            scope_assessment.scope
-                        ),
-                        expected_official_fixture_count=manifest.candidate_count,
-                        candidate_confirmations=candidate_confirmations,
-                        confirmations=OperatorComparisonConfirmations(
-                            all_official_fixtures_represented=True,
-                            no_extra_matchvet_fixture=True,
-                            complete_official_publication_covers_scope=True,
-                            pairing_calendar_layer_checked=True,
-                            exact_schedule_layer_checked=True,
-                            latest_applicable_update_checked=True,
-                            complete_publication_affirms_empty_scope=(
-                                manifest.candidate_count == 0
-                            ),
-                        ),
-                        outcome=OperatorAttestationOutcome.CERTIFIED,
-                        reason=None,
-                    )
-                )
-            )
-
-        derived = derive_attested_fixture_coverage(assessment, tuple(attestations))
-        coverage_repository.persist(derived)
-        provider_health = build_provider_health_records(derived)
-        ProviderHealthRepository(store).persist_many(provider_health)
+        derived = _persist_attested_assessment(store, coverage_repository, assessment)
         if expected_freeze:
             frozen = MatchweekMembershipRepository(store).freeze_exact(
                 "2026-27",
