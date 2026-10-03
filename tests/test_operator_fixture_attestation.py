@@ -1202,6 +1202,11 @@ def test_candidate_comparisons_and_official_counts_fail_closed() -> None:
             "liga-portugal-round-updates",
             "https://www.ligaportugal.pt/news/90002/unrelated-club-award-jornada",
         ),
+        (
+            "liga_portugal",
+            "liga-portugal-round-updates",
+            "https://www.ligaportugal.pt/noticias/90002/unrelated-club-award-jornada",
+        ),
     ),
 )
 def test_unrelated_official_site_articles_are_not_approved_scheduling_sources(
@@ -1222,6 +1227,56 @@ def test_unrelated_official_site_articles_are_not_approved_scheduling_sources(
 
     assert selected.attestation.outcome is OperatorAttestationOutcome.REFUSED
     assert "not approved" in selected.attestation.reason
+
+
+@pytest.mark.parametrize(
+    ("league_key", "publication_id", "official_url"),
+    (
+        (
+            "ligue_1",
+            "ligue-1-programmation",
+            "https://ligue1.com/fr/articles/l1_article_5797-",
+        ),
+        (
+            "liga_portugal",
+            "liga-portugal-round-updates",
+            "https://www.ligaportugal.pt/noticias/28531/horarios-definidos-ate-a-12.a-jornada",
+        ),
+    ),
+)
+def test_current_official_schedule_urls_are_approved_by_v2_policy(
+    league_key: str, publication_id: str, official_url: str
+) -> None:
+    base, scope, revision_facts, assertions = _base_with_candidate(league_key=league_key)
+    publications = tuple(
+        replace(item, official_url=official_url)
+        if item.publication_id == publication_id
+        else item
+        for item in policy_publications_for_scope(scope)
+    )
+
+    _, selected = _candidate_attestation(
+        base,
+        scope,
+        revision_facts=revision_facts,
+        assertions=assertions,
+        publications=publications,
+    )
+
+    assert selected.attestation.outcome is OperatorAttestationOutcome.CERTIFIED
+    assert selected.attestation.policy_snapshot.policy_version == "2"
+
+
+def test_v1_policy_snapshot_remains_available_and_unchanged() -> None:
+    from matchvet.operator_fixture_attestation import operator_attestation_policy_v1
+
+    policy = operator_attestation_policy_v1()
+
+    assert policy.policy_version == "1"
+    assert next(
+        rule for rule in policy.publication_rules
+        if rule.publication_id == "liga-portugal-round-updates"
+    ).path_prefix == "/news/"
 
 
 def test_missing_official_reference_is_recorded_as_refusal() -> None:

@@ -51,6 +51,7 @@ OPERATOR_ATTESTATION_CONTRACT_VERSION = "operator-fixture-attestation-v1"
 OPERATOR_ATTESTATION_SCHEMA_VERSION = 1
 OPERATOR_ATTESTATION_POLICY_ID = "matchvet:operator-fixture-attestation"
 OPERATOR_ATTESTATION_POLICY_VERSION = "1"
+OPERATOR_ATTESTATION_POLICY_V2_VERSION = "2"
 OPERATOR_ATTESTATION_MEDIA_TYPE = "application/vnd.matchvet.operator-fixture-attestation-v1+json"
 OPERATOR_ATTESTATION_V2_CONTRACT_VERSION = "operator-fixture-attestation-v2"
 OPERATOR_ATTESTATION_V2_SCHEMA_VERSION = 2
@@ -362,7 +363,10 @@ class OperatorAttestationPolicySnapshot:
     def __post_init__(self) -> None:
         if self.policy_id != OPERATOR_ATTESTATION_POLICY_ID:
             raise ValueError("Operator Attestation Policy ID is unsupported.")
-        if self.policy_version != OPERATOR_ATTESTATION_POLICY_VERSION:
+        if self.policy_version not in {
+            OPERATOR_ATTESTATION_POLICY_VERSION,
+            OPERATOR_ATTESTATION_POLICY_V2_VERSION,
+        }:
             raise ValueError("Operator Attestation Policy version is unsupported.")
         ids = tuple(rule.publication_id for rule in self.publication_rules)
         if ids != tuple(sorted(set(ids))):
@@ -926,6 +930,52 @@ def operator_attestation_policy_v1() -> OperatorAttestationPolicySnapshot:
     )
 
 
+def operator_attestation_policy_v2() -> OperatorAttestationPolicySnapshot:
+    """Return the v2 publication policy, preserving all v1 rules and adding current paths."""
+    rules = tuple(
+        replace(
+            rule,
+            path_prefix="/fr/articles/l1_article_",
+            example_url="https://ligue1.com/fr/articles/l1_article_5797-",
+            path_pattern=(
+                r"/fr/articles/(?:l1_article_5797-|l1_article_[0-9]+-"
+                r"(?:ligue-1-)?(?:la-|le-|les-)?"
+                r"(?:programmation|calendrier|horaires?|journ(?:e|é)e?s?)"
+                r"(?:-[^/]*)?)"
+            ),
+        )
+        if rule.publication_id == "ligue-1-programmation"
+        else replace(
+            rule,
+            path_prefix="/",
+            example_url=(
+                "https://www.ligaportugal.pt/noticias/28531/"
+                "horarios-definidos-ate-a-12.a-jornada"
+            ),
+            path_pattern=(
+                r"/(?:news|noticias)/[0-9]+/(?:(?:os|as|o|a)-)?"
+                r"(?:calend[aá]rios?|jornadas?|"
+                r"hor[aá]rios?-(?:dos-jogos|de-jogos|da-jornada)|"
+                r"programa[cç][aã]o-(?:dos-jogos|de-jogos|da-jornada|das-jornadas)|"
+                r"agendamentos?-(?:dos-jogos|da-jornada)|"
+                r"hor[aá]rios?-definidos(?:-[^/]*)?)"
+                r"(?:-[^/]*)?"
+            ),
+        )
+        if rule.publication_id == "liga-portugal-round-updates"
+        else rule
+        for rule in _policy_rules()
+    )
+    v1 = operator_attestation_policy_v1()
+    return OperatorAttestationPolicySnapshot(
+        policy_id=OPERATOR_ATTESTATION_POLICY_ID,
+        policy_version=OPERATOR_ATTESTATION_POLICY_V2_VERSION,
+        publication_rules=rules,
+        required_layer_ids=v1.required_layer_ids,
+        required_confirmations=v1.required_confirmations,
+    )
+
+
 def policy_publications_for_scope(scope: FixtureScope) -> tuple[OfficialPublicationReference, ...]:
     """Build source references from approved policy seed links for offline domain tests."""
     rules = tuple(rule for rule in _policy_rules() if rule.league_key == scope.league_key)
@@ -1327,6 +1377,11 @@ def make_operator_coverage_attestation(
     )
     attestation_reason = (reason or "").strip()
     attestation_outcome = outcome
+    policy = (
+        operator_attestation_policy_v1()
+        if isinstance(candidate_manifest, CandidateManifest)
+        else operator_attestation_policy_v2()
+    )
     if outcome is OperatorAttestationOutcome.CERTIFIED:
         failures = _certification_failures(
             base_assessment=base_assessment,
@@ -1335,6 +1390,7 @@ def make_operator_coverage_attestation(
             expected_official_fixture_count=expected_official_fixture_count,
             candidate_confirmations=ordered_confirmations,
             confirmations=confirmations,
+            policy=policy,
         )
         if failures:
             attestation_outcome = OperatorAttestationOutcome.REFUSED
@@ -1343,7 +1399,6 @@ def make_operator_coverage_attestation(
             attestation_reason = ""
     elif not attestation_reason:
         raise ValueError("Refused or uncertain attestation requires a clear reason.")
-    policy = operator_attestation_policy_v1()
     attestation_id = _attestation_id(
         base_assessment.digest,
         candidate_manifest.scope.scope_id,
@@ -1389,9 +1444,10 @@ def _certification_failures(
     expected_official_fixture_count: int | None,
     candidate_confirmations: tuple[CandidateComparisonConfirmation, ...],
     confirmations: OperatorComparisonConfirmations,
+    policy: OperatorAttestationPolicySnapshot | None = None,
 ) -> tuple[str, ...]:
     failures: list[str] = []
-    policy = operator_attestation_policy_v1()
+    policy = policy or operator_attestation_policy_v2()
     matching_rules: list[OperatorPublicationRule] = []
     for publication in publications:
         rule = _matching_publication_rule(policy, manifest.scope, publication)
@@ -1704,7 +1760,11 @@ def _validate_attestation_binding(
     _validate_manifest_binding(base_assessment, attestation.candidate_manifest)
     if attestation.candidate_manifest_digest != attestation.candidate_manifest.digest:
         raise ValueError("Operator attestation candidate manifest digest changed.")
-    policy = operator_attestation_policy_v1()
+    policy = (
+        operator_attestation_policy_v1()
+        if attestation.policy_snapshot.policy_version == OPERATOR_ATTESTATION_POLICY_VERSION
+        else operator_attestation_policy_v2()
+    )
     if attestation.policy_snapshot != policy or attestation.policy_digest != policy.digest:
         raise ValueError("Operator attestation policy snapshot is unsupported or changed.")
     latest_attempt = _latest_attempt_retrieval(base_assessment)
@@ -1722,6 +1782,11 @@ def validate_operator_coverage_attestation(
         raise ValueError("A typed OperatorCoverageAttestation is required.")
     _validate_attestation_binding(base_assessment, attestation)
     if attestation.outcome is OperatorAttestationOutcome.CERTIFIED:
+        policy = (
+            operator_attestation_policy_v1()
+            if attestation.policy_snapshot.policy_version == OPERATOR_ATTESTATION_POLICY_VERSION
+            else operator_attestation_policy_v2()
+        )
         failures = _certification_failures(
             base_assessment=base_assessment,
             manifest=attestation.candidate_manifest,
@@ -1729,6 +1794,7 @@ def validate_operator_coverage_attestation(
             expected_official_fixture_count=attestation.expected_official_fixture_count,
             candidate_confirmations=attestation.candidate_confirmations,
             confirmations=attestation.confirmations,
+            policy=policy,
         )
         if failures:
             raise ValueError(f"Certified operator attestation is invalid: {failures[0]}")
