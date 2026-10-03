@@ -1,0 +1,22 @@
+{
+  "implementation_commit": "ec9b36f906fd59c887782735fcf605854c69cfc0",
+  "focused_tests": 38,
+  "affected_subsystem_tests": 128,
+  "full_suite_tests": 989,
+  "full_suite": "PASS",
+  "ruff_check": "PASS",
+  "ruff_format_tracked_files": 76,
+  "mypy": "PASS",
+  "mypy_source_files": 73,
+  "doctor": {
+    "status": "PASS",
+    "report_sha256": "c5646bdd089f7a74db3794fb518005cec1d5b9b03198c0233c070b4c6b28eb51",
+    "report_schema_version": 1
+  },
+  "live_result": ".audit/lf14/live-result.json",
+  "history_proof": ".audit/lf14/live-history-comparison-final.json",
+  "migration": false,
+  "acquisition_rerun": false,
+  "fixture_observations_appended": 0,
+  "store_schema_version": 13
+}

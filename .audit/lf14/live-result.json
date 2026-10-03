@@ -1,0 +1,30 @@
+{
+  "store": "/data/data/com.termux/files/home/.local/share/matchvet/lf-live-2026-10-09-post-lf10/matchvet.sqlite3",
+  "assessment_digest": "sha256:c96099f17fd4997bc5bdae0c298fb1fb31cfc7fab66af8bc9c0ccf703885cce6",
+  "observations_appended": 0,
+  "acquisition_rerun": false,
+  "policy_version": "2",
+  "scope_states": {
+    "premier_league": "COMPLETE",
+    "serie_a": "COMPLETE",
+    "la_liga": "COMPLETE",
+    "bundesliga": "COMPLETE",
+    "ligue_1": "COMPLETE",
+    "liga_portugal": "COMPLETE",
+    "belgian_pro_league": "COMPLETE"
+  },
+  "canonical_candidates": 66,
+  "exact_health_records": 12,
+  "status": "FROZEN",
+  "freeze_id": "sha256:67ca9688433af7971443523774cce5c587025423fad5d12fb77c729c6a2d96d4",
+  "freeze_digest": "sha256:560c300066c4c14c9f4771cb2db1e7dd94db8f6cd16528141090022dc32601b6",
+  "membership_count": 66,
+  "membership_set_digest": "sha256:9075c6a01ea7fc1d0dee4f8f6c70aa0611ad28db732aa89a7d9dbb4b0ad58f94",
+  "exact_replay_and_retry": "PASS",
+  "persisted_membership_count": 66,
+  "membership_states": {
+    "INCLUDED": 66,
+    "EXCLUDED": 0
+  },
+  "reopened_exact_replay": "PASS"
+}

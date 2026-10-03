@@ -1,0 +1,48 @@
+{
+  "status": "PASS",
+  "changed_tables": {
+    "integrity_observations": {
+      "before": 41,
+      "after": 43,
+      "delta": 2
+    },
+    "v2_matchweek_membership_decisions": {
+      "before": 0,
+      "after": 66,
+      "delta": 66
+    },
+    "v2_matchweek_membership_freezes": {
+      "before": 0,
+      "after": 1,
+      "delta": 1
+    },
+    "v2_matchweek_membership_health_refs": {
+      "before": 0,
+      "after": 12,
+      "delta": 12
+    }
+  },
+  "schema_version": 13,
+  "source_artifacts_unchanged": true,
+  "prior_failed_evidence_unchanged": true,
+  "old_integrity_observations_unchanged": true,
+  "new_integrity_observations": [
+    [
+      42,
+      "2026-10-03T16:32:23.177567+00:00",
+      "ok",
+      0,
+      "VERIFIED",
+      "PASS"
+    ],
+    [
+      43,
+      "2026-10-03T16:38:34.290469+00:00",
+      "ok",
+      0,
+      "VERIFIED",
+      "PASS"
+    ]
+  ],
+  "all_other_tables_unchanged": true
+}

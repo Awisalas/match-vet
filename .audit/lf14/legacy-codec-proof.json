@@ -1,0 +1,6 @@
+{
+  "original_policy1_bytes": "IDENTICAL",
+  "original_codec_policy1_freeze_round_trip": "IDENTICAL",
+  "current_exact_replay": "PASS",
+  "schema_version": 13
+}

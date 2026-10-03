@@ -1,0 +1,8 @@
+......................................                                   [100%]
+============================= slowest 5 durations ==============================
+231.71s call     tests/test_lf14.py::test_all_seven_66_decision_freeze_is_atomic_and_idempotent[True]
+175.95s call     tests/test_lf14.py::test_all_seven_66_decision_freeze_is_atomic_and_idempotent[False]
+18.21s call     tests/test_lf14.py::test_exact_conflict_projection_accepts_ac_subset_of_abc_history
+11.76s call     tests/test_lf14.py::test_policy2_replay_rejects_omitted_integrity_evidence[legacy_integrity]
+10.33s call     tests/test_lf14.py::test_legacy_date_assertion_timestamps_remain_immutable_and_compatible
+38 passed in 541.08s (0:09:01)

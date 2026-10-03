@@ -54,15 +54,15 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Type:** Corrective source-contract and product-decision blocker; outside the original 53-ticket count.
 - **Goal:** Preserve F01's proof bar after the audit found no reviewed all-seven automated path satisfying both completeness and use/retention requirements. The product owner selected operator-attested official publications as a temporary Research-Only bridge; this does not approve an automated source or clear rights for Product Promotion.
 - **Tracked by:** [#44](https://github.com/Awisalas/match-vet/issues/44).
-- **Blocked by:** LF09 #52 and the fresh all-seven validation gate; the product-owner bridge decision is recorded in #44.
-- **Status:** Keep #44 open until LF02, corrective LF03–LF09, and the fresh all-seven validation sequence below succeeds. The automated/licensed source requirement remains tracked for Product Promotion.
+- **Prerequisites met:** LF09 #52 and the all-seven validation gate; the product-owner bridge decision is recorded in #44.
+- **Status:** Complete in #44 (closed) after LF14 produced the real all-seven F06 freeze. The automated/licensed source requirement remains tracked for Product Promotion.
 
 ### LF02 Add Research-Only operator-attested official fixture completeness
 - **Type:** Corrective Research-Only implementation ticket; outside the original 53-ticket count.
 - **Goal:** Add immutable operator attestations bound to one exact automatic F01 assessment and candidate manifest; derive a separately versioned F01 assessment without changing F02, provider health, or the F06 gate.
 - **Tracked by:** [#45](https://github.com/Awisalas/match-vet/issues/45).
 - **Blocked by:** F01, F03, F05, F06 (all complete); product-owner decision recorded in #44.
-- **Status:** Complete in #45 (closed). This does not close #44 or release F07; real validation still requires the corrective tickets and all-seven Research-Only freeze.
+- **Status:** Complete in #45 (closed). The all-seven Research-Only freeze subsequently passed under LF14; #44 is closed and F07 is Ready.
 - **Size:** L.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.
@@ -72,7 +72,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Goal:** Resolve schedule names only through an exact existing canonical team identity or a versioned, league-and-season-scoped, operator-confirmed whole-name alias registry. Pin source provenance, fail closed on ambiguity, and preserve all historical team/fixture identities and F01 v2 digests.
 - **Tracked by:** [#46](https://github.com/Awisalas/match-vet/issues/46).
 - **Blocked by:** None; LF02 #45 is complete.
-- **Status:** `ready-for-agent`. Do not change scheduled acquisition from `KNOWN_ONLY` to `REGISTER_UNKNOWN`.
+- **Status:** Complete in #46 (closed). Do not change scheduled acquisition from `KNOWN_ONLY` to `REGISTER_UNKNOWN`.
 - **Size:** M.
 
 ### LF04 Preserve DATE precision in fixture source assertions and LF02 manifests
@@ -80,7 +80,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Goal:** Keep DATE facts as exact calendar dates and INSTANT facts as canonical offset-aware UTC timestamps. Add a strict compatibility rule for old date-only kickoff assertions without rewriting rows, changing F01 v2 digests, or requiring a database migration.
 - **Tracked by:** [#47](https://github.com/Awisalas/match-vet/issues/47).
 - **Blocked by:** None; LF02 #45 is complete.
-- **Status:** `ready-for-agent`.
+- **Status:** Complete in #47 (closed).
 - **Size:** S.
 
 ### LF05 Add Research-Only official fixture observations for unsupported scopes
@@ -88,7 +88,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Goal:** Allow minimal immutable operator-cited official fixture facts to seed missing Belgian candidate rows without scraping, acting as a provider, asserting completeness, or changing F01/F06 rules. LF02 remains the separate completeness attestation.
 - **Tracked by:** [#48](https://github.com/Awisalas/match-vet/issues/48).
 - **Blocked by:** LF03, LF04.
-- **Status:** `ready-for-agent`. Product Promotion remains blocked on a separately accepted automated/licensed source strategy.
+- **Status:** Complete in #48 (closed). Product Promotion remains blocked on a separately accepted automated/licensed source strategy.
 - **Size:** M.
 
 ### LF06 Prevent duplicate canonical teams during source registration
@@ -96,41 +96,42 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Goal:** Use one current-database resolver for `KNOWN_ONLY` and `REGISTER_UNKNOWN`. Reuse one unambiguous existing team identity before registration, fail closed on conflicting IDs, and create a deterministic team only when no identity exists.
 - **Tracked by:** [#49](https://github.com/Awisalas/match-vet/issues/49).
 - **Blocked by:** None; LF02 #45 and LF03 #46 are complete. LF06 is independent of corrective LF07.
-- **Status:** `ready-for-agent`. Preserve all existing team and fixture IDs, source mappings, aliases, F01 v2 bytes, and schema 13.
+- **Status:** Complete in #49 (closed). Preserve all existing team and fixture IDs, source mappings, aliases, F01 v2 bytes, and schema 13.
 
 ### LF07 Distinguish compatible schedule precision from real fixture conflicts
 - **Type:** Corrective LF02 candidate-manifest classification ticket; outside the original 53-ticket count and separate from original roadmap F07.
 - **Goal:** Preserve DATE and INSTANT revisions while distinguishing `LESS_PRECISE_BUT_COMPATIBLE` from `CONFLICTING`. A precise revision never overrides a material disagreement.
 - **Tracked by:** [#50](https://github.com/Awisalas/match-vet/issues/50).
 - **Blocked by:** None; LF02 #45 and LF04 #47 are complete. LF07 is independent of LF06.
-- **Status:** `ready-for-agent`. Preserve F01 v2 bytes and schema 13; keep prior manifest versions readable and replayable.
+- **Status:** Complete in #50 (closed). Preserve F01 v2 bytes and schema 13; keep prior manifest versions readable and replayable.
 
 ### LF08 Complete Premier League fresh-store alias coverage
 - **Type:** Corrective registry coverage and snapshot-versioning ticket; outside the original 53-ticket count.
 - **Goal:** Audit all 20 current Premier League source spellings and add four proven scoped aliases in an append-only v2 registry. Preserve v1 bytes, policy provenance, frozen normalization, LF06 semantics, and schema 13.
 - **Tracked by:** [#51](https://github.com/Awisalas/match-vet/issues/51).
 - **Blocked by:** None; corrective LF06 #49 and LF07 #50 are complete.
-- **Status:** Implementation and offline verification recorded in #51. A new real all-seven validation still gates #44 and original F07.
+- **Status:** Complete in #51 (closed). The subsequent real all-seven LF14 validation passed; #44 is closed and original F07 is Ready.
 
 ### LF09 Add source-scoped Pro League official team identity mappings
 - **Type:** Corrective official manual-citation identity policy ticket; outside the original 53-ticket count.
 - **Goal:** Resolve the 15 reviewed official Pro League names against existing Belgian 2026-27 teams only for the LF05 source kind. Preserve OpenFootball policy, existing team identities, and F01 serialization.
 - **Tracked by:** [#52](https://github.com/Awisalas/match-vet/issues/52).
 - **Blocked by:** None; LF05 #48 and LF08 #51 are complete.
-- **Status:** Complete in #52 after offline identity and compatibility verification. The nine real LF05 observations remain unrecorded. Keep #44 open and original F07 parked pending the fresh all-seven validation gate.
+- **Status:** Complete in #52 (closed). The existing nine real Belgian LF05 observations were reused by the successful LF14 freeze; #44 is closed and original F07 is Ready.
 
 ### LF14 Correct F06 semantic integrity and immutable-history compatibility
 - **Type:** Corrective integrity ticket; outside the original 53-ticket count.
 - **Goal:** Compare canonical team identities, typed kickoff compatibility and membership status classes. Project complete selected conflict members from cumulative immutable history. Validate revision/assertion coherence while preserving historical replay and raw provenance.
 - **Tracked by:** [#57](https://github.com/Awisalas/match-vet/issues/57).
-- **Status:** Implementation, review and offline verification complete (989 full-suite tests; Ruff and mypy passed). The real all-seven F06 freeze remains required. No migration or acquisition rerun is needed.
+- **Status:** Complete in #57 (closed). Implementation, review and verification passed: 989 full-suite tests, Ruff and mypy. The existing real 2026-10-09 store produced and replayed 66 persisted INCLUDED decisions with Doctor PASS. No migration, acquisition rerun or new fixture observation was needed.
+- **Live proof:** Policy-2 freeze ID `sha256:67ca9688433af7971443523774cce5c587025423fad5d12fb77c729c6a2d96d4`; freeze digest `sha256:560c300066c4c14c9f4771cb2db1e7dd94db8f6cd16528141090022dc32601b6`. Evidence: `.audit/lf14/live-result.json` and `.audit/lf14/live-history-comparison-final.json`.
 - **Contract:** Membership policy 2 uses the unchanged schema-13 payload envelope. Historical policy-1 freezes and LF05/LF13 observation bytes retain their original replay contract.
 
 ### F07 Persist per-match Match Evidence Cutoff
 - **Goal:** Add an immutable cutoff for each frozen match, tied to its fixture revision and a versioned policy. Leave the numeric lead time undecided.
-- **Blocked by:** F06, LF01, LF02, LF03, LF04, LF05, corrective LF06 #49, corrective LF07 #50, LF08 #51, LF09 #52, LF14 #57.
-- **Status:** Parked until all corrective tickets and the fresh all-seven validation sequence succeed. Do not start original F07 before then.
-- **Remaining all-seven validation sequence:** Reuse the existing 2026-10-09 post-LF10 store and immutable artifacts, including the seven COMPLETE scopes, 66 canonical candidates and LF13 exact observations. After LF14 passes verification, produce and replay a persisted policy-2 F06 freeze with exactly 66 membership decisions and Doctor PASS. Preserve all earlier failure evidence. Only after that success may #44 close and original F07 be unparked. The automated/licensed-source requirement remains separate for Product Promotion.
+- **Prerequisites met:** F06, LF01 #44, LF02, LF03, LF04, LF05, corrective LF06 #49, corrective LF07 #50, LF08 #51, LF09 #52 and LF14 #57.
+- **Status:** Ready; unparked after genuine all-seven F06 success. F07 is not implemented by LF14.
+- **All-seven validation gate:** Passed using the existing 2026-10-09 post-LF10 store and immutable artifacts: seven COMPLETE scopes, 66 canonical candidates, 12 exact health records, 66 persisted policy-2 membership decisions, exact replay and identical retry, reopened-store replay and Doctor PASS. Previous immutable history and failed evidence are unchanged. #44 is closed. The automated/licensed-source requirement remains separate for Product Promotion.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$tdd`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.
