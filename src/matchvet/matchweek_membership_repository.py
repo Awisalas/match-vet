@@ -59,6 +59,16 @@ from matchvet.matchweek_membership import (
     observation_payload,
     policy_snapshot,
 )
+from matchvet.matchweek_membership_integrity import (
+    MembershipReferenceError,
+    controller_key,
+    has_revision_conflict,
+    load_revision_integrity,
+    material_conflict_values,
+    project_conflicts,
+    semantic_values_conflict,
+    validate_conflict_projection,
+)
 from matchvet.operator_fixture_observation import (
     OperatorFixtureObservationIntegrityError,
     verify_operator_fixture_observation_capture,
@@ -701,6 +711,12 @@ class MatchweekMembershipRepository:
         if set(candidates) != {(item.scope_id, item.fixture_id) for item in freeze.memberships}:
             raise _stored_corruption("F06 membership groups differ from exact F01 identities.")
         for membership in freeze.memberships:
+            if freeze.policy.policy_version == "2" and any(
+                item.integrity is None for item in membership.evaluated_revisions
+            ):
+                raise _stored_corruption(
+                    "Policy2 revisions must retain semantic integrity evidence."
+                )
             if membership.scope_id not in {scope.scope_id for scope in scopes}:
                 raise _stored_corruption("F06 membership points to an unknown Fixture Scope.")
             key = (membership.scope_id, membership.fixture_id)
@@ -725,8 +741,46 @@ class MatchweekMembershipRepository:
                         f"F06 revision {snapshot.revision_id} is not in exact F01 assessment."
                     )
                 _validate_revision_reference_rows(self._store, reference, snapshot)
+            selected_assertions = tuple(
+                sorted(
+                    {
+                        assertion_id
+                        for item in membership.evaluated_revisions
+                        for assertion_id in item.source_assertion_ids
+                    }
+                )
+            )
+            if freeze.policy.policy_version == "2":
+                semantic_values = {
+                    item.assertion_id: item.semantic_value
+                    for snapshot in membership.evaluated_revisions
+                    if snapshot.integrity is not None
+                    for item in snapshot.integrity.assertions
+                }
+                expected_conflicts = material_conflict_values(
+                    self._store, membership.fixture_id, selected_assertions, semantic_values
+                )
+                if (
+                    len(membership.conflicts) != len(expected_conflicts)
+                    or {item.predicate for item in membership.conflicts} != set(expected_conflicts)
+                    or any(item.history_value_digest is None for item in membership.conflicts)
+                ):
+                    raise _stored_corruption(
+                        "Policy2 material conflict projections are incomplete."
+                    )
             values_by_conflict = _validate_frozen_conflicts(
-                self._store, membership.fixture_id, membership.conflicts
+                self._store,
+                membership.fixture_id,
+                membership.conflicts,
+                tuple(
+                    sorted(
+                        {
+                            assertion_id
+                            for item in membership.evaluated_revisions
+                            for assertion_id in item.source_assertion_ids
+                        }
+                    )
+                ),
             )
             if _has_top_authority_revision_conflict(membership.evaluated_revisions):
                 raise _stored_corruption(
@@ -912,19 +966,40 @@ def _build_memberships(
                     f"F01 candidate group for {fixture_id} references missing or mismatched "
                     f"revision {revision_id}.",
                 )
-            snapshots.append(_load_revision_snapshot(store, reference, assessment))
+            snapshots.append(
+                _load_revision_snapshot(
+                    store, reference, assessment, semantic=policy.policy_version == "2"
+                )
+            )
+            if policy.policy_version == "1":
+                try:
+                    load_revision_integrity(store, reference)
+                except (MembershipReferenceError, ValueError, TypeError) as error:
+                    raise _stored_corruption(str(error)) from error
         snapshots.sort(key=lambda item: item.revision_id)
-        _refuse_top_authority_conflict(store, fixture_id, snapshots)
-        chosen = max(
-            snapshots,
-            key=lambda item: (
-                item.authority_rank,
-                datetime.fromisoformat(item.latest_support_retrieved_at_utc),
-                item.revision_id,
-                item.revision_digest,
-            ),
+        _refuse_top_authority_conflict(
+            store, fixture_id, snapshots, semantic=policy.policy_version == "2"
         )
-        conflicts = _load_exact_conflicts(store, fixture_id, snapshots)
+        chosen = max(snapshots, key=controller_key)
+        conflicts = _load_exact_conflicts(
+            store, fixture_id, snapshots, semantic=policy.policy_version == "2"
+        )
+        if policy.policy_version == "1":
+            assertion_ids = tuple(
+                sorted(
+                    {
+                        assertion_id
+                        for snapshot in snapshots
+                        for assertion_id in snapshot.source_assertion_ids
+                    }
+                )
+            )
+            expected_members = material_conflict_values(store, fixture_id, assertion_ids, None)
+            if any(
+                tuple(sorted(expected_members[conflict.predicate])) != conflict.assertion_ids
+                for conflict in conflicts
+            ):
+                raise _stored_corruption("Conflict history omits selected source assertions.")
         status_mapping = json.loads(policy.canonical_json)["status_mapping"]
         decision_state, reason_code = _decide_membership(chosen, status_mapping)
         extra_reasons = (
@@ -972,6 +1047,8 @@ def _load_revision_snapshot(
     store: Store,
     reference: FixtureRevisionReference,
     assessment: SupportedFixtureCoverageAssessment,
+    *,
+    semantic: bool = False,
 ) -> FixtureRevisionSnapshot:
     connection = store._connection_for_repository()
     row = connection.execute(
@@ -1111,6 +1188,12 @@ def _load_revision_snapshot(
             "CONTROLLING_REVISION_MISSING",
             f"Fixture Revision {reference.revision_id} has no exact authority support.",
         )
+    integrity = None
+    if semantic:
+        try:
+            integrity = load_revision_integrity(store, reference)
+        except (MembershipReferenceError, ValueError, TypeError) as error:
+            raise _stored_corruption(str(error)) from error
     return FixtureRevisionSnapshot(
         scope_id=reference.scope_id,
         fixture_id=reference.fixture_id,
@@ -1127,6 +1210,7 @@ def _load_revision_snapshot(
         supports=supports,
         authority_rank=max(item.authority_rank for item in supports),
         latest_support_retrieved_at_utc=max(item.retrieved_at_utc for item in supports),
+        integrity=integrity,
     )
 
 
@@ -1141,15 +1225,12 @@ def _refuse_top_authority_conflict(
     store: Store,
     fixture_id: str,
     snapshots: list[FixtureRevisionSnapshot],
+    *,
+    semantic: bool = False,
 ) -> None:
-    best_rank = max(item.authority_rank for item in snapshots)
-    top = [item for item in snapshots if item.authority_rank == best_rank]
-    latest = max(item.latest_support_retrieved_at_utc for item in top)
-    controlling_tier = [item for item in top if item.latest_support_retrieved_at_utc == latest]
-    values = {_membership_critical_facts(item) for item in controlling_tier}
-    conflicts = _load_exact_conflicts(store, fixture_id, snapshots)
-    exact_conflicts = _top_conflicting_assertions(store, fixture_id, snapshots)
-    if len(values) > 1 or exact_conflicts:
+    conflicts = _load_exact_conflicts(store, fixture_id, snapshots, semantic=semantic)
+    exact_conflicts = _top_conflicting_assertions(store, fixture_id, snapshots, semantic=semantic)
+    if _has_top_authority_revision_conflict(tuple(snapshots)) or exact_conflicts:
         details = tuple(item.conflict_id for item in conflicts)
         raise MatchweekMembershipError(
             "MV-F06-UNRESOLVED-MEMBERSHIP",
@@ -1177,6 +1258,8 @@ def _load_exact_conflicts(
     store: Store,
     fixture_id: str,
     snapshots: list[FixtureRevisionSnapshot] | tuple[FixtureRevisionSnapshot, ...],
+    *,
+    semantic: bool = False,
 ) -> tuple[ConflictSnapshot, ...]:
     assertion_ids = tuple(
         sorted(
@@ -1189,6 +1272,17 @@ def _load_exact_conflicts(
     )
     if not assertion_ids:
         return ()
+    if semantic:
+        try:
+            semantic_values = {
+                item.assertion_id: item.semantic_value
+                for snapshot in snapshots
+                if snapshot.integrity is not None
+                for item in snapshot.integrity.assertions
+            }
+            return project_conflicts(store, fixture_id, assertion_ids, semantic_values)
+        except MembershipReferenceError as error:
+            raise _stored_corruption(str(error)) from error
     placeholders = ",".join("?" for _ in assertion_ids)
     connection = store._connection_for_repository()
     rows = connection.execute(
@@ -1269,6 +1363,7 @@ def _validate_frozen_conflicts(
     store: Store,
     fixture_id: str,
     conflicts: tuple[ConflictSnapshot, ...],
+    selected_assertion_ids: tuple[str, ...] = (),
 ) -> dict[str, dict[str, str]]:
     """Validate only conflict evidence named by the freeze, ignoring later links."""
     connection = store._connection_for_repository()
@@ -1281,6 +1376,14 @@ def _validate_frozen_conflicts(
             or tuple(sorted(set(conflict.values))) != conflict.values
         ):
             raise _stored_corruption("F06 frozen conflict snapshot is malformed or duplicated.")
+        if conflict.history_value_digest is not None:
+            try:
+                values_by_conflict[conflict.conflict_id] = validate_conflict_projection(
+                    store, fixture_id, conflict, selected_assertion_ids
+                )
+            except MembershipReferenceError as error:
+                raise _stored_corruption(str(error)) from error
+            continue
         row = connection.execute(
             """
             SELECT subject_kind, subject_key, predicate, value_digest, status
@@ -1332,6 +1435,8 @@ def _has_top_authority_revision_conflict(
 ) -> bool:
     if not snapshots:
         return True
+    if snapshots[0].integrity is not None:
+        return has_revision_conflict(snapshots)
     best_rank = max(item.authority_rank for item in snapshots)
     top = [item for item in snapshots if item.authority_rank == best_rank]
     latest = max(item.latest_support_retrieved_at_utc for item in top)
@@ -1350,6 +1455,12 @@ def _has_top_authority_assertion_conflict(
         for support in snapshot.supports
         if support.assertion_id is not None
     }
+    semantic_values = {
+        item.assertion_id: item.semantic_value
+        for snapshot in snapshots
+        if snapshot.integrity is not None
+        for item in snapshot.integrity.assertions
+    }
     for conflict in conflicts:
         if conflict.predicate not in _MEMBERSHIP_CRITICAL_PREDICATES:
             continue
@@ -1363,11 +1474,20 @@ def _has_top_authority_assertion_conflict(
             continue
         top_key = max((support.authority_rank, support.retrieved_at_utc) for support, _ in evidence)
         latest_values = {
-            value
+            semantic_values.get(cast(str, support.assertion_id), value)
+            if semantic_values
+            else value
             for support, value in evidence
             if (support.authority_rank, support.retrieved_at_utc) == top_key
         }
-        if len(latest_values) > 1:
+        if (
+            semantic_values
+            and semantic_values_conflict(
+                conflict.predicate,
+                cast(set[str], latest_values),
+                snapshots[0].scope_id.split(":")[0],
+            )
+        ) or (not semantic_values and len(latest_values) > 1):
             return True
     return False
 
@@ -1376,8 +1496,10 @@ def _top_conflicting_assertions(
     store: Store,
     fixture_id: str,
     snapshots: list[FixtureRevisionSnapshot],
+    *,
+    semantic: bool = False,
 ) -> tuple[str, ...]:
-    conflicts = _load_exact_conflicts(store, fixture_id, snapshots)
+    conflicts = _load_exact_conflicts(store, fixture_id, snapshots, semantic=semantic)
     critical = [item for item in conflicts if item.predicate in _MEMBERSHIP_CRITICAL_PREDICATES]
     if not critical:
         return ()
@@ -1389,6 +1511,12 @@ def _top_conflicting_assertions(
     }
     connection = store._connection_for_repository()
     conflicting: list[str] = []
+    semantic_values = {
+        item.assertion_id: item.semantic_value
+        for snapshot in snapshots
+        if snapshot.integrity is not None
+        for item in snapshot.integrity.assertions
+    }
     for conflict in critical:
         values_by_assertion = {
             str(row[0]): str(row[1])
@@ -1422,11 +1550,20 @@ def _top_conflicting_assertions(
             continue
         top_key = max((support.authority_rank, support.retrieved_at_utc) for support, _ in evidence)
         latest_values = {
-            value
+            semantic_values.get(cast(str, support.assertion_id), value)
+            if semantic_values
+            else value
             for support, value in evidence
             if (support.authority_rank, support.retrieved_at_utc) == top_key
         }
-        if len(latest_values) > 1:
+        if (
+            semantic_values
+            and semantic_values_conflict(
+                conflict.predicate,
+                cast(set[str], latest_values),
+                snapshots[0].scope_id.split(":")[0],
+            )
+        ) or (not semantic_values and len(latest_values) > 1):
             conflicting.append(conflict.conflict_id)
     return tuple(conflicting)
 
@@ -1453,7 +1590,11 @@ def _decide_membership(
         )
     if status in not_scheduled:
         return MembershipState.EXCLUDED, "NOT_SCHEDULED"
-    if revision.kickoff_state != EvidenceState.OBSERVED.value or revision.kickoff_utc is None:
+    if (
+        revision.kickoff_state != EvidenceState.OBSERVED.value
+        or revision.kickoff_utc is None
+        or (revision.integrity is not None and revision.kickoff_precision != "INSTANT")
+    ):
         raise MatchweekMembershipError(
             "MV-F06-UNRESOLVED-MEMBERSHIP",
             "KICKOFF_UNKNOWN",
@@ -1598,7 +1739,11 @@ def _build_observation_changes(
                     f"Later F01 identity for {fixture_id} references missing revision "
                     f"{revision_id}.",
                 )
-            snapshots.append(_load_revision_snapshot(store, reference, assessment))
+            snapshots.append(
+                _load_revision_snapshot(
+                    store, reference, assessment, semantic=freeze.policy.policy_version == "2"
+                )
+            )
         snapshots.sort(key=lambda item: item.revision_id)
         if not snapshots:
             continue
@@ -1607,12 +1752,26 @@ def _build_observation_changes(
         old_revision_ids = original_revisions[key]
         codes: set[ObservationCode] = set()
         candidate_ids = tuple(sorted(identity.candidate_id for identity in identities))
-        if any(candidate_id not in original_candidate_ids for candidate_id in candidate_ids):
+        identity_resolved = any(
+            candidate_id not in original_candidate_ids for candidate_id in candidate_ids
+        )
+        if freeze.policy.policy_version == "2":
+            prior_states = {
+                item.candidate_id: item.state for item in original_assessment.identity_resolutions
+            }
+            identity_resolved = any(
+                prior_states.get(identity.candidate_id)
+                is FixtureIdentityState.UNRESOLVED_FIXTURE_IDENTITY
+                for identity in identities
+            )
+        if identity_resolved:
             codes.add(ObservationCode.IDENTITY_RESOLVED)
         if any(item.revision_id not in old_revision_ids for item in snapshots):
             codes.add(ObservationCode.REVISION_OBSERVED)
 
-        conflicts = _load_exact_conflicts(store, fixture_id, snapshots)
+        conflicts = _load_exact_conflicts(
+            store, fixture_id, snapshots, semantic=freeze.policy.policy_version == "2"
+        )
         if conflicts:
             codes.add(ObservationCode.SOURCE_CONFLICT)
 
@@ -1764,16 +1923,7 @@ def _validate_stored_decision(decision: MembershipDecision, policy: PolicySnapsh
         for support in snapshot.supports:
             if support.authority_rank != _authority_rank(support.source_key, support.source_class):
                 raise _stored_corruption("F06 stored source authority snapshot is corrupt.")
-    expected_controller = max(
-        decision.evaluated_revisions,
-        key=lambda item: (
-            item.authority_rank,
-            datetime.fromisoformat(item.latest_support_retrieved_at_utc),
-            item.revision_id,
-            item.revision_digest,
-        ),
-        default=None,
-    )
+    expected_controller = max(decision.evaluated_revisions, key=controller_key, default=None)
     if expected_controller is None or expected_controller != decision.controlling_revision:
         raise _stored_corruption("F06 controller does not follow its stored authority snapshots.")
     status_mapping = json.loads(policy.canonical_json)["status_mapping"]
@@ -1795,6 +1945,13 @@ def _validate_revision_reference_rows(
     snapshot: FixtureRevisionSnapshot,
 ) -> None:
     connection = store._connection_for_repository()
+    if snapshot.integrity is not None:
+        try:
+            integrity = load_revision_integrity(store, reference)
+        except (MembershipReferenceError, ValueError, TypeError) as error:
+            raise _stored_corruption(str(error)) from error
+        if integrity != snapshot.integrity:
+            raise _stored_corruption("F06 immutable assertion or canonical identity facts changed.")
     revision = connection.execute(
         """
         SELECT fixture_id, revision_digest, source_capture_id, kickoff_state, kickoff_utc,

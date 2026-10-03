@@ -949,8 +949,7 @@ def operator_attestation_policy_v2() -> OperatorAttestationPolicySnapshot:
             rule,
             path_prefix="/",
             example_url=(
-                "https://www.ligaportugal.pt/noticias/28531/"
-                "horarios-definidos-ate-a-12.a-jornada"
+                "https://www.ligaportugal.pt/noticias/28531/horarios-definidos-ate-a-12.a-jornada"
             ),
             path_pattern=(
                 r"/(?:news|noticias)/[0-9]+/(?:(?:os|as|o|a)-)?"

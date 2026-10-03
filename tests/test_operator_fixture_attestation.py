@@ -1249,9 +1249,7 @@ def test_current_official_schedule_urls_are_approved_by_v2_policy(
 ) -> None:
     base, scope, revision_facts, assertions = _base_with_candidate(league_key=league_key)
     publications = tuple(
-        replace(item, official_url=official_url)
-        if item.publication_id == publication_id
-        else item
+        replace(item, official_url=official_url) if item.publication_id == publication_id else item
         for item in policy_publications_for_scope(scope)
     )
 
@@ -1273,10 +1271,14 @@ def test_v1_policy_snapshot_remains_available_and_unchanged() -> None:
     policy = operator_attestation_policy_v1()
 
     assert policy.policy_version == "1"
-    assert next(
-        rule for rule in policy.publication_rules
-        if rule.publication_id == "liga-portugal-round-updates"
-    ).path_prefix == "/news/"
+    assert (
+        next(
+            rule
+            for rule in policy.publication_rules
+            if rule.publication_id == "liga-portugal-round-updates"
+        ).path_prefix
+        == "/news/"
+    )
 
 
 def test_missing_official_reference_is_recorded_as_refusal() -> None:

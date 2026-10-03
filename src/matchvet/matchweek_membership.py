@@ -74,9 +74,9 @@ def _canonical_utc(value: str, label: str) -> str:
     return canonical
 
 
-def membership_policy_document() -> dict[str, object]:
+def membership_policy_document(policy_version: str = "1") -> dict[str, object]:
     """Return the immutable initial policy rules in canonicalizable form."""
-    return {
+    document: dict[str, object] = {
         "authority": {
             "fallback_source_keys": {
                 "football-data.co.uk": 300,
@@ -155,18 +155,37 @@ def membership_policy_document() -> dict[str, object]:
             ],
             "unknown": ["UNKNOWN"],
         },
-        "version": F06_POLICY_VERSION,
+        "version": "1",
     }
+    if policy_version == "2":
+        document["version"] = "2"
+        authority = cast(dict[str, object], document["authority"])
+        authority["selection_order"] = [
+            "authority_rank_desc",
+            "latest_support_retrieved_at_utc_desc",
+            "compatible_instant_precision_desc",
+            "revision_id_desc",
+            "revision_digest_desc",
+        ]
+        document["integrity"] = {
+            "team_identity": "ordered_confirmed_canonical_ids",
+            "kickoff": "typed_league_local_date_instant_compatibility",
+            "status": "membership_classes",
+            "conflicts": "exact_assertion_projection_from_cumulative_history",
+            "references": "revision_content_and_complete_assertion_coherence",
+            "identity_transition": "explicit_stable_candidate_state_change",
+        }
+    return document
 
 
 def policy_snapshot(policy_id: str, policy_version: str) -> PolicySnapshot:
-    if (policy_id, policy_version) != (F06_POLICY_ID, F06_POLICY_VERSION):
+    if policy_id != F06_POLICY_ID or policy_version not in ("1", "2"):
         raise MatchweekMembershipError(
             "MV-F06-POLICY-UNSUPPORTED",
             "POLICY_UNSUPPORTED",
             f"Unsupported F06 membership policy {policy_id!r} version {policy_version!r}.",
         )
-    encoded = canonical_json(membership_policy_document())
+    encoded = canonical_json(membership_policy_document(policy_version))
     return PolicySnapshot(policy_id, policy_version, encoded, sha256_digest(encoded))
 
 
@@ -218,6 +237,23 @@ class AuthoritySupportSnapshot:
 
 
 @dataclass(frozen=True)
+class AssertionIntegritySnapshot:
+    assertion_id: str
+    content_digest: str
+    semantic_value: str | None
+    mapping_id: str | None
+    mapping_digest: str | None
+
+
+@dataclass(frozen=True)
+class RevisionIntegritySnapshot:
+    home_team_id: str
+    away_team_id: str
+    source_round: str | None
+    assertions: tuple[AssertionIntegritySnapshot, ...]
+
+
+@dataclass(frozen=True)
 class FixtureRevisionSnapshot:
     scope_id: str
     fixture_id: str
@@ -234,6 +270,7 @@ class FixtureRevisionSnapshot:
     supports: tuple[AuthoritySupportSnapshot, ...]
     authority_rank: int
     latest_support_retrieved_at_utc: str
+    integrity: RevisionIntegritySnapshot | None = None
 
 
 @dataclass(frozen=True)
@@ -243,6 +280,7 @@ class ConflictSnapshot:
     value_digest: str
     assertion_ids: tuple[str, ...]
     values: tuple[str, ...]
+    history_value_digest: str | None = None
 
 
 @dataclass(frozen=True)
@@ -546,6 +584,9 @@ def _decision_from_object(raw: dict[str, object]) -> MembershipDecision:
             value_digest=_string(value["value_digest"], "value_digest"),
             assertion_ids=_string_array(value["assertion_ids"], "assertion_ids"),
             values=_string_array(value["values"], "values"),
+            history_value_digest=_optional_string(
+                value.get("history_value_digest"), "history_value_digest"
+            ),
         )
         for value in _object_array(raw["conflicts"], "conflicts")
     )
@@ -582,6 +623,25 @@ def _revision_from_object(raw: dict[str, object]) -> FixtureRevisionSnapshot:
         )
         for value in support_values
     )
+    integrity_raw = raw.get("integrity")
+    integrity = None
+    if integrity_raw is not None:
+        evidence = _object(integrity_raw, "integrity")
+        integrity = RevisionIntegritySnapshot(
+            home_team_id=_string(evidence["home_team_id"], "home_team_id"),
+            away_team_id=_string(evidence["away_team_id"], "away_team_id"),
+            source_round=_optional_string(evidence["source_round"], "source_round"),
+            assertions=tuple(
+                AssertionIntegritySnapshot(
+                    assertion_id=_string(value["assertion_id"], "assertion_id"),
+                    content_digest=_string(value["content_digest"], "assertion content digest"),
+                    semantic_value=_optional_string(value["semantic_value"], "semantic_value"),
+                    mapping_id=_optional_string(value["mapping_id"], "mapping_id"),
+                    mapping_digest=_optional_string(value["mapping_digest"], "mapping_digest"),
+                )
+                for value in _object_array(evidence["assertions"], "integrity assertions")
+            ),
+        )
     return FixtureRevisionSnapshot(
         scope_id=_string(raw["scope_id"], "scope_id"),
         fixture_id=_string(raw["fixture_id"], "fixture_id"),
@@ -602,6 +662,7 @@ def _revision_from_object(raw: dict[str, object]) -> FixtureRevisionSnapshot:
         latest_support_retrieved_at_utc=_string(
             raw["latest_support_retrieved_at_utc"], "latest_support_retrieved_at_utc"
         ),
+        integrity=integrity,
     )
 
 
@@ -609,6 +670,17 @@ def _validate_freeze_digests(freeze: MatchweekMembershipFreeze) -> None:
     expected_policy = policy_snapshot(freeze.policy.policy_id, freeze.policy.policy_version)
     if freeze.policy != expected_policy:
         raise ValueError("F06 policy snapshot does not match its supported version.")
+    for decision in freeze.memberships:
+        revisions = (*decision.evaluated_revisions, decision.controlling_revision)
+        if freeze.policy.policy_version == "1" and (
+            any(item.integrity is not None for item in revisions)
+            or any(item.history_value_digest is not None for item in decision.conflicts)
+        ):
+            raise ValueError("Policy1 cannot contain policy2 integrity or projection evidence.")
+        if freeze.policy.policy_version == "2" and any(
+            item.integrity is None for item in revisions
+        ):
+            raise ValueError("Policy2 requires semantic revision integrity evidence.")
     if freeze.freeze_id != freeze_identity(
         freeze.season, freeze.matchweek_friday, freeze.assessment_digest, freeze.policy
     ):
@@ -760,7 +832,22 @@ def _as_json(value: object) -> Any:
     if isinstance(value, StrEnum):
         return value.value
     if is_dataclass(value) and not isinstance(value, type):
-        return {item.name: _as_json(getattr(value, item.name)) for item in fields(value)}
+        return {
+            item.name: _as_json(getattr(value, item.name))
+            for item in fields(value)
+            if not (
+                (
+                    isinstance(value, ConflictSnapshot)
+                    and item.name == "history_value_digest"
+                    and value.history_value_digest is None
+                )
+                or (
+                    isinstance(value, FixtureRevisionSnapshot)
+                    and item.name == "integrity"
+                    and value.integrity is None
+                )
+            )
+        }
     if isinstance(value, tuple):
         return [_as_json(item) for item in value]
     if isinstance(value, list):

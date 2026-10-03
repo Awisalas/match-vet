@@ -119,11 +119,18 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Blocked by:** None; LF05 #48 and LF08 #51 are complete.
 - **Status:** Complete in #52 after offline identity and compatibility verification. The nine real LF05 observations remain unrecorded. Keep #44 open and original F07 parked pending the fresh all-seven validation gate.
 
+### LF14 Correct F06 semantic integrity and immutable-history compatibility
+- **Type:** Corrective integrity ticket; outside the original 53-ticket count.
+- **Goal:** Compare canonical team identities, typed kickoff compatibility and membership status classes. Project complete selected conflict members from cumulative immutable history. Validate revision/assertion coherence while preserving historical replay and raw provenance.
+- **Tracked by:** [#57](https://github.com/Awisalas/match-vet/issues/57).
+- **Status:** Implementation, review and offline verification complete (989 full-suite tests; Ruff and mypy passed). The real all-seven F06 freeze remains required. No migration or acquisition rerun is needed.
+- **Contract:** Membership policy 2 uses the unchanged schema-13 payload envelope. Historical policy-1 freezes and LF05/LF13 observation bytes retain their original replay contract.
+
 ### F07 Persist per-match Match Evidence Cutoff
 - **Goal:** Add an immutable cutoff for each frozen match, tied to its fixture revision and a versioned policy. Leave the numeric lead time undecided.
-- **Blocked by:** F06, LF01, LF02, LF03, LF04, LF05, corrective LF06 #49, corrective LF07 #50, LF08 #51, LF09 #52.
+- **Blocked by:** F06, LF01, LF02, LF03, LF04, LF05, corrective LF06 #49, corrective LF07 #50, LF08 #51, LF09 #52, LF14 #57.
 - **Status:** Parked until all corrective tickets and the fresh all-seven validation sequence succeed. Do not start original F07 before then.
-- **Fresh all-seven validation sequence:** Create a new isolated store and reacquire 2026-10-09. Require zero unresolved identities across the six automated leagues and no false DATE-versus-INSTANT conflicts. Validate Belgian team spellings. Only then record LF05 observations, persist the final F01 v2 base, make seven LF02 attestations, persist the derived v3 assessment, write exact F05 records, and produce the real all-seven F06 freeze. Only after the freeze succeeds may #44 close and original F07 be unparked. The automated/licensed-source requirement remains separate for Product Promotion.
+- **Remaining all-seven validation sequence:** Reuse the existing 2026-10-09 post-LF10 store and immutable artifacts, including the seven COMPLETE scopes, 66 canonical candidates and LF13 exact observations. After LF14 passes verification, produce and replay a persisted policy-2 F06 freeze with exactly 66 membership decisions and Doctor PASS. Preserve all earlier failure evidence. Only after that success may #44 close and original F07 be unparked. The automated/licensed-source requirement remains separate for Product Promotion.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$tdd`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.

@@ -280,6 +280,7 @@ def _persistable_schedule_assessment(
     *,
     duplicate_first_candidate: bool = False,
     venue_for_first: str | None = None,
+    rows_by_league: dict[str, tuple[tuple[str, str, str, str], ...]] | None = None,
 ) -> FixtureCoverageAssessment:
     scopes = fixture_scopes_for_matchweek("2026-09-25", season="2026-27")
     importer = FixtureHistoryImporter(store, private_root=tmp_path)
@@ -291,7 +292,8 @@ def _persistable_schedule_assessment(
 
     for index, (scope, league) in enumerate(zip(scopes, TARGET_LEAGUES, strict=True)):
         observations: tuple[FixtureCaptureObservation, ...] = ()
-        if index == 0:
+        league_rows = rows_by_league.get(league.key, ()) if rows_by_league else rows
+        if index == 0 or (rows_by_league and league.key != "belgian_pro_league"):
             match_payload = [
                 {
                     "date": date_text,
@@ -305,7 +307,7 @@ def _persistable_schedule_assessment(
                     ),
                     "score": {},
                 }
-                for candidate_index, (date_text, time_text, home, away) in enumerate(rows)
+                for candidate_index, (date_text, time_text, home, away) in enumerate(league_rows)
             ]
             content = json.dumps({"matches": match_payload}, separators=(",", ":")).encode()
             dataset = OpenFootballJSONParser().parse(content, league=league, season=scope.season)
@@ -316,7 +318,7 @@ def _persistable_schedule_assessment(
                     source_url="https://example.test/premier.json",
                     retrieved_at_utc="2026-09-16T12:00:00+00:00",
                     observed_terms="CC0",
-                    cache_key="f06-scheduled-premier",
+                    cache_key=f"f06-scheduled-{league.key}",
                 ),
             )
             observations = importer.observations_for_capture(imported.source_capture_id)
@@ -349,7 +351,7 @@ def _persistable_schedule_assessment(
             capture_digest=capture_digest,
         )
         attempts.append(attempt)
-        is_empty = index > 0
+        is_empty = not league_rows if rows_by_league else index > 0
         evidence_id = f"scheduled-evidence-{index}"
         evidence.append(
             ProviderCoverageEvidence(
@@ -394,7 +396,11 @@ def _persistable_schedule_assessment(
             )
             identities.append(
                 FixtureIdentityResolution(
-                    candidate_id=f"candidate-{candidate_index}",
+                    candidate_id=(
+                        f"{league.key}-candidate-{candidate_index}"
+                        if rows_by_league
+                        else f"candidate-{candidate_index}"
+                    ),
                     scope_id=scope.scope_id,
                     state=FixtureIdentityState.RESOLVED,
                     canonical_fixture_id=observation.fixture_id,
@@ -469,50 +475,74 @@ def _assessment_with_revision(
     revision_id = deterministic_identifier(
         "fixture_revision", f"{original.fixture_id}:{revision_digest}"
     )
-    assertion_ids = original.source_assertion_ids
-    with store.transaction() as transaction:
-        transaction.add_identifier_if_missing(CanonicalIdentifier("fixture_revision", revision_id))
-        transaction.execute(
-            """
-            INSERT INTO fixture_revisions (
-                revision_id, fixture_id, predecessor_revision_id, revision_digest,
-                kickoff_state, kickoff_utc, kickoff_local_text, kickoff_precision,
-                fixture_status, source_round, observed_at_utc, source_capture_id,
-                source_assertion_ids_json, created_at_utc
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                revision_id,
-                original.fixture_id,
-                original.revision_id,
-                revision_digest,
-                payload["kickoff_state"],
-                payload["kickoff_utc"],
-                payload["kickoff_local_text"],
-                payload["kickoff_precision"],
-                status,
-                payload["source_round"],
-                "2026-09-16T13:00:00.000000+00:00",
-                str(prior[5]),
-                json.dumps(assertion_ids, ensure_ascii=True, separators=(",", ":")),
-                "2026-09-16T13:00:00.000000+00:00",
-            ),
+    # Build coherent source evidence through the importer. Old fixture seeding
+    # reused kickoff assertions after changing revision facts, which is corrupt.
+    names = {
+        str(row[0]): json.loads(str(row[1]))
+        for row in store._connection_for_repository().execute(
+            "SELECT predicate, normalized_value_json FROM source_assertions "
+            "WHERE assertion_id IN (SELECT value FROM json_each(?)) "
+            "AND predicate IN ('home_team', 'away_team')",
+            (json.dumps(original.source_assertion_ids),),
         )
-        for assertion_id in assertion_ids:
-            transaction.execute(
-                """
-                INSERT INTO fixture_revision_assertions (revision_id, assertion_id)
-                VALUES (?, ?)
-                """,
-                (revision_id, assertion_id),
-            )
+    }
+    content = json.dumps(
+        {
+            "matches": [
+                {
+                    "date": "2026-09-25",
+                    "time": "12:00",
+                    "team1": names["home_team"],
+                    "team2": names["away_team"],
+                    "score": {},
+                    "revision_fixture": revision_digest,
+                }
+            ]
+        }
+    ).encode()
+    league = league_by_key(original.scope_id.split(":")[0])
+    dataset = OpenFootballJSONParser().parse(content, league=league, season="2026-27")
+    instant = (
+        datetime.fromisoformat(str(effective_kickoff_utc))
+        if effective_kickoff_utc is not None
+        else None
+    )
+    row = replace(
+        dataset.rows[0],
+        kickoff_utc=instant,
+        kickoff_local_date=(instant.date() if instant is not None else None),
+        kickoff_local_text=payload["kickoff_local_text"],
+        kickoff_precision=str(payload["kickoff_precision"]),
+        explicit_fixture_status=status,
+        source_round=payload["source_round"],
+    )
+    importer = FixtureHistoryImporter(store, private_root=store.path.parent)
+    imported = importer.import_dataset(
+        replace(dataset, rows=(row,)),
+        content,
+        SourceCaptureInput(
+            source_url="https://example.test/revision.json",
+            retrieved_at_utc="2026-09-16T12:00:00+00:00",
+            observed_terms="Synthetic coherent revision",
+            cache_key=revision_digest,
+        ),
+    )
+    observation = importer.observations_for_capture(imported.source_capture_id)[0]
+    assert observation.revision_id == revision_id
+    assertion_ids = observation.source_assertion_ids
+    new_attempt = replace(
+        next(item for item in assessment.provider_attempts if item.scope_id == original.scope_id),
+        attempt_id=f"revision-{revision_id}",
+        capture_id=imported.source_capture_id,
+        capture_digest=imported.source_digest,
+    )
 
     replacement = FixtureRevisionReference(
         scope_id=original.scope_id,
         fixture_id=original.fixture_id,
         revision_id=revision_id,
         revision_digest=revision_digest,
-        source_capture_ids=original.source_capture_ids,
+        source_capture_ids=(imported.source_capture_id,),
         source_assertion_ids=assertion_ids,
     )
     revision_refs = (
@@ -530,7 +560,7 @@ def _assessment_with_revision(
     )
     return assess_fixture_coverage(
         scopes=tuple(item.scope for item in assessment.scope_assessments),
-        provider_attempts=assessment.provider_attempts,
+        provider_attempts=(*assessment.provider_attempts, new_attempt),
         coverage_evidence=assessment.coverage_evidence,
         fixture_revisions=revision_refs,
         identity_resolutions=identities,
@@ -1060,12 +1090,14 @@ def test_freeze_exact_accepts_all_seven_persisted_attested_v3_scopes(
 @pytest.mark.parametrize(
     "league_key", ("belgian_pro_league", "premier_league", "serie_a", "bundesliga", "ligue_1")
 )
+@pytest.mark.parametrize("policy_version", ("1", "2"))
 def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
     tmp_path: Path,
     league_key: str,
     additional_observation: dict[str, str] | None,
     fake_manual_capture: bool,
     expected_freeze: bool,
+    policy_version: str,
 ) -> None:
     from test_operator_fixture_observation import (
         _official_scheduling_input,
@@ -1181,7 +1213,7 @@ def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
                 "2026-09-25",
                 derived.digest,
                 "matchvet:matchweek-membership",
-                "1",
+                policy_version,
             )
         else:
             with pytest.raises(MatchweekMembershipError) as refusal:
@@ -1190,7 +1222,7 @@ def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
                     "2026-09-25",
                     derived.digest,
                     "matchvet:matchweek-membership",
-                    "1",
+                    policy_version,
                 )
             assert refusal.value.reason_code == "REFERENCE_MISMATCH"
 
@@ -1786,7 +1818,7 @@ def test_persist_exact_is_idempotent_and_rejects_conflicting_content_for_one_ide
     ("policy_id", "policy_version"),
     (
         ("matchvet:unsupported-membership", "1"),
-        ("matchvet:matchweek-membership", "2"),
+        ("matchvet:matchweek-membership", "99"),
     ),
 )
 def test_freeze_refuses_unsupported_policy_identity_or_version(
@@ -2220,7 +2252,13 @@ def test_authority_revision_id_breaks_equal_rank_and_support_time_ties(
         )
         combined = assess_fixture_coverage(
             scopes=tuple(item.scope for item in baseline.scope_assessments),
-            provider_attempts=baseline.provider_attempts,
+            provider_attempts=tuple(
+                {
+                    item.attempt_id: item
+                    for assessment in (first, second)
+                    for item in assessment.provider_attempts
+                }.values()
+            ),
             coverage_evidence=baseline.coverage_evidence,
             fixture_revisions=revision_references,
             identity_resolutions=(combined_identity,),
