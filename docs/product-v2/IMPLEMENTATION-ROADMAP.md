@@ -130,7 +130,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 ### F07 Persist per-match Match Evidence Cutoff
 - **Goal:** Add an immutable cutoff for each frozen match, tied to its fixture revision and a versioned policy. Leave the numeric lead time undecided.
 - **Prerequisites met:** F06, LF01 #44, LF02, LF03, LF04, LF05, corrective LF06 #49, corrective LF07 #50, LF08 #51, LF09 #52 and LF14 #57.
-- **Status:** Ready; unparked after genuine all-seven F06 success. F07 is not implemented by LF14.
+- **Status:** Complete in #58. Protected per-match cutoff and policy artifacts bind exact F06 freeze/membership and controlling revision references, with deterministic retry and verified replay. Numeric lead time remains explicitly configurable with no default. See `docs/match-evidence-cutoff.md`.
 - **All-seven validation gate:** Passed using the existing 2026-10-09 post-LF10 store and immutable artifacts: seven COMPLETE scopes, 66 canonical candidates, 12 exact health records, 66 persisted policy-2 membership decisions, exact replay and identical retry, reopened-store replay and Doctor PASS. Previous immutable history and failed evidence are unchanged. #44 is closed. The automated/licensed-source requirement remains separate for Product Promotion.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$tdd`, `$blast-radius`.

@@ -40,6 +40,12 @@ A recommendation finalized from evidence available at the Matchweek Research Cut
 **Matchweek Research Cutoff**:
 The single point at which the information state for an entire Matchweek is frozen, initially six hours before its earliest eligible kickoff. The lead time is a versioned Selection Policy parameter; later Target Matches receive greater Evidence Freshness and Probability Uncertainty penalties where time-sensitive evidence ages.
 
+**Match Evidence Cutoff**:
+The immutable V2 boundary for evidence used in one match analysis, tied to an exact frozen membership, controlling Fixture Revision, and Match Evidence Cutoff Policy. Each match has its own boundary, separate from Matchweek Membership Freeze and its creation time.
+
+**Match Evidence Cutoff Policy**:
+A versioned timing rule and explicit configuration that determines a Match Evidence Cutoff from its controlling fixture kickoff. A changed configuration creates separate cutoff state and never changes a retained cutoff.
+
 **Post-cutoff Evidence**:
 Material information published after the Matchweek Research Cutoff. It cannot alter the frozen recommendation but is recorded during Historical Evaluation to measure whether the cutoff policy systematically causes avoidable failures.
 
