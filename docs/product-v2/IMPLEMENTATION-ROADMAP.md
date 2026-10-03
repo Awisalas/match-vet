@@ -138,7 +138,8 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 
 ### F08 Inventory no-cost contextual sources
 - **Goal:** Map the current enabled preferences to free, open, or official contextual sources and their permitted use.
-- **Blocked by:** F04, F05.
+- **Blocked by:** F04, F05 (both complete).
+- **Status:** Complete in #59. The [contextual source inventory](../research/contextual-source-inventory-2026-10-03.md) approves only the existing Open-Meteo weather path under its non-commercial free tier; injury/availability, suspensions, pre-lineup expected lineups, manager changes, referee appointments/context, and new workload sourcing remain UNKNOWN for approved automated and retained sourcing.
 - **Size:** S.
 - **Recommended Matt Pocock skills:** `$research`, `$domain-modeling`.
 - **Model:** GPT-6 Luna Max is sufficient.
