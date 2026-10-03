@@ -41,8 +41,10 @@ from matchvet.store import CanonicalIdentifier, Store, open_store
 from matchvet.t17 import backup_store, restore_backup, verify_backup
 
 
-def _seed_belgian_teams(store: object, names: tuple[str, ...]) -> None:
-    league = league_by_key("belgian_pro_league")
+def _seed_league_teams(
+    store: object, names: tuple[str, ...], league_key: str = "belgian_pro_league"
+) -> None:
+    league = league_by_key(league_key)
     league_id = deterministic_identifier("league", league.key)
     created_at = "2026-09-01T00:00:00+00:00"
     with store.transaction() as tx:  # type: ignore[attr-defined]
@@ -206,7 +208,7 @@ def test_record_persists_only_canonical_citation_and_ordinary_fixture_provenance
     monkeypatch.setattr(ingestion, "urlopen", refuse_official_fetch)
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
 
         recorded = repository.record(_valid_input())
@@ -254,7 +256,7 @@ def test_replaying_one_observation_keeps_one_capture_revision_and_assertion_set(
 ) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
         recorded = repository.record(_valid_input())
 
@@ -273,7 +275,7 @@ def test_replaying_one_observation_keeps_one_capture_revision_and_assertion_set(
 def test_record_replay_reuses_all_identities_without_persistence_writes(tmp_path: Path) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
         recorded = repository.record(_valid_input())
         connection = store._connection_for_repository()
@@ -314,7 +316,7 @@ def test_record_replay_reuses_all_identities_without_persistence_writes(tmp_path
 def test_record_refuses_duplicate_historical_logical_observations(tmp_path: Path) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
         first = repository.record(_valid_input())
         second = repository.persist(
@@ -348,7 +350,7 @@ def test_record_changed_kickoff_or_status_creates_new_observation(
 ) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
         first = repository.record(_valid_input())
 
@@ -369,7 +371,7 @@ def test_observation_replay_fails_closed_when_artifact_bytes_are_corrupted(
 ) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
         recorded = repository.record(_valid_input())
         artifact = ArtifactStore(store).verify_artifact(recorded.artifact_digest)
@@ -385,7 +387,7 @@ def test_new_citation_reuses_factual_revision_and_changed_status_appends_conflic
 ) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
         first = repository.record(_valid_input())
         same_facts_new_citation = repository.record(
@@ -434,7 +436,7 @@ def test_new_citation_reuses_factual_revision_and_changed_status_appends_conflic
 def test_date_kickoff_stays_date_and_never_gets_a_fake_utc_value(tmp_path: Path) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
 
         recorded = repository.record(_valid_input(kickoff="2026-10-10"))
@@ -455,7 +457,7 @@ def test_policy_supports_exact_matchweeks_throughout_the_supported_season(
 ) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
 
         recorded = repository.record(
@@ -492,7 +494,7 @@ def test_instant_observation_local_date_must_match_the_league_timezone() -> None
             "not approved",
         ),
         ({"season": "2025-26"}, "policy supports"),
-        ({"league_key": "premier_league"}, "policy supports"),
+        ({"league_key": "la_liga"}, "policy supports"),
         ({"status": "UNKNOWN"}, "status"),
         ({"kickoff": "2026-10-09T20:00:00"}, "UTC offset"),
         ({"kickoff": "tomorrow at eight"}, "ISO-8601"),
@@ -507,7 +509,7 @@ def test_record_refuses_unapproved_or_malformed_observation_inputs(
 ) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         repository = OperatorFixtureObservationRepository(store, private_root=private_root)
 
         with pytest.raises(ValueError, match=reason):
@@ -521,7 +523,7 @@ def test_record_refuses_unknown_ambiguous_and_same_team_without_registering_team
 ) -> None:
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(
+        _seed_league_teams(
             store,
             ("Synthetic North FC", "Synthetic South FC", "Synthetic East FC"),
         )
@@ -579,7 +581,7 @@ def test_cli_records_and_lists_one_explicit_scope_compactly(
     private_root.mkdir()
     database_path = private_root / "matchvet.sqlite3"
     with open_store(database_path, private_root=private_root) as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
 
     common = [
         "fixtures",
@@ -703,7 +705,7 @@ def test_fresh_acquisition_includes_only_exact_manual_scope_without_promoting_co
 
     private_root, store_context = _open_observation_store(tmp_path)
     with store_context as store:
-        _seed_belgian_teams(
+        _seed_league_teams(
             store,
             (
                 "Synthetic North FC",
@@ -893,7 +895,7 @@ def test_t17_backup_and_restore_preserve_observation_artifact_and_fixture_proven
     private_root.mkdir()
     database_path = private_root / "matchvet.sqlite3"
     with open_store(database_path, private_root=private_root) as store:
-        _seed_belgian_teams(store, ("Synthetic North FC", "Synthetic South FC"))
+        _seed_league_teams(store, ("Synthetic North FC", "Synthetic South FC"))
         recorded = OperatorFixtureObservationRepository(store, private_root=private_root).record(
             _valid_input()
         )
@@ -938,3 +940,219 @@ def test_t17_backup_and_restore_preserve_observation_artifact_and_fixture_proven
         assert len(importer.source_assertions()) == 4
         assert len(importer.revisions(recorded.fixture_id)) == 1
         assert ArtifactStore(store).object_root == restored_root / "objects" / "sha256"
+
+
+_SCHEDULING_CITATIONS = {
+    "premier_league": (
+        "premier-league-updating-calendar",
+        "UPDATING_CALENDAR",
+        "https://www.premierleague.com/en/news/1235133",
+    ),
+    "serie_a": (
+        "serie-a-anticipi-posticipi",
+        "SCHEDULING_NOTICE",
+        "https://www.legaseriea.it/serie-a/news/"
+        "anticipi-e-posticipi-fino-alla-fine-del-girone-di-andata",
+    ),
+    "bundesliga": (
+        "bundesliga-confirmed-kickoff-updates",
+        "KICKOFF_UPDATE",
+        "https://www.bundesliga.com/en/bundesliga/news/"
+        "confirmed-kick-off-times-dates-2026-27-fixtures-23955/",
+    ),
+    "ligue_1": (
+        "ligue-1-programmation",
+        "PROGRAMMATION",
+        "https://ligue1.com/fr/articles/l1_article_5797-",
+    ),
+}
+
+
+def _official_scheduling_input(league_key: str, **changes: str) -> OfficialFixtureObservationInput:
+    if league_key == "belgian_pro_league":
+        return _valid_input(**changes)
+    publication_id, publication_type, official_url = _SCHEDULING_CITATIONS[league_key]
+    return replace(
+        _valid_input(
+            league_key=league_key,
+            publication_id=publication_id,
+            publication_type=publication_type,
+            official_url=official_url,
+        ),
+        **changes,
+    )
+
+
+@pytest.mark.parametrize("league_key", ("premier_league", "serie_a", "bundesliga", "ligue_1"))
+def test_exact_official_citation_is_persisted_and_replayed(tmp_path: Path, league_key: str) -> None:
+    private_root, store_context = _open_observation_store(tmp_path)
+    value = _official_scheduling_input(league_key)
+    with store_context as store:
+        _seed_league_teams(store, (value.home, value.away), value.league_key)
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        first = repository.record(value)
+        replay = repository.record(value)
+        assert replay.observation == first.observation
+        assert replay.artifact_digest == first.artifact_digest
+        assert replay.capture_id == first.capture_id
+        assert replay.revision_id == first.revision_id
+        assert replay.import_result.from_existing_capture
+        assert first.observation.contract_version == "operator-official-fixture-observation-v2"
+        assert first.observation.policy_version == "2"
+        assert first.observation.kickoff_utc == "2026-10-09T18:00:00+00:00"
+        assert first.observation.kickoff_precision == "INSTANT"
+        assert first.observation.mode == "RESEARCH_ONLY"
+        assert first.observation.operator_id == "operator-test"
+        assert repository.get(first.artifact_digest).observation == first.observation
+        assert len(repository.list_for_scope(first.observation.scope_id)) == 1
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        assert len(importer.revisions(first.fixture_id)) == 1
+        assert len(importer.source_assertions()) == 4
+
+
+@pytest.mark.parametrize("league_key", tuple(_SCHEDULING_CITATIONS))
+def test_new_manual_observations_join_fresh_acquisition_without_provider_attempts(
+    tmp_path: Path, league_key: str
+) -> None:
+    from matchvet.provider_health_acquisition import build_provider_health_records
+
+    private_root, store_context = _open_observation_store(tmp_path)
+    value = _official_scheduling_input(league_key)
+    with store_context as store:
+        _seed_league_teams(store, (value.home, value.away), league_key)
+        recorded = OperatorFixtureObservationRepository(store, private_root=private_root).record(
+            value
+        )
+        importer = FixtureHistoryImporter(store, private_root=private_root)
+        scheduled = FixtureHistoryAcquirer(
+            importer, StaticSourceFetcher({})
+        ).acquire_scheduled_fixtures(
+            IngestionPlan(current_season="2026-27", matchweek_friday="2026-10-09")
+        )
+        assessment = scheduled.assessment
+        assert len(assessment.provider_attempts) == 12
+        assert assessment.coverage_evidence == ()
+        assert assessment.schedule_state is MatchweekScheduleState.UNKNOWN
+        assert {item.revision_id for item in assessment.fixture_revisions} == {recorded.revision_id}
+        assert all(item.capture_id != recorded.capture_id for item in assessment.provider_attempts)
+        health = build_provider_health_records(assessment)
+        assert len(health) == 12
+        assert all("manual" not in item.provider.provider_id for item in health)
+
+
+@pytest.mark.parametrize("league_key", tuple(_SCHEDULING_CITATIONS))
+@pytest.mark.parametrize("invalid_part", ("unrelated", "query", "fragment", "credentials", "port"))
+def test_new_official_observations_reject_unapproved_urls_before_persistence(
+    tmp_path: Path, league_key: str, invalid_part: str
+) -> None:
+    private_root, store_context = _open_observation_store(tmp_path)
+    value = _official_scheduling_input(league_key)
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(value.official_url)
+    urls = {
+        "unrelated": f"https://{parsed.netloc}/news/unrelated-club-interview",
+        "query": value.official_url + "?redirect=unrelated",
+        "fragment": value.official_url + "#unrelated",
+        "credentials": value.official_url.replace("https://", "https://operator@"),
+        "port": value.official_url.replace(parsed.netloc, parsed.netloc + ":invalid"),
+    }
+    with store_context as store:
+        _seed_league_teams(store, (value.home, value.away), league_key)
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        with pytest.raises(ValueError):
+            repository.record(replace(value, official_url=urls[invalid_part]))
+        assert repository.list_for_scope(f"{league_key}:2026-27:2026-10-09") == ()
+        assert FixtureHistoryImporter(store, private_root=private_root).fixtures() == ()
+
+
+@pytest.mark.parametrize("league_key", tuple(_SCHEDULING_CITATIONS))
+@pytest.mark.parametrize("invalid_fact", ("date", "unknown_team", "wrong_type", "wrong_league"))
+def test_new_official_observations_require_exact_schedule_and_existing_teams(
+    tmp_path: Path, league_key: str, invalid_fact: str
+) -> None:
+    private_root, store_context = _open_observation_store(tmp_path)
+    value = _official_scheduling_input(league_key)
+    changes = {
+        "date": {"kickoff": "2026-10-09"},
+        "unknown_team": {"home": "Unregistered FC"},
+        "wrong_type": {"publication_type": "FIXTURE_RELEASE"},
+        "wrong_league": {"league_key": "liga_portugal"},
+    }
+    with store_context as store:
+        _seed_league_teams(store, (value.home, value.away), league_key)
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        with pytest.raises(ValueError):
+            repository.record(replace(value, **changes[invalid_fact]))
+        assert repository.list_for_scope(f"{league_key}:2026-27:2026-10-09") == ()
+
+
+@pytest.mark.parametrize(
+    "url",
+    (
+        "https://www.premierleague.com/en/news/1235133-unrelated",
+        "https://www.premierleague.com/en/news/12351330",
+        "https://www.premierleague.com/en/news/1235133/unrelated",
+    ),
+)
+def test_calendar_prefix_does_not_approve_an_unrelated_publication(
+    tmp_path: Path, url: str
+) -> None:
+    private_root, store_context = _open_observation_store(tmp_path)
+    with store_context as store:
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        with pytest.raises(ValueError, match="not approved"):
+            repository.record(_official_scheduling_input("premier_league", official_url=url))
+
+
+@pytest.mark.parametrize("league_key", ("serie_a", "bundesliga"))
+@pytest.mark.parametrize("suffix", ("/../../unrelated", "/%2e%2e/unrelated", "/unrelated"))
+def test_scheduling_prefix_rejects_other_resources(
+    tmp_path: Path, league_key: str, suffix: str
+) -> None:
+    value = _official_scheduling_input(league_key)
+    private_root, store_context = _open_observation_store(tmp_path)
+    with store_context as store:
+        _seed_league_teams(store, (value.home, value.away), league_key)
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        with pytest.raises(ValueError, match="not approved"):
+            repository.record(replace(value, official_url=value.official_url.rstrip("/") + suffix))
+
+
+def test_serie_a_calendar_results_is_an_approved_exact_scheduling_source(tmp_path: Path) -> None:
+    private_root, store_context = _open_observation_store(tmp_path)
+    value = _official_scheduling_input(
+        "serie_a",
+        publication_id="serie-a-calendar-results",
+        publication_type="CALENDAR_RESULTS",
+        official_url="https://www.legaseriea.it/serie-a/calendario-risultati",
+    )
+    with store_context as store:
+        _seed_league_teams(store, (value.home, value.away), value.league_key)
+        repository = OperatorFixtureObservationRepository(store, private_root=private_root)
+        recorded = repository.record(value)
+        assert recorded.observation.kickoff_utc == "2026-10-09T18:00:00+00:00"
+        assert repository.get(recorded.artifact_digest).revision_id == recorded.revision_id
+
+
+@pytest.mark.parametrize("league_key", ("premier_league", "serie_a", "bundesliga", "ligue_1"))
+def test_pairing_only_publications_cannot_supply_exact_kickoff(
+    tmp_path: Path, league_key: str
+) -> None:
+    from matchvet.operator_fixture_attestation import operator_attestation_policy_v2
+
+    pairing_rule = next(
+        rule
+        for rule in operator_attestation_policy_v2().publication_rules
+        if rule.league_key == league_key and rule.supported_layers == ("pairings",)
+    )
+    private_root, store_context = _open_observation_store(tmp_path)
+    with store_context as store, pytest.raises(ValueError, match="not approved"):
+        OperatorFixtureObservationRepository(store, private_root=private_root).record(
+            _official_scheduling_input(
+                league_key,
+                publication_id=pairing_rule.publication_id,
+                publication_type=pairing_rule.publication_type,
+                official_url=pairing_rule.example_url,
+            )
+        )

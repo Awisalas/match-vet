@@ -12,7 +12,7 @@ from pathlib import Path
 from subprocess import run
 
 import pytest
-from test_operator_fixture_observation import _seed_belgian_teams, _valid_input
+from test_operator_fixture_observation import _seed_league_teams, _valid_input
 
 from matchvet.ingestion import (
     FixtureHistoryImporter,
@@ -36,7 +36,7 @@ from matchvet.store import CanonicalIdentifier, open_store
 
 def test_official_source_resolves_reviewed_beveren_name(tmp_path: Path) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
-        _seed_belgian_teams(store, ("Beveren",))
+        _seed_league_teams(store, ("Beveren",))
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
         resolution = importer.resolve_existing_team(
             league_by_key("belgian_pro_league"), "2026-27", "SK Beveren"
@@ -70,7 +70,7 @@ _OFFICIAL_DIGEST = "sha256:af6349f30e0565f92fb2af4fde34b1c1707acf6121003b230b901
 
 
 def _all_teams(store: object) -> None:
-    _seed_belgian_teams(store, tuple(target for _, target in _NAMES))
+    _seed_league_teams(store, tuple(target for _, target in _NAMES))
 
 
 def _resigned(payload: dict[str, object]) -> bytes:
@@ -145,7 +145,7 @@ def test_nine_lf05_pairings_are_identity_ready_without_observations(tmp_path: Pa
 )
 def test_official_alias_is_unavailable_to_other_sources(tmp_path: Path, kind: SourceKind) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
-        _seed_belgian_teams(store, ("Beveren",))
+        _seed_league_teams(store, ("Beveren",))
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
         assert (
             importer.resolve_existing_team(
@@ -157,7 +157,7 @@ def test_official_alias_is_unavailable_to_other_sources(tmp_path: Path, kind: So
 
 def test_official_alias_requires_exact_name_league_and_season(tmp_path: Path) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
-        _seed_belgian_teams(store, ("Beveren",))
+        _seed_league_teams(store, ("Beveren",))
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
         league = league_by_key("belgian_pro_league")
         assert (
@@ -178,7 +178,7 @@ def test_official_alias_requires_exact_name_league_and_season(tmp_path: Path) ->
 
 def test_direct_same_identity_confirms_and_competing_identity_is_ambiguous(tmp_path: Path) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
-        _seed_belgian_teams(store, ("Beveren",))
+        _seed_league_teams(store, ("Beveren",))
         league = league_by_key("belgian_pro_league")
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
         same = importer.resolve_existing_team(league, "2026-27", "SK Beveren")
@@ -208,7 +208,7 @@ def test_direct_same_identity_confirms_and_competing_identity_is_ambiguous(tmp_p
     other = tmp_path / "competing"
     other.mkdir()
     with open_store(other / "matchvet.sqlite3", private_root=other) as store:
-        _seed_belgian_teams(store, ("Beveren", "SK Beveren"))
+        _seed_league_teams(store, ("Beveren", "SK Beveren"))
         importer = FixtureHistoryImporter(store, private_root=other)
         assert (
             importer.resolve_existing_team(league, "2026-27", "SK Beveren").state
@@ -230,7 +230,7 @@ def test_missing_registry_target_remains_unknown(tmp_path: Path) -> None:
 def test_official_source_cannot_register_missing_reviewed_target(tmp_path: Path) -> None:
     league = league_by_key("belgian_pro_league")
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
-        _seed_belgian_teams(store, ("Lommel SK",))
+        _seed_league_teams(store, ("Lommel SK",))
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
         result = importer.import_dataset(
             ParsedDataset(
@@ -351,7 +351,7 @@ def test_official_observation_persists_official_mapping_provenance(tmp_path: Pat
 def test_official_policy_provenance_is_unavailable_to_other_seasons(tmp_path: Path) -> None:
     league = league_by_key("belgian_pro_league")
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
-        _seed_belgian_teams(store, ("Lommel SK", "Cercle Brugge"))
+        _seed_league_teams(store, ("Lommel SK", "Cercle Brugge"))
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
         result = importer.import_dataset(
             ParsedDataset(

@@ -74,6 +74,7 @@ class SourceKind(StrEnum):
     OPENFOOTBALL = "OPENFOOTBALL"
     OPENFOOTBALL_TEXT = "OPENFOOTBALL_TEXT"
     OPERATOR_OFFICIAL_FIXTURE_OBSERVATION = "OPERATOR_OFFICIAL_FIXTURE_OBSERVATION"
+    OPERATOR_OFFICIAL_FIXTURE_OBSERVATION_V2 = "OPERATOR_OFFICIAL_FIXTURE_OBSERVATION_V2"
 
 
 class MappingState(StrEnum):
@@ -1112,6 +1113,19 @@ _SOURCE_RIGHTS: Mapping[SourceKind, _SourceRights] = MappingProxyType(
             redistributable=True,
             terms_reference="https://creativecommons.org/publicdomain/zero/1.0/",
             artifact_retention_class="REUSABLE",
+        ),
+        SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION_V2: _SourceRights(
+            source_key="official-fixture-manual-citation-v2",
+            canonical_name="Official scheduling publication, manual citation v2",
+            owner="Official competition publishers",
+            source_class="OFFICIAL_COMPETITION",
+            access_method="MANUAL_CITATION",
+            base_locator="matchvet:operator-official-fixture-observation:2",
+            allowed_use="RESEARCH_ONLY",
+            retention_status="RETAIN_PRIVATE",
+            redistributable=False,
+            terms_reference="matchvet:operator-official-fixture-observation:2",
+            artifact_retention_class="PROTECTED",
         ),
         SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION: _SourceRights(
             source_key="pro-league-official-manual-citation",
@@ -3392,17 +3406,17 @@ class FixtureHistoryAcquirer:
 
         from matchvet.operator_fixture_observation import OperatorFixtureObservationRepository
 
-        manual_scope = scopes_by_league["belgian_pro_league"]
         manual_repository = OperatorFixtureObservationRepository(
             self.importer._store,
             private_root=self.importer._private_root,
         )
-        for manual_record in manual_repository.list_for_scope(manual_scope.scope_id):
-            capture_id = manual_record.capture_id
-            row_key = f"official-observation:{manual_record.observation.digest}"
-            capture_scopes[capture_id] = manual_scope.scope_id
-            capture_rows[capture_id] = {row_key}
-            imports.append(manual_record.import_result)
+        for manual_scope in scopes:
+            for manual_record in manual_repository.list_for_scope(manual_scope.scope_id):
+                capture_id = manual_record.capture_id
+                row_key = f"official-observation:{manual_record.observation.digest}"
+                capture_scopes[capture_id] = manual_scope.scope_id
+                capture_rows[capture_id] = {row_key}
+                imports.append(manual_record.import_result)
 
         window = MatchweekWindow.for_friday(plan.matchweek_friday)
         revisions_by_id: dict[str, FixtureRevisionReference] = {}

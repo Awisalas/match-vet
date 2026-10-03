@@ -8,11 +8,12 @@ import re
 from dataclasses import asdict, dataclass, fields
 from datetime import UTC, date, datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from matchvet.artifacts import ArtifactError, ArtifactStore
-from matchvet.fixture_coverage import fixture_scopes_for_matchweek
+from matchvet.fixture_coverage import FixtureScope, fixture_scopes_for_matchweek
 from matchvet.ingestion import (
+    _SOURCE_RIGHTS,
     FixtureHistoryImporter,
     ImportResult,
     LeagueConfig,
@@ -28,6 +29,12 @@ from matchvet.ingestion import (
     league_by_key,
     sha256_bytes,
 )
+from matchvet.operator_fixture_attestation import (
+    OfficialPublicationReference,
+    OperatorPublicationRule,
+    matching_official_publication_rule,
+    operator_attestation_policy_v2,
+)
 from matchvet.store import Store
 
 OPERATOR_FIXTURE_OBSERVATION_CONTRACT_VERSION = "operator-official-fixture-observation-v1"
@@ -38,6 +45,12 @@ OPERATOR_FIXTURE_OBSERVATION_MEDIA_TYPE = (
     "application/vnd.matchvet.operator-official-fixture-observation+json"
 )
 OPERATOR_FIXTURE_OBSERVATION_SOURCE_KEY = "pro-league-official-manual-citation"
+
+OPERATOR_FIXTURE_OBSERVATION_V2_CONTRACT_VERSION = "operator-official-fixture-observation-v2"
+OPERATOR_FIXTURE_OBSERVATION_V2_SCHEMA_VERSION = 2
+OPERATOR_FIXTURE_OBSERVATION_V2_POLICY_VERSION = "2"
+OPERATOR_FIXTURE_OBSERVATION_V2_SOURCE_KEY = "official-fixture-manual-citation-v2"
+_V2_LEAGUES = ("bundesliga", "ligue_1", "premier_league", "serie_a")
 
 _MAX_TEXT = 256
 _MAX_OPERATOR_ID = 120
@@ -205,6 +218,153 @@ def operator_fixture_observation_policy_v1() -> OperatorFixtureObservationPolicy
     )
 
 
+@dataclass(frozen=True)
+class OperatorFixtureObservationPolicyV2:
+    """Exact fixture facts under the frozen LF02 v2 scheduling publication policy."""
+
+    league_key: str
+    season: str = "2026-27"
+
+    def __post_init__(self) -> None:
+        if self.league_key not in _V2_LEAGUES or self.season != _SUPPORTED_SEASON:
+            raise ValueError("No official fixture observation policy supports this scope.")
+
+    @property
+    def policy_id(self) -> str:
+        return OPERATOR_FIXTURE_OBSERVATION_POLICY_ID
+
+    @property
+    def policy_version(self) -> str:
+        return OPERATOR_FIXTURE_OBSERVATION_V2_POLICY_VERSION
+
+    @property
+    def digest(self) -> str:
+        payload = {
+            "policy_id": self.policy_id,
+            "policy_version": self.policy_version,
+            "league_key": self.league_key,
+            "season": self.season,
+            "supported_leagues": _V2_LEAGUES,
+            "required_layer": "exact_schedule",
+            "kickoff_precision": "INSTANT",
+            "attestation_policy_digest": operator_attestation_policy_v2().digest,
+            "url_form": "HTTPS_WITHOUT_QUERY_OR_FRAGMENT_CANONICAL_CALENDAR_PATH",
+        }
+        return f"sha256:{hashlib.sha256(_canonical_json(payload)).hexdigest()}"
+
+    @property
+    def publisher_id(self) -> str:
+        return self._scheduling_rule().publisher_id
+
+    @property
+    def publisher_name(self) -> str:
+        return self._scheduling_rule().publisher_name
+
+    @property
+    def competition_id(self) -> str:
+        return self._scheduling_rule().competition_id
+
+    @property
+    def competition_name(self) -> str:
+        return league_by_key(self.league_key).name
+
+    def _scheduling_rule(self) -> OperatorPublicationRule:
+        return next(
+            rule
+            for rule in operator_attestation_policy_v2().publication_rules
+            if rule.league_key == self.league_key and "exact_schedule" in rule.supported_layers
+        )
+
+    def validate_publication(
+        self, *, scope: FixtureScope, publication_id: str, publication_type: str, official_url: str
+    ) -> None:
+        _require_text(publication_id, "Publication ID")
+        _require_text(publication_type, "Publication type")
+        _require_text(official_url, "Official URL", maximum=512)
+        if scope.league_key != self.league_key or scope.season != self.season:
+            raise ValueError("Publication scope differs from the observation policy.")
+        publication = OfficialPublicationReference(
+            publication_id=publication_id,
+            publisher_id=self.publisher_id,
+            competition_id=self.competition_id,
+            official_url=official_url,
+            title_or_publication_id=publication_id,
+            publication_date=None,
+            publication_type=publication_type,
+            claim_scope_id=scope.scope_id,
+            covers_exact_scope=False,
+            complete_for_scope=False,
+        )
+        rule = matching_official_publication_rule(
+            operator_attestation_policy_v2(), scope, publication
+        )
+        parsed = urlsplit(official_url)
+        decoded_path = unquote(parsed.path)
+        if (
+            rule is None
+            or "exact_schedule" not in rule.supported_layers
+            or parsed.query
+            or parsed.fragment
+            or any(segment in {".", ".."} for segment in decoded_path.split("/"))
+            or "\\" in decoded_path
+            or "//" in decoded_path
+            or (
+                rule.path_prefix.endswith("-")
+                and re.fullmatch(
+                    re.escape(rule.path_prefix) + r"[a-z0-9]+(?:-[a-z0-9]+)*/?", decoded_path
+                )
+                is None
+            )
+            # LF02 uses prefixes for legacy calendars. A single calendar resource
+            # must not authorize unrelated pages whose path merely shares a prefix.
+            or (
+                rule.path_pattern is None
+                and not rule.path_prefix.endswith("-")
+                and parsed.path.rstrip("/") != rule.path_prefix.rstrip("/")
+            )
+        ):
+            raise ValueError("Publication ID, type, and URL are not approved by this policy.")
+
+
+def _validate_observation_publication(
+    policy: OperatorFixtureObservationPolicy | OperatorFixtureObservationPolicyV2,
+    scope: FixtureScope,
+    *,
+    publication_id: str,
+    publication_type: str,
+    official_url: str,
+) -> None:
+    citation = {
+        "publication_id": publication_id,
+        "publication_type": publication_type,
+        "official_url": official_url,
+    }
+    if isinstance(policy, OperatorFixtureObservationPolicyV2):
+        policy.validate_publication(scope=scope, **citation)
+    else:
+        policy.validate_publication(**citation)
+
+
+def operator_fixture_observation_policy_v2(league_key: str) -> OperatorFixtureObservationPolicyV2:
+    return OperatorFixtureObservationPolicyV2(league_key)
+
+
+def _observation_policy(
+    league_key: str, season: str
+) -> OperatorFixtureObservationPolicy | OperatorFixtureObservationPolicyV2:
+    if league_key == _SUPPORTED_LEAGUE and season == _SUPPORTED_SEASON:
+        return operator_fixture_observation_policy_v1()
+    return OperatorFixtureObservationPolicyV2(league_key, season)
+
+
+def _observation_source_kind(league_key: str) -> SourceKind:
+    return (
+        SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION
+        if league_key == _SUPPORTED_LEAGUE
+        else SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION_V2
+    )
+
+
 def _policy_digest(policy: OperatorFixtureObservationPolicy) -> str:
     payload = {key: value for key, value in asdict(policy).items() if key != "digest"}
     return f"sha256:{hashlib.sha256(_canonical_json(payload)).hexdigest()}"
@@ -246,10 +406,21 @@ class OperatorOfficialFixtureObservation:
     digest: str = ""
 
     def __post_init__(self) -> None:
+        versions = (
+            (
+                OPERATOR_FIXTURE_OBSERVATION_CONTRACT_VERSION,
+                OPERATOR_FIXTURE_OBSERVATION_SCHEMA_VERSION,
+                OPERATOR_FIXTURE_OBSERVATION_POLICY_VERSION,
+            ),
+            (
+                OPERATOR_FIXTURE_OBSERVATION_V2_CONTRACT_VERSION,
+                OPERATOR_FIXTURE_OBSERVATION_V2_SCHEMA_VERSION,
+                OPERATOR_FIXTURE_OBSERVATION_V2_POLICY_VERSION,
+            ),
+        )
         if (
-            self.contract_version != OPERATOR_FIXTURE_OBSERVATION_CONTRACT_VERSION
-            or type(self.schema_version) is not int
-            or self.schema_version != OPERATOR_FIXTURE_OBSERVATION_SCHEMA_VERSION
+            type(self.schema_version) is not int
+            or (self.contract_version, self.schema_version, self.policy_version) not in versions
         ):
             raise ValueError("Unsupported Operator Official Fixture Observation version.")
         for name, value in (
@@ -259,17 +430,20 @@ class OperatorOfficialFixtureObservation:
         ):
             _require_text(value, name)
         _date_text(self.matchweek_friday, "Matchweek Friday")
-        if self.league_key != _SUPPORTED_LEAGUE or self.season != _SUPPORTED_SEASON:
-            raise ValueError("Observation must use the policy-supported Belgian season.")
+        policy = _observation_policy(self.league_key, self.season)
+        if self.policy_version != policy.policy_version:
+            raise ValueError("Observation version does not match its supported league policy.")
+        if self.policy_version == "2" and self.kickoff_precision != "INSTANT":
+            raise ValueError("Observation v2 requires an exact INSTANT kickoff.")
         try:
             scopes = fixture_scopes_for_matchweek(self.matchweek_friday, season=self.season)
         except ValueError as error:
             raise ValueError(
                 "Matchweek scope must use an exact Friday in the supported season."
             ) from error
-        expected_scope = next(item for item in scopes if item.league_key == _SUPPORTED_LEAGUE)
+        expected_scope = next(item for item in scopes if item.league_key == self.league_key)
         if self.scope_id != expected_scope.scope_id:
-            raise ValueError("Observation must use the policy-supported Belgian Fixture Scope.")
+            raise ValueError("Observation must use the policy-supported Fixture Scope.")
         for name, value in (
             ("Home source name", self.home_source_name),
             ("Away source name", self.away_source_name),
@@ -300,7 +474,7 @@ class OperatorOfficialFixtureObservation:
                 .isoformat()
             )
             if local_date != self.source_local_date:
-                raise ValueError("Source local date does not match the Belgian kickoff date.")
+                raise ValueError("Source local date does not match the league kickoff date.")
         else:
             raise ValueError("Kickoff precision must be DATE or INSTANT.")
         if self.fixture_status not in _STATUS_VALUES:
@@ -314,7 +488,6 @@ class OperatorOfficialFixtureObservation:
             _date_text(self.publication_date, "Publication date")
         _require_text(self.operator_id, "Operator ID", maximum=_MAX_OPERATOR_ID)
         _canonical_utc(self.observed_at_utc, "Observation timestamp")
-        policy = operator_fixture_observation_policy_v1()
         if (
             self.policy_id != policy.policy_id
             or self.policy_version != policy.policy_version
@@ -325,7 +498,9 @@ class OperatorOfficialFixtureObservation:
             or self.competition_name != policy.competition_name
         ):
             raise ValueError("Observation publisher, competition, or policy identity is invalid.")
-        policy.validate_publication(
+        _validate_observation_publication(
+            policy,
+            expected_scope,
             publication_id=self.publication_id,
             publication_type=self.publication_type,
             official_url=self.official_url,
@@ -428,13 +603,13 @@ class OperatorFixtureObservationRepository:
         self._importer = FixtureHistoryImporter(store, private_root=self._private_root)
 
     def record(self, value: OfficialFixtureObservationInput) -> PersistedOfficialFixtureObservation:
-        policy = operator_fixture_observation_policy_v1()
-        if value.league_key != policy.league_key or value.season != policy.season:
-            raise ValueError("No official fixture observation policy supports this scope.")
+        policy = _observation_policy(value.league_key, value.season)
         scopes = fixture_scopes_for_matchweek(value.friday, season=value.season)
         scope = next(item for item in scopes if item.league_key == value.league_key)
         league = league_by_key(value.league_key)
-        policy.validate_publication(
+        _validate_observation_publication(
+            policy,
+            scope,
             publication_id=value.publication_id,
             publication_type=value.publication_type,
             official_url=value.official_url,
@@ -455,8 +630,16 @@ class OperatorFixtureObservationRepository:
         if home.canonical_team_id == away.canonical_team_id:
             raise ValueError("Home and away names must resolve to different canonical teams.")
         observation = OperatorOfficialFixtureObservation(
-            contract_version=OPERATOR_FIXTURE_OBSERVATION_CONTRACT_VERSION,
-            schema_version=OPERATOR_FIXTURE_OBSERVATION_SCHEMA_VERSION,
+            contract_version=(
+                OPERATOR_FIXTURE_OBSERVATION_CONTRACT_VERSION
+                if policy.policy_version == "1"
+                else OPERATOR_FIXTURE_OBSERVATION_V2_CONTRACT_VERSION
+            ),
+            schema_version=(
+                OPERATOR_FIXTURE_OBSERVATION_SCHEMA_VERSION
+                if policy.policy_version == "1"
+                else OPERATOR_FIXTURE_OBSERVATION_V2_SCHEMA_VERSION
+            ),
             league_key=value.league_key,
             season=value.season,
             matchweek_friday=value.friday,
@@ -560,11 +743,11 @@ class OperatorFixtureObservationRepository:
         )
         result = self._importer.import_dataset(
             ParsedDataset(
-                SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION,
+                _observation_source_kind(observation.league_key),
                 league,
                 observation.season,
                 (row,),
-                OPERATOR_FIXTURE_OBSERVATION_CONTRACT_VERSION,
+                observation.contract_version,
             ),
             content,
             capture,
@@ -596,10 +779,14 @@ class OperatorFixtureObservationRepository:
             SELECT c.capture_id
             FROM source_captures AS c
             JOIN source_identities AS s ON s.source_id = c.source_id
-            WHERE s.source_key = ? AND c.artifact_digest = ?
+            WHERE s.source_key IN (?, ?) AND c.artifact_digest = ?
             ORDER BY c.capture_id
             """,
-                (OPERATOR_FIXTURE_OBSERVATION_SOURCE_KEY, artifact_digest),
+                (
+                    OPERATOR_FIXTURE_OBSERVATION_SOURCE_KEY,
+                    OPERATOR_FIXTURE_OBSERVATION_V2_SOURCE_KEY,
+                    artifact_digest,
+                ),
             )
             .fetchall()
         )
@@ -640,10 +827,15 @@ class OperatorFixtureObservationRepository:
             SELECT c.capture_id
             FROM source_captures AS c
             JOIN source_identities AS s ON s.source_id = c.source_id
-            WHERE s.source_key = ? AND substr(c.cache_key, 1, ?) = ?
+            WHERE s.source_key IN (?, ?) AND substr(c.cache_key, 1, ?) = ?
             ORDER BY c.retrieved_at_utc, c.capture_id
             """,
-                (OPERATOR_FIXTURE_OBSERVATION_SOURCE_KEY, len(prefix), prefix),
+                (
+                    OPERATOR_FIXTURE_OBSERVATION_SOURCE_KEY,
+                    OPERATOR_FIXTURE_OBSERVATION_V2_SOURCE_KEY,
+                    len(prefix),
+                    prefix,
+                ),
             )
             .fetchall()
         )
@@ -681,7 +873,9 @@ class OperatorFixtureObservationRepository:
     def _resolve_team(
         self, league: LeagueConfig, season: str, source_name: str, label: str
     ) -> TeamResolution:
-        resolution = self._importer.resolve_existing_team(league, season, source_name)
+        resolution = self._importer.resolve_existing_team(
+            league, season, source_name, source_kind=_observation_source_kind(league.key)
+        )
         if resolution.state is MappingState.UNKNOWN:
             raise ValueError(f"{label} team {source_name!r} is unknown in {league.name}.")
         if resolution.state is MappingState.AMBIGUOUS:
@@ -749,24 +943,37 @@ def verify_operator_fixture_observation_capture(
     ).fetchone()
     if row is None:
         raise OperatorFixtureObservationIntegrityError("Observation source capture is missing.")
-    expected_source_id = deterministic_identifier("source", OPERATOR_FIXTURE_OBSERVATION_SOURCE_KEY)
+    source_kind = next(
+        (
+            kind
+            for kind in (
+                SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION,
+                SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION_V2,
+            )
+            if _SOURCE_RIGHTS[kind].source_key == str(row[14])
+        ),
+        None,
+    )
+    if source_kind is None:
+        raise OperatorFixtureObservationIntegrityError("Unsupported observation source identity.")
+    source_rights = _SOURCE_RIGHTS[source_kind]
+    expected_source_id = deterministic_identifier("source", source_rights.source_key)
     if (
         str(row[0]) != expected_source_id
-        or str(row[14]) != OPERATOR_FIXTURE_OBSERVATION_SOURCE_KEY
-        or str(row[15]) != "Pro League official publication, manual citation"
-        or str(row[16]) != "Pro League"
-        or str(row[17]) != "OFFICIAL_COMPETITION"
-        or str(row[18]) != "MANUAL_CITATION"
-        or str(row[19]) != "https://www.proleague.be/"
-        or str(row[20]) != "RESEARCH_ONLY"
-        or str(row[21]) != "RETAIN_PRIVATE"
-        or bool(row[22])
-        or str(row[23]) != "matchvet:operator-official-fixture-observation:1"
+        or str(row[15]) != source_rights.canonical_name
+        or str(row[16]) != source_rights.owner
+        or str(row[17]) != source_rights.source_class
+        or str(row[18]) != source_rights.access_method
+        or str(row[19]) != source_rights.base_locator
+        or str(row[20]) != source_rights.allowed_use
+        or str(row[21]) != source_rights.retention_status
+        or bool(row[22]) != source_rights.redistributable
+        or str(row[23]) != source_rights.terms_reference
         or str(row[3]) != "MANUAL_CITATION"
         or str(row[5]) != OPERATOR_FIXTURE_OBSERVATION_MEDIA_TYPE
         or str(row[9]) != "RETAIN_PRIVATE"
         or str(row[10]) != "RESEARCH_ONLY:MANUAL_CITATION"
-        or str(row[11]) != "matchvet:operator-official-fixture-observation:1"
+        or str(row[11]) != source_rights.terms_reference
         or str(row[13]) != "matchvet-t06-v1"
     ):
         raise OperatorFixtureObservationIntegrityError(
@@ -782,7 +989,7 @@ def verify_operator_fixture_observation_capture(
         "allowed_use": "RESEARCH_ONLY",
         "redistributable": False,
         "retention_status": "RETAIN_PRIVATE",
-        "source_kind": SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION.value,
+        "source_kind": source_kind.value,
     }
     if rights != expected_rights:
         raise OperatorFixtureObservationIntegrityError(
@@ -807,7 +1014,8 @@ def verify_operator_fixture_observation_capture(
             "Observation artifact is missing, corrupt, or unsupported."
         ) from error
     if (
-        artifact_digest != str(row[6])
+        source_kind is not _observation_source_kind(observation.league_key)
+        or artifact_digest != str(row[6])
         or len(content) != int(row[7])
         or artifact_digest != sha256_bytes(content)
         or str(row[2]) != observation.official_url
@@ -889,7 +1097,12 @@ def _verify_observation_fixture_provenance(
         ("Home", observation.home_source_name, observation.home_team_id),
         ("Away", observation.away_source_name, observation.away_team_id),
     ):
-        resolution = importer.resolve_existing_team(league, observation.season, source_name)
+        resolution = importer.resolve_existing_team(
+            league,
+            observation.season,
+            source_name,
+            source_kind=_observation_source_kind(observation.league_key),
+        )
         if (
             resolution.state is not MappingState.CONFIRMED
             or resolution.canonical_team_id != expected_id

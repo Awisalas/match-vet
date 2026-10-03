@@ -98,9 +98,7 @@ def _persist_attested_assessment(
 ) -> AttestedFixtureCoverageAssessment:
     attestations = []
     for scope_assessment in assessment.scope_assessments:
-        manifest = repository.build_candidate_manifest(
-            assessment, scope_assessment.scope.scope_id
-        )
+        manifest = repository.build_candidate_manifest(assessment, scope_assessment.scope.scope_id)
         candidate_confirmations = tuple(
             CandidateComparisonConfirmation(
                 candidate_id=entry.candidate_id,
@@ -1059,13 +1057,20 @@ def test_freeze_exact_accepts_all_seven_persisted_attested_v3_scopes(
         "fake-manual-capture",
     ),
 )
+@pytest.mark.parametrize(
+    "league_key", ("belgian_pro_league", "premier_league", "serie_a", "bundesliga", "ligue_1")
+)
 def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
     tmp_path: Path,
+    league_key: str,
     additional_observation: dict[str, str] | None,
     fake_manual_capture: bool,
     expected_freeze: bool,
 ) -> None:
-    from test_operator_fixture_observation import _seed_belgian_teams, _valid_input
+    from test_operator_fixture_observation import (
+        _official_scheduling_input,
+        _seed_league_teams,
+    )
 
     from matchvet.matchweek_membership_repository import MatchweekMembershipRepository
     from matchvet.operator_fixture_observation import OperatorFixtureObservationRepository
@@ -1080,26 +1085,28 @@ def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
                     ("away", "Synthetic South FC"),
                 )
             )
-        _seed_belgian_teams(store, tuple(team_names))
-        observation_repository = OperatorFixtureObservationRepository(
-            store, private_root=tmp_path
-        )
+        _seed_league_teams(store, tuple(team_names), league_key)
+        observation_repository = OperatorFixtureObservationRepository(store, private_root=tmp_path)
         input_facts = {
             "friday": "2026-09-25",
             "kickoff": "2026-09-25T20:00:00+02:00",
             "publication_date": "2026-09-16",
         }
-        recorded = observation_repository.record(_valid_input(**input_facts))
+        recorded = observation_repository.record(
+            _official_scheduling_input(league_key, **input_facts)
+        )
         extra_capture_ids: tuple[str, ...] = ()
         if additional_observation is not None:
             extra_input = {**input_facts, **additional_observation}
-            extra = observation_repository.record(_valid_input(**extra_input))
+            extra = observation_repository.record(
+                _official_scheduling_input(league_key, **extra_input)
+            )
             extra_capture_ids = (extra.capture_id,)
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
         if fake_manual_capture:
             fake = importer.retain_capture(
                 source_kind=SourceKind.OPERATOR_OFFICIAL_FIXTURE_OBSERVATION,
-                league=league_by_key("belgian_pro_league"),
+                league=league_by_key(league_key),
                 season="2026-27",
                 content=b"not a canonical LF05 observation artifact",
                 capture=SourceCaptureInput(
@@ -1117,20 +1124,25 @@ def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
         assert observation.revision_id == recorded.revision_id
         assert observation.revision_digest is not None
 
-        baseline = _persistable_schedule_assessment(store, tmp_path, ())
-        belgian_scope = next(
-            item.scope
-            for item in baseline.scope_assessments
-            if item.scope.league_key == "belgian_pro_league"
+        # Exercise LF13's completion of an existing DATE revision as well as
+        # observations without an automated pairing row.
+        date_rows = (
+            (("2026-09-25", "", "Synthetic North FC", "Synthetic South FC"),)
+            if league_key == "premier_league" and expected_freeze
+            else ()
+        )
+        baseline = _persistable_schedule_assessment(store, tmp_path, date_rows)
+        manual_scope = next(
+            item.scope for item in baseline.scope_assessments if item.scope.league_key == league_key
         )
         evidence = tuple(
             replace(item, affirmatively_empty=False)
-            if item.scope_id == belgian_scope.scope_id
+            if item.scope_id == manual_scope.scope_id
             else item
             for item in baseline.coverage_evidence
         )
         manual_revision = FixtureRevisionReference(
-            scope_id=belgian_scope.scope_id,
+            scope_id=manual_scope.scope_id,
             fixture_id=recorded.fixture_id,
             revision_id=recorded.revision_id,
             revision_digest=observation.revision_digest,
@@ -1145,8 +1157,8 @@ def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
             identity_resolutions=(
                 *baseline.identity_resolutions,
                 FixtureIdentityResolution(
-                    candidate_id="candidate-lf05-manual-belgian",
-                    scope_id=belgian_scope.scope_id,
+                    candidate_id="candidate-lf05-manual-official",
+                    scope_id=manual_scope.scope_id,
                     state=FixtureIdentityState.RESOLVED,
                     canonical_fixture_id=recorded.fixture_id,
                     revision_ids=(recorded.revision_id,),
@@ -1192,12 +1204,12 @@ def test_freeze_exact_verifies_lf05_manual_citation_fixture_support(
             item.provider_id != "operator-official-fixture-observation"
             for item in frozen.provider_health_references
         )
-        belgian_membership = next(
+        manual_membership = next(
             item
             for item in frozen.memberships
-            if item.scope_id == "belgian_pro_league:2026-27:2026-09-25"
+            if item.scope_id == f"{league_key}:2026-27:2026-09-25"
         )
-        assert belgian_membership.controlling_revision_id == recorded.revision_id
+        assert manual_membership.controlling_revision_id == recorded.revision_id
 
 
 @pytest.mark.parametrize("attempt_change", ("missing", "wrong_digest"))

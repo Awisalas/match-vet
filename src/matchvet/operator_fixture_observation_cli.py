@@ -20,7 +20,9 @@ def add_fixture_observation_parser(
 ) -> None:
     observe = commands.add_parser("observe", help="record Research-Only official fixture facts")
     observe_commands = observe.add_subparsers(dest="observe_command", required=True)
-    official = observe_commands.add_parser("official", help="use an approved Pro League citation")
+    official = observe_commands.add_parser(
+        "official", help="use an approved official scheduling citation"
+    )
     official_commands = official.add_subparsers(dest="official_command", required=True)
     record = official_commands.add_parser("record", help="record one cited fixture observation")
     record.add_argument("--store", type=Path, required=True, help="explicit private database path")
@@ -44,7 +46,7 @@ def add_fixture_observation_parser(
     record.add_argument(
         "--publication-type",
         required=True,
-        choices=("OFFICIAL_COMPETITION_CALENDAR", "OFFICIAL_TEAM_FIXTURES"),
+        help="publication type approved by the versioned observation policy",
     )
     record.add_argument("--title", required=True, help="publication title or identifier")
     record.add_argument(

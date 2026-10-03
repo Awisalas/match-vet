@@ -1450,7 +1450,7 @@ def _certification_failures(
     policy = policy or operator_attestation_policy_v2()
     matching_rules: list[OperatorPublicationRule] = []
     for publication in publications:
-        rule = _matching_publication_rule(policy, manifest.scope, publication)
+        rule = matching_official_publication_rule(policy, manifest.scope, publication)
         if rule is None:
             failures.append("Publication identity, type, or URL is not approved by the policy.")
         else:
@@ -1935,11 +1935,12 @@ def _freshness_result(
     )
 
 
-def _matching_publication_rule(
+def matching_official_publication_rule(
     policy: OperatorAttestationPolicySnapshot,
     scope: FixtureScope,
     publication: OfficialPublicationReference,
 ) -> OperatorPublicationRule | None:
+    """Match a citation against the supplied immutable official publication policy."""
     rule = next(
         (
             item
@@ -1952,6 +1953,7 @@ def _matching_publication_rule(
         return None
     try:
         parsed = urlsplit(publication.official_url)
+        port = parsed.port
     except ValueError:
         return None
     if (
@@ -1964,7 +1966,7 @@ def _matching_publication_rule(
         or parsed.hostname != rule.host
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.port not in (None, 443)
+        or port not in (None, 443)
         or not parsed.path.startswith(rule.path_prefix)
         or (
             rule.path_pattern is not None
