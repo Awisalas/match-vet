@@ -114,6 +114,11 @@ def _engine_contract() -> dict[str, object]:
     }
 
 
+def engine_version_identity() -> str:
+    """Return the deterministic identity of the configured T11-T14 engine contract."""
+    return _digest(_engine_contract())
+
+
 @dataclass(frozen=True)
 class ModelContract:
     canonical_bytes: bytes

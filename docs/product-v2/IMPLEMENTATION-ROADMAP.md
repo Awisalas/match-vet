@@ -189,11 +189,11 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### F15 Add the internal AnalyzeMatchweek use case
-- **Status:** Complete in [#66](https://github.com/Awisalas/match-vet/issues/66).
+- **Status:** Complete in [#66](https://github.com/Awisalas/match-vet/issues/66); corrected in [#67](https://github.com/Awisalas/match-vet/issues/67).
 - **Goal:** Define the application-service request, durable progress, and resume entry points used by the CLI.
 - **Blocked by:** F03, F06, F07, F10, F13, F14.
 - **Size:** S.
-- **Contract:** `matchvet.f15.AnalyzeMatchweek` verifies exact retained predecessors and delegates start, inspect, and resume to T04. F15 progress remains `IN_PROGRESS` until downstream result publication exists.
+- **Contract:** `matchvet.f15.AnalyzeMatchweek` verifies exact F06/F07/F10/F14 inputs and the public F13 engine-version identity, then delegates start, inspect, and resume to T04. Per-match F11/F13 outputs are produced downstream; F15 progress remains `IN_PROGRESS` until result publication exists.
 - **Recommended Matt Pocock skills:** `$architect`, `$codebase-design`.
 - **Model:** GPT-6 Luna Max is sufficient.
 

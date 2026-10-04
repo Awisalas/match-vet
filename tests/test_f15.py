@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import shutil
 from collections.abc import Generator
 from dataclasses import dataclass, replace
@@ -11,12 +10,11 @@ import pytest
 from test_match_evidence_cutoff import _freeze
 
 from matchvet.f10 import V2_REQUIREMENT_CATALOG
-from matchvet.f11 import F11EvidenceRepository
-from matchvet.f13 import ModelContractRepository
+from matchvet.f13 import engine_version_identity
 from matchvet.f14 import PreferenceProfileRepository
 from matchvet.f15 import AnalyzeMatchweek, AnalyzeMatchweekError, AnalyzeMatchweekRequest
 from matchvet.match_evidence_cutoff import CutoffPolicy, MatchEvidenceCutoffRepository
-from matchvet.runs import RunLifecycleError, RunState
+from matchvet.runs import RunState
 from matchvet.store import Store, open_store
 
 
@@ -25,7 +23,6 @@ class F15Fixture:
     database: Path
     root: Path
     request: AnalyzeMatchweekRequest
-    alternate_profile_digest: str
 
 
 @pytest.fixture(scope="module")
@@ -39,30 +36,18 @@ def f15_fixture(tmp_path_factory: pytest.TempPathFactory) -> F15Fixture:
         cutoffs = MatchEvidenceCutoffRepository(store)
         policy_digest = cutoffs.persist_policy(CutoffPolicy("test", "f15", 3600))
         cutoff = cutoffs.persist_for_freeze(freeze_id, policy_digest)[0]
-        evidence = F11EvidenceRepository(store).build(freeze_id, policy_digest, weather_client=None)
-        model = ModelContractRepository(store).build(evidence.digest, cutoff.cutoff_id, history=())
         profiles = PreferenceProfileRepository(store)
         profile = profiles.build_profile(("match_winner_home",))
-        alternate_profile = profiles.build_profile(("match_winner_away",))
         request = AnalyzeMatchweekRequest(
             matchweek="2026-09-25",
             freeze_id=freeze_id,
             cutoff_policy_digest=policy_digest,
             cutoff_ids=(cutoff.cutoff_id,),
             research_contract_digest=V2_REQUIREMENT_CATALOG.digest,
-            model_contract_digest=model.digest,
-            model_version_identity=hashlib.sha256(
-                json.dumps(
-                    model.to_dict()["inputs"]["engine_contract"],
-                    ensure_ascii=True,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                    allow_nan=False,
-                ).encode()
-            ).hexdigest(),
+            model_version_identity=engine_version_identity(),
             preference_profile_digest=profile.digest,
         )
-    return F15Fixture(database, root, request, alternate_profile.digest)
+    return F15Fixture(database, root, request)
 
 
 @pytest.fixture
@@ -80,6 +65,7 @@ def test_start_produces_durable_t04_progress_without_claiming_matchweek_complete
     f15_store: Store, f15_fixture: F15Fixture
 ) -> None:
     progress = AnalyzeMatchweek(f15_store).start(f15_fixture.request)
+    assert not any("F13_RESULT" in identity for identity in progress.durable_result_identities)
 
     assert progress.run_id
     assert progress.run_state is RunState.INCOMPLETE
@@ -87,6 +73,12 @@ def test_start_produces_durable_t04_progress_without_claiming_matchweek_complete
     assert progress.analysis_state == "IN_PROGRESS"
     assert any(
         identity.startswith("F06:sha256:") for identity in progress.durable_result_identities
+    )
+    assert (
+        progress.t04_status.input_digests["model"]
+        == hashlib.sha256(
+            ("F13_ENGINE:" + f15_fixture.request.model_version_identity).encode()
+        ).hexdigest()
     )
     assert progress.analysis_complete is False
     assert progress.matchweek_result_identity is None
@@ -112,13 +104,11 @@ def test_changed_predecessor_input_refuses_resume(
     first = service.start(f15_fixture.request)
     changed = replace(
         f15_fixture.request,
-        preference_profile_digest=f15_fixture.alternate_profile_digest,
+        model_version_identity="0" * 64,
     )
 
-    with pytest.raises(RunLifecycleError) as raised:
+    with pytest.raises(AnalyzeMatchweekError):
         service.resume(first.run_id, changed)
-
-    assert raised.value.error.code == "MV-RESUME-DIGEST_MISMATCH"
 
 
 def test_missing_predecessor_artifact_fails_closed(

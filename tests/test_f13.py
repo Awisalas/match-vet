@@ -491,3 +491,13 @@ def test_observed_context_retains_attempt_but_cannot_supply_quantitative_history
         for model in value["results"].values():
             assert model["model_availability"] == "MODEL_UNAVAILABLE"
             assert not model["estimated_distribution"]
+
+
+def test_engine_version_identity_is_deterministic_without_per_match_inputs() -> None:
+    from matchvet.f13 import engine_version_identity
+
+    identity = engine_version_identity()
+
+    assert len(identity) == 64
+    assert set(identity) <= set("0123456789abcdef")
+    assert engine_version_identity() == identity

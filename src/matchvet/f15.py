@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 
-from matchvet.artifacts import ArtifactError, ArtifactStore
+from matchvet.artifacts import ArtifactError
 from matchvet.f10 import V2_REQUIREMENT_CATALOG
-from matchvet.f11 import F11Error, F11EvidenceRepository
+from matchvet.f13 import engine_version_identity
 from matchvet.f14 import F14Error, PreferenceProfileRepository
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoffError, MatchEvidenceCutoffRepository
 from matchvet.matchweek_membership_repository import (
@@ -46,7 +44,6 @@ class AnalyzeMatchweekRequest:
     cutoff_policy_digest: str
     cutoff_ids: tuple[str, ...]
     research_contract_digest: str
-    model_contract_digest: str
     model_version_identity: str
     preference_profile_digest: str
 
@@ -58,7 +55,6 @@ class AnalyzeMatchweekRequest:
                 self.freeze_id,
                 self.cutoff_policy_digest,
                 self.research_contract_digest,
-                self.model_contract_digest,
                 self.model_version_identity,
                 self.preference_profile_digest,
             )
@@ -166,54 +162,16 @@ class AnalyzeMatchweek:
                 raise AnalyzeMatchweekError("F07 cutoff policy is not configured.")
             if request.research_contract_digest != V2_REQUIREMENT_CATALOG.digest:
                 raise AnalyzeMatchweekError("F10 research contract is unsupported or changed.")
-            model_value = _read_model_result(self._store, request.model_contract_digest)
-            model_inputs = model_value.get("inputs")
-            if not isinstance(model_inputs, dict):
-                raise AnalyzeMatchweekError("F13 model contract inputs are malformed.")
-            model_versions = model_inputs.get("engine_contract")
-            if not isinstance(model_versions, dict):
-                raise AnalyzeMatchweekError("F13 model version identity is missing.")
-            expected_model_version = hashlib.sha256(
-                json.dumps(
-                    model_versions,
-                    ensure_ascii=True,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                    allow_nan=False,
-                ).encode()
-            ).hexdigest()
-            if request.model_version_identity != expected_model_version:
-                raise AnalyzeMatchweekError("F13 model version identity differs from its contract.")
-            if (
-                model_inputs.get("freeze_id") != freeze.freeze_id
-                or model_inputs.get("freeze_digest") != freeze.freeze_digest
-                or model_inputs.get("requirement_catalog_digest")
-                != request.research_contract_digest
-                or model_inputs.get("cutoff_id") not in request.cutoff_ids
-            ):
+            if request.model_version_identity != engine_version_identity():
                 raise AnalyzeMatchweekError(
-                    "F13 model contract has incompatible exact predecessors."
+                    "F13 engine version identity is unsupported or changed."
                 )
-            evidence_digest = model_inputs.get("evidence_set_digest")
-            if not isinstance(evidence_digest, str):
-                raise AnalyzeMatchweekError("F13 model contract lacks its exact F11 identity.")
-            evidence = F11EvidenceRepository(self._store).replay(
-                evidence_digest,
-                freeze_id=freeze.freeze_id,
-                policy_digest=request.cutoff_policy_digest,
-            )
-            if evidence.digest != evidence_digest:
-                raise AnalyzeMatchweekError("F11 evidence identity does not match F13 input.")
-            model_cutoff = str(model_inputs.get("cutoff_id"))
-            if model_cutoff not in {cutoff.cutoff_id for cutoff in cutoffs}:
-                raise AnalyzeMatchweekError("F13 model contract names an unrequested F07 cutoff.")
             PreferenceProfileRepository(self._store).replay(request.preference_profile_digest)
             artifact_digests = tuple(
                 sorted(
                     {
                         request.cutoff_policy_digest,
                         request.preference_profile_digest,
-                        request.model_contract_digest,
                         *(cutoff.digest.removeprefix("sha256:") for cutoff in cutoffs),
                     }
                 )
@@ -224,7 +182,6 @@ class AnalyzeMatchweek:
                         freeze.freeze_digest.removeprefix("sha256:"),
                         request.cutoff_policy_digest,
                         request.research_contract_digest,
-                        request.model_contract_digest,
                         request.preference_profile_digest,
                         *(cutoff.digest.removeprefix("sha256:") for cutoff in cutoffs),
                     }
@@ -238,11 +195,8 @@ class AnalyzeMatchweek:
                 + ",".join(request.cutoff_ids),
                 "preference_set": "F14:" + request.preference_profile_digest,
                 "policy": "F15:ANALYSIS_PENDING_DOWNSTREAM_OUTPUTS",
-                "model": "F13:"
-                + request.model_contract_digest
-                + ":"
-                + request.model_version_identity,
-                "feature": "F13:VERSIONED_MODEL_CONTRACT",
+                "model": "F13_ENGINE:" + request.model_version_identity,
+                "feature": "F13_ENGINE_VERSION_IDENTITY_V1",
                 "research_rule": "F10:" + request.research_contract_digest,
                 "canonical_contract": "MATCHVET_V2_ANALYZE_MATCHWEEK_V1",
                 "schema": "T04_SCHEMA:" + str(self._store.status.schema_version),
@@ -261,7 +215,7 @@ class AnalyzeMatchweek:
                             "F06:" + freeze.freeze_digest,
                             "F07_POLICY:" + request.cutoff_policy_digest,
                             "F10:" + request.research_contract_digest,
-                            "F13:" + request.model_contract_digest,
+                            "F13_ENGINE:" + request.model_version_identity,
                             "F14:" + request.preference_profile_digest,
                             *("F07_CUTOFF:" + cutoff.digest for cutoff in cutoffs),
                         }
@@ -274,7 +228,6 @@ class AnalyzeMatchweek:
             ArtifactError,
             MatchEvidenceCutoffError,
             MatchweekMembershipIntegrityError,
-            F11Error,
             F14Error,
             ValueError,
         ) as error:
@@ -294,34 +247,6 @@ class AnalyzeMatchweek:
             matchweek_result_identity=None,
             t04_status=status,
         )
-
-
-def _read_model_result(store: Store, digest: str) -> dict[str, object]:
-    """Verify exact retained F13 result bytes without executing model code."""
-    media_type = "application/vnd.matchvet.f13-model-result.v2+json"
-    metadata = store.artifact_metadata(digest)
-    if (
-        metadata is None
-        or metadata.media_type != media_type
-        or metadata.retention_class != "PROTECTED"
-    ):
-        raise AnalyzeMatchweekError("F13 result artifact is missing or has the wrong type.")
-    content = ArtifactStore(store).read_artifact(digest)
-    try:
-        value = json.loads(content)
-        if (
-            not isinstance(value, dict)
-            or json.dumps(
-                value, ensure_ascii=True, separators=(",", ":"), sort_keys=True, allow_nan=False
-            ).encode()
-            != content
-        ):
-            raise ValueError("F13 result is not canonical JSON.")
-        if hashlib.sha256(content).hexdigest() != digest:
-            raise ValueError("F13 result digest mismatch.")
-        return value
-    except (TypeError, ValueError) as error:
-        raise AnalyzeMatchweekError("F13 result artifact is malformed or corrupt.") from error
 
 
 def _observation(store: Store) -> ResourceObservation:
