@@ -181,6 +181,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### F14 Add the V2 Preference Profile and decision result
+- **Status:** Complete in [#65](https://github.com/Awisalas/match-vet/issues/65). See the [F14 V2 contract](../f14-v2-decision-contract.md).
 - **Goal:** Snapshot the founder's allowed preferences separately from engine market capability. Add no markets. Exclude Unders, cards, Over 0.5, Under 0.5, and trivial selections. Vet every enabled preference and return one strongest justified recommendation or AVOID MATCH, labeled RESEARCH_ONLY, before lineups and without odds-based ranking.
 - **Blocked by:** F10, F13.
 - **Size:** M.

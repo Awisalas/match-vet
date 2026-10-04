@@ -57,6 +57,12 @@ The UTC time retained for every fixture, cutoff, and item of evidence. User-faci
 **Preference Set**:
 The fixed, versioned collection of every enabled market selection and, where applicable, its side and exact line, that MatchVet vets against every Target Match. Items change only through an explicit Preference Set version change.
 
+**Preference Profile**:
+The immutable V2 snapshot of the founder's enabled Betting Preferences, selected from the approved T10 catalog and identified independently from engine market capability.
+
+**Engine Market Capability**:
+The versioned set of market contracts the engine can represent and evaluate. Capability does not imply that a Betting Preference is enabled in a Preference Profile.
+
 **Initial Preference Set**:
 The first Preference Set contains Home Win, Draw, Away Win; Match Goals Over 1.5, 2.5, and 3.5; Home Team Goals Over 1.5 and 2.5; Away Team Goals Over 1.5 and 2.5; First-Half Over 1.5; Second-Half Over 1.5; Double Chance 1X, X2, and 12; and Asian Handicaps Home or Away 0.0, +1.0, +1.5, -1.0, and -1.5. Its corner preferences are Full-Match Total Corners Over 8.5, 9.5, and 10.5; Corner Match Winner Home, Draw, and Away; and Home Team or Away Team Corners Over 3.5, 4.5, and 5.5.
 
@@ -350,6 +356,9 @@ Enough out-of-sample evidence under predeclared Preference Family or Supported L
 
 **Odds Context**:
 Optional bookmaker price data retained for research or benchmarking with its source and observation time. Odds never determine PLAY or AVOID MATCH, and missing odds never block a recommendation.
+
+**Match Decision Result**:
+The immutable V2 result of vetting each enabled Betting Preference against one exact Target Match, with one Primary Recommendation or AVOID MATCH and its exact profile, evidence, policy, model, uncertainty, and vetting lineage.
 
 ## Provider health
 
