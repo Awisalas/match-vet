@@ -208,7 +208,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 
 ### F17 Gate publication and recovery
 - **Goal:** Publish the transparent, immutable MatchVet record only after fixture coverage and every eligible match's terminal decision are complete. Include evidence provenance, preference results, uncertainty, decision reason, and RESEARCH_ONLY status. Resume from matching immutable inputs and outputs.
-- **Blocked by:** F16.
+- **Blocked by:** F16 and [#70](https://github.com/Awisalas/match-vet/issues/70), the frozen V2 CandidateInput derivation methodology and corrective dependency.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.
