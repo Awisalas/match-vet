@@ -173,6 +173,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### F13 Version V2 model inputs and uncertainty
+- **Status:** Complete in [#64](https://github.com/Awisalas/match-vet/issues/64). See the [V2 model contract](../f13-v2-model-contract.md).
 - **Goal:** Bind prediction and calibration outputs to frozen evidence, cutoff-eligible history, and explicit model versions.
 - **Blocked by:** F07, F10, F11.
 - **Size:** M.

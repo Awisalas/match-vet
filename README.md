@@ -55,6 +55,10 @@ device. The [release qualification record](docs/research-only-release-qualificat
 the checked commit, seven-league replay, offline rebuild, recovery checks, and measured budgets.
 It does not establish predictive reliability or Production Promotion.
 
+F13 adds protected V2 model contracts binding predictions and uncertainty to exact frozen
+membership, per-match cutoffs, evidence, historical inputs, and model/calibration versions.
+The existing V1 model artifacts remain unchanged. See the [V2 model contract](docs/f13-v2-model-contract.md).
+
 ## Bootstrap
 
 Use the pinned native Termux packages and Python environment described in [the Termux environment guide](docs/termux-environment.md). Then run:

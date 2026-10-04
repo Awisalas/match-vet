@@ -373,3 +373,14 @@ Separate permission, reachability, capability availability, structural validity,
 
 **Provider Health Record Identity**:
 The pair of exact Fixture Coverage Assessment digest and Provider Attempt ID. F05 persists one record per pair. Replaying the same pair is idempotent; reusing an attempt in another assessment creates another immutable record because its assessment reference changes the provenance and F04 digest.
+
+## Model lineage
+
+**V2 Model Input Contract**:
+The exact frozen evidence, cutoff-valid historical inputs, and model versions used to estimate one Target Match. Its identity changes when any retained input or version changes.
+
+**V2 Model Family Result**:
+A prediction and its availability and uncertainty for one model family, bound to the exact V2 Model Input Contract and calibration lineage. An unavailable model or calibration retains that state explicitly.
+
+**Calibration Case**:
+An exact earlier prediction paired with cutoff-valid observed counts for the same fixture, teams, and kickoff. Unknown outcomes cannot supply calibration facts.
