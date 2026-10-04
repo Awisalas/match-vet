@@ -198,8 +198,10 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### F16 Process each eligible match
+- **Status:** Complete in [#69](https://github.com/Awisalas/match-vet/issues/69). See the [F16 implementation sketch](../design/f16-implementation-sketch.md).
 - **Goal:** Research each frozen match as evidence for the betting decision, then predict and vet every enabled preference, with a durable result for each one.
 - **Blocked by:** F11, F12, F13, F14, F15.
+- **Contract:** The existing T04 phases run exact F11 evidence, one cutoff-bound F13 model result, and one RESEARCH_ONLY F14 decision for every INCLUDED F06 membership. Protected F16 match results and a deterministic manifest are replayable; the run remains INCOMPLETE at AUDIT_VERIFICATION for F17.
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.

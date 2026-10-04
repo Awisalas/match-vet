@@ -326,6 +326,73 @@ class ModelContractRepository:
         self.artifacts.publish_artifact(result.to_bytes(), RESULT_MEDIA_TYPE)
         return result
 
+    def build_from_retained_history(self, evidence_digest: str, cutoff_id: str) -> ModelContract:
+        """Build once from protected structured history sources already in this store.
+
+        Exact results for this evidence/cutoff pair are replayed before history is
+        enumerated, so a retry cannot change its input by observing later artifacts.
+        Conflicting retained source rows fail closed; there is no latest-source rule.
+        """
+        existing: set[str] = set()
+        for metadata in self.store.artifact_catalog():
+            if metadata.media_type != RESULT_MEDIA_TYPE:
+                continue
+            value = self._read(metadata.digest, RESULT_MEDIA_TYPE)
+            inputs = value.get("inputs")
+            if isinstance(inputs, Mapping) and (
+                inputs.get("evidence_set_digest"),
+                inputs.get("cutoff_id"),
+            ) == (evidence_digest, cutoff_id):
+                existing.add(metadata.digest)
+        if len(existing) > 1:
+            raise F13Error("Conflicting retained model results name the same evidence and cutoff.")
+        if existing:
+            digest = next(iter(existing))
+            return self.replay(digest, evidence_digest, cutoff_id)
+
+        retained: dict[str, HistoricalMatch] = {}
+        for metadata in self.store.artifact_catalog():
+            if metadata.media_type != SOURCE_MEDIA_TYPE:
+                continue
+            source = self._read(metadata.digest, SOURCE_MEDIA_TYPE)
+            if (
+                type(source.get("schema_version")) is not int
+                or source.get("schema_version") != SCHEMA_VERSION
+                or set(source) != {"schema_version", "history", "kind"}
+                or source.get("kind") != "STRUCTURED_HISTORY_SOURCE"
+                or not isinstance(source.get("history"), list)
+            ):
+                raise F13Error("Malformed retained structured history source.")
+            for row in source["history"]:
+                if not isinstance(row, Mapping):
+                    raise F13Error("Malformed retained structured history row.")
+                item = HistoricalMatch.from_mapping(row)
+                if _bytes(item.to_dict()) != _bytes(row):
+                    raise F13Error("Unsupported retained structured history fields.")
+                candidate = replace(item, source_digest=metadata.digest)
+                previous = retained.get(candidate.fixture_id)
+                if previous is not None:
+                    raise F13Error("Conflicting retained structured history fixture rows.")
+                retained[candidate.fixture_id] = candidate
+        return self.build(evidence_digest, cutoff_id, history=tuple(retained.values()))
+
+    def retained_result_digest(self, evidence_digest: str, cutoff_id: str) -> str | None:
+        """Locate the sole protected result for exact inputs, without a latest lookup."""
+        matches: set[str] = set()
+        for metadata in self.store.artifact_catalog():
+            if metadata.media_type != RESULT_MEDIA_TYPE:
+                continue
+            value = self._read(metadata.digest, RESULT_MEDIA_TYPE)
+            inputs = value.get("inputs")
+            if isinstance(inputs, Mapping) and (
+                inputs.get("evidence_set_digest"),
+                inputs.get("cutoff_id"),
+            ) == (evidence_digest, cutoff_id):
+                matches.add(metadata.digest)
+        if len(matches) > 1:
+            raise F13Error("Conflicting retained model results name the same evidence and cutoff.")
+        return next(iter(matches)) if matches else None
+
     def _calibration_observations(
         self,
         inputs: dict[str, Any],

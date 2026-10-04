@@ -169,6 +169,33 @@ class F11EvidenceRepository:
         self.store = store
         self.artifacts = ArtifactStore(store)
 
+    def build_or_replay_for_freeze(self, freeze_id: str, policy_digest: str) -> F11EvidenceSet:
+        """Reuse the sole retained evidence request for these exact F06/F07 inputs.
+
+        F15 does not carry provider or venue configuration. A previously retained
+        exact set therefore supplies it; ambiguity is rejected instead of choosing
+        a latest or fixture-only variant. With no retained set, acquire without
+        weather because no exact venue mapping is available at this boundary.
+        """
+        retained: set[str] = set()
+        for metadata in self.store.artifact_catalog():
+            if metadata.media_type != EVIDENCE_MEDIA_TYPE:
+                continue
+            value = self._read(metadata.digest, EVIDENCE_MEDIA_TYPE)
+            payload = json.loads(value)
+            if (payload.get("freeze_id"), payload.get("policy_digest")) == (
+                freeze_id,
+                policy_digest,
+            ):
+                retained.add(metadata.digest)
+        if len(retained) > 1:
+            raise F11Error("Conflicting F11 evidence sets name the same exact F06/F07 inputs.")
+        if retained:
+            return self.replay(
+                next(iter(retained)), freeze_id=freeze_id, policy_digest=policy_digest
+            )
+        return self.build(freeze_id, policy_digest, weather_client=None)
+
     def _inputs(
         self, freeze_id: str, policy_digest: str
     ) -> tuple[MatchweekMembershipFreeze, tuple[MatchEvidenceCutoff, ...]]:

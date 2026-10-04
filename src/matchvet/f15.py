@@ -8,6 +8,7 @@ from matchvet.artifacts import ArtifactError
 from matchvet.f10 import V2_REQUIREMENT_CATALOG
 from matchvet.f13 import engine_version_identity
 from matchvet.f14 import F14Error, PreferenceProfileRepository
+from matchvet.f16 import F16Error, F16MatchweekProcessor
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoffError, MatchEvidenceCutoffRepository
 from matchvet.matchweek_membership_repository import (
     MatchweekMembershipIntegrityError,
@@ -22,7 +23,6 @@ from matchvet.runs import (
     RunState,
     RunStatus,
     WorkContext,
-    WorkInterrupted,
     WorkResult,
     default_resource_estimate,
     observe_resources,
@@ -68,7 +68,7 @@ class AnalyzeMatchweekRequest:
 
 @dataclass(frozen=True)
 class AnalysisProgress:
-    """Durable T04 state and real retained identity references, without a match result."""
+    """Durable T04 state and retained artifact identities, without embedded results."""
 
     run_id: str
     run_state: RunState
@@ -80,12 +80,22 @@ class AnalysisProgress:
     t04_status: RunStatus
 
 
-class _BoundaryExecutor:
-    """Leave a durable incomplete T04 attempt until downstream work is implemented."""
+class _AnalyzeExecutor:
+    """Run F16 inside the existing T04 phase boundaries."""
+
+    def __init__(self, store: Store, request: AnalyzeMatchweekRequest) -> None:
+        self._processor = F16MatchweekProcessor(store)
+        self._request = request
 
     def __call__(self, context: WorkContext) -> WorkResult:
-        del context
-        raise WorkInterrupted("F15 awaits downstream Matchweek analysis work.")
+        return self._processor.process_phase(
+            context,
+            freeze_id=self._request.freeze_id,
+            cutoff_policy_digest=self._request.cutoff_policy_digest,
+            cutoff_ids=self._request.cutoff_ids,
+            profile_digest=self._request.preference_profile_digest,
+            policy=_validate_selection_policy(self._request.policy),
+        )
 
 
 class AnalyzeMatchweek:
@@ -103,25 +113,25 @@ class AnalyzeMatchweek:
                 inputs=inputs,
                 estimate=default_resource_estimate(),
                 observation=_observation(self._store),
-                executor=_BoundaryExecutor(),
+                executor=_AnalyzeExecutor(self._store, request),
             )
         except RunLifecycleError as error:
             if error.error.code == "MV-RUN-RESUME_REQUIRED":
                 status = read_run_status(self._store.path, self._store.path.parent, error.run_id)
-                return self._progress(status, verified_ids)
+                return self._progress(status, verified_ids, request)
             if error.run_id:
                 status = read_run_status(self._store.path, self._store.path.parent, error.run_id)
                 if error.error.code == "MV-RUN-INTERRUPTED":
-                    return self._progress(status, verified_ids)
+                    return self._progress(status, verified_ids, request)
             raise
-        return self._progress(status, verified_ids)
+        return self._progress(status, verified_ids, request)
 
     def inspect(self, run_id: str, request: AnalyzeMatchweekRequest) -> AnalysisProgress:
         inputs, verified_ids = self._inputs(request)
         status = read_run_status(self._store.path, self._store.path.parent, run_id)
         if status.input_digest != inputs.aggregate_digest:
             raise AnalyzeMatchweekError("T04 run identity does not match the supplied F15 request.")
-        return self._progress(status, verified_ids)
+        return self._progress(status, verified_ids, request)
 
     def resume(self, run_id: str, request: AnalyzeMatchweekRequest) -> AnalysisProgress:
         if not run_id:
@@ -133,13 +143,13 @@ class AnalyzeMatchweek:
                 inputs=inputs,
                 estimate=default_resource_estimate(),
                 observation=_observation(self._store),
-                executor=_BoundaryExecutor(),
+                executor=_AnalyzeExecutor(self._store, request),
             )
         except RunLifecycleError as error:
             if error.error.code != "MV-RUN-INTERRUPTED":
                 raise
             status = read_run_status(self._store.path, self._store.path.parent, run_id)
-        return self._progress(status, verified_ids)
+        return self._progress(status, verified_ids, request)
 
     def _inputs(self, request: AnalyzeMatchweekRequest) -> tuple[RunInputContract, tuple[str, ...]]:
         try:
@@ -160,6 +170,15 @@ class AnalyzeMatchweek:
             ):
                 raise AnalyzeMatchweekError(
                     "F07 cutoffs do not match the exact F06 freeze and policy."
+                )
+            included_ids = {
+                member.membership_id
+                for member in freeze.memberships
+                if member.decision.value == "INCLUDED"
+            }
+            if {cutoff.membership_id for cutoff in cutoffs} != included_ids:
+                raise AnalyzeMatchweekError(
+                    "Exactly one supplied F07 cutoff is required for every INCLUDED F06 membership."
                 )
             if policy.lead_time_seconds is None:
                 raise AnalyzeMatchweekError("F07 cutoff policy is not configured.")
@@ -234,6 +253,7 @@ class AnalyzeMatchweek:
             MatchEvidenceCutoffError,
             MatchweekMembershipIntegrityError,
             F14Error,
+            F16Error,
             PolicyValidationError,
             ValueError,
         ) as error:
@@ -241,14 +261,28 @@ class AnalyzeMatchweek:
                 "An exact immutable F15 predecessor is missing, corrupt, or incompatible."
             ) from error
 
-    @staticmethod
-    def _progress(status: RunStatus, identities: tuple[str, ...]) -> AnalysisProgress:
+    def _progress(
+        self,
+        status: RunStatus,
+        identities: tuple[str, ...],
+        request: AnalyzeMatchweekRequest,
+    ) -> AnalysisProgress:
+        f16_identities = F16MatchweekProcessor(self._store).completed_artifact_identities(
+            freeze_id=request.freeze_id,
+            cutoff_policy_digest=request.cutoff_policy_digest,
+            profile_digest=request.preference_profile_digest,
+            policy=_validate_selection_policy(request.policy),
+        )
+        all_identities = tuple(sorted(set(identities) | set(f16_identities)))
+        complete = status.phase is RunPhase.AUDIT_VERIFICATION and any(
+            item.startswith("F16_MANIFEST:") for item in f16_identities
+        )
         return AnalysisProgress(
             run_id=status.run_id,
             run_state=status.state,
             phase=status.phase,
-            analysis_state="IN_PROGRESS",
-            durable_result_identities=identities,
+            analysis_state="F16_COMPLETE_AWAITING_F17" if complete else "IN_PROGRESS",
+            durable_result_identities=all_identities,
             analysis_complete=False,
             matchweek_result_identity=None,
             t04_status=status,

@@ -355,6 +355,22 @@ class DecisionRepository:
         self.artifacts.publish_artifact(result.to_bytes(), DECISION_MEDIA_TYPE)
         return result
 
+    def build_or_replay_decision(self, bundle: DecisionInputBundle) -> DecisionResult:
+        """Build or replay the sole decision for this exact immutable input bundle."""
+        input_digest = hashlib.sha256(_bytes(bundle.to_dict())).hexdigest()
+        matches: set[str] = set()
+        for metadata in self.store.artifact_catalog():
+            if metadata.media_type != DECISION_MEDIA_TYPE:
+                continue
+            value = self._read(metadata.digest, DECISION_MEDIA_TYPE)
+            if value.get("input_bundle_digest") == input_digest:
+                matches.add(metadata.digest)
+        if len(matches) > 1:
+            raise F14Error("Conflicting decisions name the same exact decision input.")
+        if matches:
+            return self.replay(next(iter(matches)))
+        return self.build_decision(bundle)
+
     def replay(self, digest: str) -> DecisionResult:
         value = self._read(digest, DECISION_MEDIA_TYPE)
         try:
