@@ -224,6 +224,9 @@ Evidence whose absence or staleness could materially change a Preference Fit. Cr
 **Mandatory Research**:
 The shared investigation that every Betting Preference must receive, whether or not each fact is ultimately found. Failure to perform it makes Research Sufficiency incomplete, while an unsuccessful search blocks PLAY only when the missing fact is Critical Evidence or could materially change the decision.
 
+**Research Requirement**:
+A versioned statement that specified evidence research must be attempted for one or more Preference Families. It records the evidence sought and permitted information states; it does not assert that evidence exists or that the research was performed. Missing or unavailable sourcing remains UNKNOWN or UNPERFORMED, never ABSENT.
+
 **Optional Evidence**:
 Evidence that can improve an evaluation without deciding it alone. It has either Important or Context influence; missing Optional Evidence lowers confidence and Data Quality rather than automatically blocking PLAY.
 
