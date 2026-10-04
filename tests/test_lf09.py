@@ -113,8 +113,8 @@ def test_eighteen_official_names_resolve_in_fresh_store(tmp_path: Path) -> None:
             deterministic_identifier("team", f"belgian_pro_league:{canonical_key(target)}")
             for _, target in _NAMES
         ]
-        assert store.status.schema_version == 13
-        assert store.status.applied_migrations == tuple(range(1, 14))
+        assert store.status.schema_version == 14
+        assert store.status.applied_migrations == tuple(range(1, 15))
 
 
 def test_nine_lf05_pairings_are_identity_ready_without_observations(tmp_path: Path) -> None:

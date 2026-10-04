@@ -17,13 +17,18 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from matchvet.evidence import CutoffEligibility, EvidenceClass, EvidenceState
 from matchvet.store import CanonicalIdentifier, Store
+
+if TYPE_CHECKING:
+    from matchvet.provider_health import ProviderHealthRecord
+    from matchvet.provider_health_repository import ProviderHealthRepository
+    from matchvet.weather_provider_health import OpenMeteoHealthRecorder
 
 
 class WeatherError(Exception):
@@ -40,6 +45,21 @@ class WeatherPolicyError(WeatherError):
 
 class WeatherParseError(WeatherError, ValueError):
     """An Open-Meteo response cannot be trusted as a forecast."""
+
+
+class WeatherCoverageError(WeatherParseError):
+    """A parsed response omits a requested interval or variable extent."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        known_gap_ids: tuple[str, ...] = ("target_interval",),
+        reason_code: str = "FORECAST_OUTSIDE_TARGET_INTERVAL",
+    ) -> None:
+        super().__init__(message)
+        self.known_gap_ids = known_gap_ids
+        self.reason_code = reason_code
 
 
 class Freshness(StrEnum):
@@ -468,7 +488,7 @@ def parse_open_meteo_response(
             selected_index = index
             break
     if selected_index is None:
-        raise WeatherParseError("Open-Meteo forecast does not cover the target interval.")
+        raise WeatherCoverageError("Open-Meteo forecast does not cover the target interval.")
     values: dict[str, float] = {}
     for variable in request.variables:
         series = hourly.get(variable)
@@ -476,7 +496,11 @@ def parse_open_meteo_response(
             continue
         values[variable] = _number(series[selected_index], f"{variable} forecast")
     if not values:
-        raise WeatherParseError("Open-Meteo response has no usable requested hourly values.")
+        raise WeatherCoverageError(
+            "Open-Meteo response has no usable requested hourly values.",
+            known_gap_ids=request.variables,
+            reason_code="FORECAST_VARIABLES_UNAVAILABLE",
+        )
     units_raw = response.get("hourly_units")
     units = (
         {key: str(value) for key, value in units_raw.items() if key in values}
@@ -545,6 +569,7 @@ def build_weather_evidence(
     client: WeatherClient | None,
     eligible_target_match: bool = True,
     refresh: bool = False,
+    health_recorder: OpenMeteoHealthRecorder | None = None,
 ) -> WeatherEvidence:
     """Fetch and parse weather for one eligible Target Match only."""
 
@@ -591,7 +616,9 @@ def build_weather_evidence(
     )
     try:
         response = client.fetch(request, refresh=refresh)
-    except WeatherError, HTTPError, URLError, OSError, TimeoutError:
+    except (WeatherError, HTTPError, URLError, OSError, TimeoutError) as error:
+        if health_recorder is not None:
+            health_recorder.record(request, error=error)
         return _unknown(
             fixture_id=fixture_id,
             target_time_utc=target_time_utc,
@@ -601,6 +628,8 @@ def build_weather_evidence(
             source_locator=request.url,
         )
     if response.response_status != 200:
+        if health_recorder is not None:
+            health_recorder.record(request, response)
         return _unknown(
             fixture_id=fixture_id,
             target_time_utc=target_time_utc,
@@ -611,7 +640,7 @@ def build_weather_evidence(
             source_locator=response.url or request.url,
         )
     try:
-        return parse_open_meteo_response(
+        forecast = parse_open_meteo_response(
             response.content,
             request,
             retrieved_at_utc=response.retrieved_at_utc,
@@ -619,6 +648,8 @@ def build_weather_evidence(
             source_locator=response.url or request.url,
         )
     except WeatherParseError as error:
+        if health_recorder is not None:
+            health_recorder.record(request, response, error=error)
         return _unknown(
             fixture_id=fixture_id,
             target_time_utc=target_time_utc,
@@ -628,6 +659,9 @@ def build_weather_evidence(
             response=response,
             source_locator=response.url or request.url,
         )
+    if health_recorder is not None:
+        health_recorder.record(request, response, forecast)
+    return forecast
 
 
 class StaticWeatherClient:
@@ -702,11 +736,19 @@ class OpenMeteoClient:
         )
         try:
             response = urlopen(http_request, timeout=self.timeout_seconds)
-        except (HTTPError, URLError, OSError) as error:
+        except HTTPError as error:
+            if error.code in (401, 403):
+                raise WeatherPolicyError(
+                    f"Open-Meteo denied forecast access: HTTP {error.code}."
+                ) from error
+            raise WeatherUnavailable(f"Open-Meteo retrieval failed: {error}") from error
+        except (URLError, OSError) as error:
             raise WeatherUnavailable(f"Open-Meteo retrieval failed: {error}") from error
         status = int(getattr(response, "status", response.getcode()))
         if status != 200:
             response.close()
+            if status in (401, 403):
+                raise WeatherPolicyError(f"Open-Meteo denied forecast access: HTTP {status}.")
             raise WeatherUnavailable(f"Open-Meteo returned HTTP {status}.")
         content = bytearray()
         try:
@@ -811,6 +853,7 @@ class WeatherBatch:
     evidence: tuple[WeatherEvidence, ...]
     target_count: int
     network_calls: int
+    provider_health_records: tuple[ProviderHealthRecord, ...] = ()
 
     @property
     def frozen_evidence(self) -> tuple[WeatherEvidence, ...]:
@@ -830,8 +873,14 @@ class WeatherBatch:
 class WeatherEvidenceBuilder:
     """Build weather evidence for a finite Target Match list."""
 
-    def __init__(self, client: WeatherClient | None) -> None:
+    def __init__(
+        self,
+        client: WeatherClient | None,
+        *,
+        provider_health_repository: ProviderHealthRepository | None = None,
+    ) -> None:
         self.client = client
+        self.provider_health_repository = provider_health_repository
 
     def build(
         self,
@@ -839,6 +888,13 @@ class WeatherEvidenceBuilder:
         *,
         refresh: bool = False,
     ) -> WeatherBatch:
+        from matchvet.weather_provider_health import OpenMeteoHealthRecorder
+
+        recorder = (
+            OpenMeteoHealthRecorder(self.provider_health_repository)
+            if self.provider_health_repository is not None
+            else None
+        )
         before_calls = len(getattr(self.client, "calls", ())) if self.client is not None else 0
         evidence = tuple(
             build_weather_evidence(
@@ -849,13 +905,19 @@ class WeatherEvidenceBuilder:
                 client=self.client,
                 eligible_target_match=target.eligible_target_match,
                 refresh=refresh,
+                health_recorder=recorder,
             )
             for target in targets
         )
         after_calls = (
             len(getattr(self.client, "calls", ())) if self.client is not None else before_calls
         )
-        return WeatherBatch(evidence, len(targets), after_calls - before_calls)
+        return WeatherBatch(
+            evidence,
+            len(targets),
+            after_calls - before_calls,
+            recorder.records if recorder is not None else (),
+        )
 
 
 @dataclass(frozen=True)

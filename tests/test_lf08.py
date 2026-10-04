@@ -73,8 +73,8 @@ def test_fresh_current_season_four_fixtures_converge(
         aliases_before = tuple(connection.execute("SELECT * FROM team_aliases ORDER BY alias_id"))
         assert len(teams_before) == 20
         assert {fixture.season for fixture in before} == {"2026-27"}
-        assert store.status.schema_version == 13
-        assert store.status.applied_migrations == tuple(range(1, 14))
+        assert store.status.schema_version == 14
+        assert store.status.applied_migrations == tuple(range(1, 15))
         for item in identities:
             assert canonical_key(item["source_name"]) == item["normalized_name"]
             for kind in (SourceKind.OPENFOOTBALL, SourceKind.OPENFOOTBALL_TEXT):

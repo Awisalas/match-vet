@@ -3159,6 +3159,66 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=14,
+        name="contextual_provider_health_records",
+        statements=(
+            """
+            CREATE TABLE contextual_provider_health_records (
+                record_digest TEXT PRIMARY KEY CHECK (
+                    length(record_digest) = 71
+                    AND substr(record_digest, 1, 7) = 'sha256:'
+                    AND substr(record_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                ),
+                record_json TEXT NOT NULL CHECK (
+                    json_valid(record_json)
+                    AND json_type(record_json, '$') IS 'object'
+                    AND json_type(record_json, '$.digest') IS 'text'
+                    AND json_extract(record_json, '$.digest') = record_digest
+                    AND json_type(record_json, '$.contract_version') IS 'text'
+                    AND json_extract(record_json, '$.contract_version') = contract_version
+                    AND json_type(record_json, '$.schema_version') IS 'integer'
+                    AND json_extract(record_json, '$.schema_version') = record_schema_version
+                    AND json_type(record_json, '$.provider.provider_id') IS 'text'
+                    AND json_extract(record_json, '$.provider.provider_id') = provider_id
+                    AND json_type(record_json, '$.capability.capability_id') IS 'text'
+                    AND json_extract(record_json, '$.capability.capability_id') = capability_id
+                    AND json_type(record_json, '$.requested_scope.fixture_scope') IS 'null'
+                    AND json_type(record_json, '$.intended_use_id') IS 'text'
+                    AND json_extract(record_json, '$.intended_use_id') = intended_use_id
+                    AND json_type(record_json, '$.checked_at_utc') IS 'text'
+                    AND json_extract(record_json, '$.checked_at_utc') = checked_at_utc
+                ),
+                contract_version TEXT NOT NULL CHECK (contract_version = 'provider-health-v1'),
+                record_schema_version INTEGER NOT NULL CHECK (record_schema_version = 1),
+                provider_id TEXT NOT NULL CHECK (provider_id = 'open-meteo'),
+                capability_id TEXT NOT NULL CHECK (capability_id = 'weather-forecast'),
+                requested_scope_id TEXT NOT NULL CHECK (
+                    length(requested_scope_id) = 71
+                    AND substr(requested_scope_id, 1, 7) = 'sha256:'
+                    AND substr(requested_scope_id, 8) NOT GLOB '*[^0-9a-f]*'
+                ),
+                intended_use_id TEXT NOT NULL CHECK (length(intended_use_id) > 0),
+                checked_at_utc TEXT NOT NULL CHECK (length(checked_at_utc) > 0),
+                first_persisted_at_utc TEXT NOT NULL CHECK (length(first_persisted_at_utc) > 0),
+                UNIQUE (
+                    provider_id, capability_id, requested_scope_id, intended_use_id,
+                    checked_at_utc
+                )
+            ) STRICT
+            """,
+            """
+            CREATE TRIGGER contextual_provider_health_records_no_update
+            BEFORE UPDATE ON contextual_provider_health_records
+            BEGIN SELECT RAISE(ABORT, 'contextual provider health records are immutable'); END
+            """,
+            """
+            CREATE TRIGGER contextual_provider_health_records_no_delete
+            BEFORE DELETE ON contextual_provider_health_records
+            BEGIN SELECT RAISE(ABORT, 'contextual provider health records are immutable'); END
+            """,
+        ),
+    ),
 )
 
 

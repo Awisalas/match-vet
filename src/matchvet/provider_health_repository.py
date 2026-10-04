@@ -1,4 +1,4 @@
-"""Immutable persistence for F05 Provider Health Records."""
+"""Immutable persistence for fixture and approved contextual Provider Health Records."""
 
 from __future__ import annotations
 
@@ -74,6 +74,32 @@ class _RecordMetadata:
         )
 
 
+@dataclass(frozen=True)
+class _ContextualRecordMetadata:
+    record_digest: str
+    record_json: str
+    contract_version: str
+    schema_version: int
+    provider_id: str
+    capability_id: str
+    requested_scope_id: str
+    intended_use_id: str
+    checked_at_utc: str
+
+    def indexed_values(self) -> tuple[object, ...]:
+        return (
+            self.record_digest,
+            self.record_json,
+            self.contract_version,
+            self.schema_version,
+            self.provider_id,
+            self.capability_id,
+            self.requested_scope_id,
+            self.intended_use_id,
+            self.checked_at_utc,
+        )
+
+
 class ProviderHealthRepository:
     """Persist, load, and list immutable F04 values in the authoritative store."""
 
@@ -81,10 +107,11 @@ class ProviderHealthRepository:
         self._store = store
 
     def persist_many(self, records: tuple[ProviderHealthRecord, ...]) -> tuple[str, ...]:
-        """Atomically append a batch after validating its exact persisted F03 references."""
+        """Atomically append fixture or contextual observations after exact validation."""
         if not isinstance(records, tuple):
             records = tuple(records)
         metadata_by_digest: dict[str, _RecordMetadata] = {}
+        contextual_metadata: dict[str, _ContextualRecordMetadata] = {}
         records_by_digest: dict[str, ProviderHealthRecord] = {}
         logical_keys: dict[tuple[str, str], str] = {}
         assessments: dict[str, SupportedFixtureCoverageAssessment] = {}
@@ -92,6 +119,10 @@ class ProviderHealthRepository:
         for record in records:
             if not isinstance(record, ProviderHealthRecord):
                 raise TypeError("F05 can persist only typed ProviderHealthRecord values.")
+            if record.requested_scope.fixture_scope is None:
+                contextual_metadata[record.digest] = _contextual_record_metadata(record)
+                records_by_digest[record.digest] = record
+                continue
             metadata = _record_metadata(record)
             prior = metadata_by_digest.get(record.digest)
             if prior is not None and prior != metadata:
@@ -126,6 +157,31 @@ class ProviderHealthRepository:
         try:
             with self._store.transaction() as transaction:
                 for digest in ordered_digests:
+                    if digest in contextual_metadata:
+                        contextual = contextual_metadata[digest]
+                        existing_contextual = self.get(digest)
+                        if existing_contextual is not None:
+                            if existing_contextual != records_by_digest[digest]:
+                                raise ProviderHealthIntegrityError(
+                                    "Stored contextual health differs from its exact F04 record."
+                                )
+                            persisted_digests.add(digest)
+                            continue
+                        if persisted_at is None:
+                            persisted_at = datetime.now(UTC).isoformat(timespec="microseconds")
+                        transaction.execute(
+                            """
+                            INSERT INTO contextual_provider_health_records (
+                                record_digest, record_json, contract_version,
+                                record_schema_version, provider_id, capability_id,
+                                requested_scope_id, intended_use_id, checked_at_utc,
+                                first_persisted_at_utc
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (*contextual.indexed_values(), persisted_at),
+                        )
+                        persisted_digests.add(digest)
+                        continue
                     metadata = metadata_by_digest[digest]
                     existing = transaction.execute(
                         """
@@ -205,9 +261,22 @@ class ProviderHealthRepository:
             """,
             (record_digest,),
         ).fetchone()
-        if row is None:
-            return None
-        return self._decode_row(tuple(row), {})
+        contextual_row = None
+        if self._store.status.schema_version >= 14:
+            contextual_row = connection.execute(
+                """
+                SELECT record_digest, record_json, contract_version, record_schema_version,
+                       provider_id, capability_id, requested_scope_id, intended_use_id,
+                       checked_at_utc, first_persisted_at_utc
+                FROM contextual_provider_health_records WHERE record_digest = ?
+                """,
+                (record_digest,),
+            ).fetchone()
+        if row is not None and contextual_row is not None:
+            raise ProviderHealthIntegrityError("One F04 digest appears in both health tables.")
+        if row is not None:
+            return self._decode_row(tuple(row), {})
+        return None if contextual_row is None else _decode_contextual_row(tuple(contextual_row))
 
     def list_for_assessment(self, assessment_digest: str) -> tuple[ProviderHealthRecord, ...]:
         """Load only validated F05 records for one exact persisted F01 assessment."""
@@ -336,6 +405,49 @@ class ProviderHealthRepository:
             assessment_cache[assessment_digest] = assessment
         _validate_record_references(record, assessment_cache[assessment_digest])
         return record
+
+
+def _contextual_record_metadata(record: ProviderHealthRecord) -> _ContextualRecordMetadata:
+    encoded = provider_health_record_to_canonical_json(record)
+    try:
+        restored = provider_health_record_from_canonical_json(encoded)
+    except ValueError as error:
+        raise ProviderHealthIntegrityError(
+            "Contextual F04 record failed canonical validation."
+        ) from error
+    if restored != record:
+        raise ProviderHealthIntegrityError("Contextual F04 digest and canonical value disagree.")
+    if (
+        record.requested_scope.fixture_scope is not None
+        or record.provider.provider_id != "open-meteo"
+        or record.capability.capability_id != "weather-forecast"
+    ):
+        raise ProviderHealthIntegrityError("F09 permits only contextual Open-Meteo weather health.")
+    return _ContextualRecordMetadata(
+        record.digest,
+        encoded,
+        record.contract_version,
+        record.schema_version,
+        record.provider.provider_id,
+        record.capability.capability_id,
+        record.requested_scope.scope_id,
+        record.intended_use_id,
+        record.checked_at_utc,
+    )
+
+
+def _decode_contextual_row(row: tuple[object, ...]) -> ProviderHealthRecord:
+    if len(row) != 10:
+        raise ProviderHealthIntegrityError("Stored contextual health row has an unsupported shape.")
+    try:
+        record = provider_health_record_from_canonical_json(str(row[1]))
+    except ValueError as error:
+        raise ProviderHealthIntegrityError("Stored contextual F04 JSON is invalid.") from error
+    if row[:9] != _contextual_record_metadata(record).indexed_values() or not str(row[9]):
+        raise ProviderHealthIntegrityError(
+            "Stored contextual health metadata differs from its record."
+        )
+    return record
 
 
 def _record_metadata(record: ProviderHealthRecord) -> _RecordMetadata:

@@ -161,8 +161,8 @@ def test_prepare_accepts_legacy_premier_league_date_only_kickoff(
     )
 
     with open_store(store_path, private_root=private_root) as store:
-        assert store.status.schema_version == 13
-        assert store.status.applied_migrations == tuple(range(1, 14))
+        assert store.status.schema_version == 14
+        assert store.status.applied_migrations == tuple(range(1, 15))
         importer = FixtureHistoryImporter(store, private_root=private_root)
         history = (
             b"Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR\n"

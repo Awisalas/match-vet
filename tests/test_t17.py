@@ -976,7 +976,7 @@ def test_schema_twelve_backup_restores_through_migration_thirteen_without_changi
     )
 
     assert restored.status == "COMPLETE"
-    assert inspect_store(target, private_root=private_root).schema_version == len(MIGRATIONS) == 13
+    assert inspect_store(target, private_root=private_root).schema_version == len(MIGRATIONS) == 14
     with open_store(target, private_root=private_root) as store:
         assessment = cast(FixtureCoverageAssessment, expected["assessment"])
         assert FixtureCoverageRepository(store).get(assessment.digest) == assessment
@@ -1050,7 +1050,7 @@ def test_schema_thirteen_backup_restores_exact_f06_and_v1_history_without_changi
         private_root=private_root,
         resource_observation=_safe_resource_observation(),
     )
-    assert verify_backup(source).details["schema_version"] == 13
+    assert verify_backup(source).details["schema_version"] == 14
     original_bundle = {
         path.relative_to(source).as_posix(): path.read_bytes()
         for path in source.rglob("*")
@@ -1589,7 +1589,7 @@ def test_t17_backup_restore_replays_v2_v3_and_attestation_artifacts(tmp_path: Pa
         private_root=private_root,
         resource_observation=_safe_resource_observation(),
     )
-    assert verify_backup(source).details["schema_version"] == 13
+    assert verify_backup(source).details["schema_version"] == 14
     original_bundle = {
         path.relative_to(source).as_posix(): path.read_bytes()
         for path in source.rglob("*")

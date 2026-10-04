@@ -213,7 +213,7 @@ def test_record_persists_only_canonical_citation_and_ordinary_fixture_provenance
 
         recorded = repository.record(_valid_input())
 
-        assert store.status.schema_version == 13
+        assert store.status.schema_version == 14
         assert recorded.observation.scope_id == "belgian_pro_league:2026-27:2026-10-09"
         assert recorded.observation.kickoff_utc == "2026-10-09T18:00:00+00:00"
         assert recorded.observation.mode == "RESEARCH_ONLY"

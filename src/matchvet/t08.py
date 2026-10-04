@@ -23,6 +23,8 @@ from matchvet.matchweek import (
     MatchweekWindow,
     read_frozen_matchweek,
 )
+from matchvet.provider_health import ProviderHealthRecord
+from matchvet.provider_health_repository import ProviderHealthRepository
 from matchvet.runs import (
     MIB,
     SETTLED_RESOURCE_BUDGET,
@@ -146,6 +148,7 @@ class T08BuildResult:
     evidence: T08Evidence
     workload_rows: tuple[StoredWorkloadEvidence, ...]
     weather_rows: tuple[object, ...]
+    provider_health_records: tuple[ProviderHealthRecord, ...] = ()
 
 
 def _location_values(
@@ -339,11 +342,15 @@ class T08EvidenceBuilder:
         history = tuple(_cutoff_fixture(item, freeze.cutoff.cutoff_utc) for item in raw_history)
         workload_recorder = WorkloadEvidenceRecorder(self.store)
         weather_recorder = WeatherEvidenceRecorder(self.store)
-        weather_builder = WeatherEvidenceBuilder(self.weather_client)
+        weather_builder = WeatherEvidenceBuilder(
+            self.weather_client,
+            provider_health_repository=ProviderHealthRepository(self.store),
+        )
         workload_values: list[WorkloadEvidence] = []
         weather_values: list[WeatherEvidence] = []
         workload_rows: list[StoredWorkloadEvidence] = []
         weather_rows: list[object] = []
+        provider_health_records: list[ProviderHealthRecord] = []
         for index, membership in enumerate(
             sorted(freeze.target_matches, key=lambda item: item.subject_id), start=1
         ):
@@ -375,6 +382,7 @@ class T08EvidenceBuilder:
                 ),
                 refresh=self.refresh_weather,
             )
+            provider_health_records.extend(weather_batch.provider_health_records)
             weather = weather_batch.evidence[0]
             weather_values.append(weather)
             weather_rows.append(
@@ -391,7 +399,12 @@ class T08EvidenceBuilder:
             weather=tuple(weather_values),
             context_fixture_ids=tuple(row.fixture.fixture_id for row in context_rows),
         )
-        return T08BuildResult(result, tuple(workload_rows), tuple(weather_rows))
+        return T08BuildResult(
+            result,
+            tuple(workload_rows),
+            tuple(weather_rows),
+            tuple(provider_health_records),
+        )
 
 
 class T08EvidenceRunner:

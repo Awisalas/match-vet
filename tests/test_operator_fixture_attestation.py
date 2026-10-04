@@ -1471,7 +1471,7 @@ def test_f03_persists_and_replays_v3_with_protected_attestation_artifacts(
     base = _base_assessment()
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
         repository = FixtureCoverageRepository(store)
-        assert store.status.schema_version == 13
+        assert store.status.schema_version == 14
         repository.persist(base)
         references = tuple(
             repository.persist_attestation(item.attestation)
@@ -1563,8 +1563,8 @@ def test_lf07_v1_attestations_and_f01_v3_replay_exactly_in_isolated_store(
     private_root.mkdir()
     with open_store(private_root / "matchvet.sqlite3", private_root=private_root) as store:
         repository = FixtureCoverageRepository(store)
-        assert store.status.schema_version == 13
-        assert store.status.applied_migrations == tuple(range(1, 14))
+        assert store.status.schema_version == 14
+        assert store.status.applied_migrations == tuple(range(1, 15))
         repository.persist(base)
         persisted_references = tuple(
             repository.persist_attestation(item.attestation) for item in old_references
