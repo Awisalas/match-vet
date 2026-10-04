@@ -29,6 +29,7 @@ from matchvet.runs import (
     read_run_status,
 )
 from matchvet.store import Store
+from matchvet.t15 import PolicyStatus, PolicyValidationError, PolicyVersion
 
 
 class AnalyzeMatchweekError(ValueError):
@@ -46,6 +47,7 @@ class AnalyzeMatchweekRequest:
     research_contract_digest: str
     model_version_identity: str
     preference_profile_digest: str
+    policy: PolicyVersion
 
     def __post_init__(self) -> None:
         if not all(
@@ -141,6 +143,7 @@ class AnalyzeMatchweek:
 
     def _inputs(self, request: AnalyzeMatchweekRequest) -> tuple[RunInputContract, tuple[str, ...]]:
         try:
+            selection_policy = _validate_selection_policy(request.policy)
             freeze = MatchweekMembershipRepository(self._store).get_by_id(request.freeze_id)
             if freeze is None:
                 raise AnalyzeMatchweekError("Exact F06 freeze is missing.")
@@ -183,6 +186,7 @@ class AnalyzeMatchweek:
                         request.cutoff_policy_digest,
                         request.research_contract_digest,
                         request.preference_profile_digest,
+                        selection_policy.digest,
                         *(cutoff.digest.removeprefix("sha256:") for cutoff in cutoffs),
                     }
                 )
@@ -194,7 +198,7 @@ class AnalyzeMatchweek:
                 + ":"
                 + ",".join(request.cutoff_ids),
                 "preference_set": "F14:" + request.preference_profile_digest,
-                "policy": "F15:ANALYSIS_PENDING_DOWNSTREAM_OUTPUTS",
+                "policy": "T15_POLICY:" + selection_policy.version + ":" + selection_policy.digest,
                 "model": "F13_ENGINE:" + request.model_version_identity,
                 "feature": "F13_ENGINE_VERSION_IDENTITY_V1",
                 "research_rule": "F10:" + request.research_contract_digest,
@@ -215,6 +219,7 @@ class AnalyzeMatchweek:
                             "F06:" + freeze.freeze_digest,
                             "F07_POLICY:" + request.cutoff_policy_digest,
                             "F10:" + request.research_contract_digest,
+                            "T15_POLICY:" + selection_policy.digest,
                             "F13_ENGINE:" + request.model_version_identity,
                             "F14:" + request.preference_profile_digest,
                             *("F07_CUTOFF:" + cutoff.digest for cutoff in cutoffs),
@@ -229,6 +234,7 @@ class AnalyzeMatchweek:
             MatchEvidenceCutoffError,
             MatchweekMembershipIntegrityError,
             F14Error,
+            PolicyValidationError,
             ValueError,
         ) as error:
             raise AnalyzeMatchweekError(
@@ -247,6 +253,18 @@ class AnalyzeMatchweek:
             matchweek_result_identity=None,
             t04_status=status,
         )
+
+
+def _validate_selection_policy(value: object) -> PolicyVersion:
+    if not isinstance(value, PolicyVersion):
+        raise AnalyzeMatchweekError("F15 requires a valid T15 Selection Policy Version.")
+    try:
+        policy = PolicyVersion.from_mapping(value.to_dict())
+    except (PolicyValidationError, TypeError, ValueError) as error:
+        raise AnalyzeMatchweekError("F15 Selection Policy Version is malformed.") from error
+    if policy.mode is not PolicyStatus.RESEARCH_ONLY:
+        raise AnalyzeMatchweekError("F15 V2 requires a RESEARCH_ONLY Selection Policy Version.")
+    return policy
 
 
 def _observation(store: Store) -> ResourceObservation:

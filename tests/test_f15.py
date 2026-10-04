@@ -14,8 +14,9 @@ from matchvet.f13 import engine_version_identity
 from matchvet.f14 import PreferenceProfileRepository
 from matchvet.f15 import AnalyzeMatchweek, AnalyzeMatchweekError, AnalyzeMatchweekRequest
 from matchvet.match_evidence_cutoff import CutoffPolicy, MatchEvidenceCutoffRepository
-from matchvet.runs import RunState
+from matchvet.runs import RunLifecycleError, RunState
 from matchvet.store import Store, open_store
+from matchvet.t15 import PolicyStatus, PolicyVersion
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ def f15_fixture(tmp_path_factory: pytest.TempPathFactory) -> F15Fixture:
             research_contract_digest=V2_REQUIREMENT_CATALOG.digest,
             model_version_identity=engine_version_identity(),
             preference_profile_digest=profile.digest,
+            policy=PolicyVersion(version="research-policy-v1"),
         )
     return F15Fixture(database, root, request)
 
@@ -80,6 +82,14 @@ def test_start_produces_durable_t04_progress_without_claiming_matchweek_complete
             ("F13_ENGINE:" + f15_fixture.request.model_version_identity).encode()
         ).hexdigest()
     )
+    expected_policy = (
+        "T15_POLICY:" + f15_fixture.request.policy.version + ":" + f15_fixture.request.policy.digest
+    )
+    assert (
+        progress.t04_status.input_digests["policy"]
+        == hashlib.sha256(expected_policy.encode()).hexdigest()
+    )
+    assert "T15_POLICY:" + f15_fixture.request.policy.digest in progress.durable_result_identities
     assert progress.analysis_complete is False
     assert progress.matchweek_result_identity is None
     assert progress.t04_status.work_units[0].attempt_state == "INTERRUPTED"
@@ -109,6 +119,39 @@ def test_changed_predecessor_input_refuses_resume(
 
     with pytest.raises(AnalyzeMatchweekError):
         service.resume(first.run_id, changed)
+
+
+def test_changed_policy_refuses_resume(f15_store: Store, f15_fixture: F15Fixture) -> None:
+    service = AnalyzeMatchweek(f15_store)
+    first = service.start(f15_fixture.request)
+    changed = replace(
+        f15_fixture.request,
+        policy=PolicyVersion(version="research-policy-v2"),
+    )
+
+    with pytest.raises(RunLifecycleError) as error:
+        service.resume(first.run_id, changed)
+    assert error.value.error.code == "MV-RESUME-DIGEST_MISMATCH"
+
+
+def test_promoted_policy_is_rejected(f15_store: Store, f15_fixture: F15Fixture) -> None:
+    request = replace(
+        f15_fixture.request,
+        policy=PolicyVersion(
+            version="promoted-policy-v1",
+            status=PolicyStatus.PRODUCTION_PROMOTED,
+        ),
+    )
+
+    with pytest.raises(AnalyzeMatchweekError):
+        AnalyzeMatchweek(f15_store).start(request)
+
+
+def test_malformed_policy_is_rejected(f15_store: Store, f15_fixture: F15Fixture) -> None:
+    request = replace(f15_fixture.request, policy={"version": "broken"})  # type: ignore[arg-type]
+
+    with pytest.raises(AnalyzeMatchweekError):
+        AnalyzeMatchweek(f15_store).start(request)
 
 
 def test_missing_predecessor_artifact_fails_closed(
