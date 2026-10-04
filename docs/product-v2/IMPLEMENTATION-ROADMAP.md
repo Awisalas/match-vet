@@ -221,7 +221,9 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### F19 Define automatic settlement records
+- **Status:** Complete in [#71](https://github.com/Awisalas/match-vet/issues/71). See the [F19 settlement contract](../f19-v2-settlement-contract.md).
 - **Goal:** Add a versioned V2 settlement contract for source evidence, pending or conflicting results, and append-only corrections while retaining manual grading.
+- **Contract:** Protected F19 artifacts bind the exact F16 manifest and match result, F14 decision, and enabled preference. T10 performs deterministic grading. Pending and conflicting evidence remain explicit, and corrections append full evidence snapshots linked to predecessors. No acquisition or schema migration was added.
 - **Blocked by:** F14.
 - **Size:** S.
 - **Recommended Matt Pocock skills:** `$domain-modeling`, `$architect`.

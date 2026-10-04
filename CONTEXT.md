@@ -360,6 +360,9 @@ Optional bookmaker price data retained for research or benchmarking with its sou
 **Match Decision Result**:
 The immutable V2 result of vetting each enabled Betting Preference against one exact Target Match, with one Primary Recommendation or AVOID MATCH and its exact profile, evidence, policy, model, uncertainty, and vetting lineage.
 
+**V2 Settlement Version**:
+An immutable result-evidence record for one exact F16 match result, F14 decision, and enabled preference. It retains pending or conflicting evidence, or a T10 WIN, LOSS, PUSH, or VOID result; later corrections are successor versions.
+
 ## Provider health
 
 **Provider Health Record**:
