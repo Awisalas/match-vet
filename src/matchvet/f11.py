@@ -17,6 +17,13 @@ from urllib.error import HTTPError
 
 from matchvet.artifacts import ArtifactStore
 from matchvet.evidence import CutoffEligibility
+from matchvet.f12 import (
+    AttemptOutcome,
+    AttemptUsability,
+    ContextualAttemptRepository,
+    ContextualResearchAttempt,
+    F12Error,
+)
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoff, MatchEvidenceCutoffRepository
 from matchvet.matchweek_membership import (
     MatchweekMembershipFreeze,
@@ -51,7 +58,7 @@ from matchvet.workload import (
     load_canonical_fixture_history,
 )
 
-EVIDENCE_MEDIA_TYPE = "application/vnd.matchvet.f11-evidence-set.v2+json"
+EVIDENCE_MEDIA_TYPE = "application/vnd.matchvet.f11-evidence-set.v3+json"
 HISTORY_MEDIA_TYPE = "application/vnd.matchvet.f11-fixture-history.v2+json"
 RESPONSE_MEDIA_TYPE = "application/vnd.matchvet.f11-weather-response.v2+json"
 
@@ -243,16 +250,62 @@ class F11EvidenceRepository:
         history_bytes = _bytes(sorted((f.to_dict() for f in history), key=_bytes))
         history_digest = self.artifacts.publish_artifact(history_bytes, HISTORY_MEDIA_TYPE).digest
         matches = []
+        contextual_attempts = ContextualAttemptRepository(self.store)
         for cutoff in cutoffs:
-            acquisition = _AcquisitionClient(weather_client) if weather_client is not None else None
-            builder = WeatherEvidenceBuilder(
-                acquisition, provider_health_repository=ProviderHealthRepository(self.store)
-            )
             per_match = tuple(_at_cutoff(f, cutoff.cutoff_at_utc) for f in history)
             target = self._target(per_match, cutoff)
             workload = WorkloadCalculator(
                 per_match, cutoff_utc=cutoff.cutoff_at_utc, rules=rules
             ).calculate(target)
+            location = venues.get(cutoff.fixture_id)
+            weather_request = None
+            request_scope = None
+            if (
+                location is not None
+                and location.available
+                and datetime.fromisoformat(location.observed_at_utc)
+                <= datetime.fromisoformat(cutoff.cutoff_at_utc)
+            ):
+                weather_request = WeatherRequest(
+                    cutoff.fixture_id,
+                    target.kickoff_utc or "",
+                    cutoff.cutoff_at_utc,
+                    location,
+                )
+                request_scope = open_meteo_requested_scope(weather_request)
+            retained_attempt = (
+                contextual_attempts.find_for_request(
+                    fixture_id=cutoff.fixture_id,
+                    cutoff_id=cutoff.cutoff_id,
+                    cutoff_digest=cutoff.digest,
+                    requested_scope_id=request_scope.scope_id,
+                )
+                if request_scope is not None
+                else None
+            )
+            acquisition = (
+                _AcquisitionClient(weather_client)
+                if weather_client is not None and retained_attempt is None
+                else None
+            )
+            if retained_attempt is not None:
+                retained_response = None
+                if retained_attempt.response_artifact_digest is not None:
+                    envelope = json.loads(
+                        self._read(retained_attempt.response_artifact_digest, RESPONSE_MEDIA_TYPE)
+                    )
+                    retained_response = base64.b64decode(envelope["body_base64"], validate=True)
+                replay_client: WeatherClient = _RetainedWeatherClient(
+                    retained_response,
+                    retained_attempt.retrieved_at_utc,
+                    retained_attempt.response_status,
+                )
+                builder = WeatherEvidenceBuilder(replay_client)
+            else:
+                builder = WeatherEvidenceBuilder(
+                    acquisition,
+                    provider_health_repository=ProviderHealthRepository(self.store),
+                )
             batch = builder.build(
                 (
                     WeatherTarget(
@@ -264,10 +317,13 @@ class F11EvidenceRepository:
                 )
             )
             weather = batch.evidence[0]
-            attempt = {
-                "error_type": acquisition.error_type if acquisition else None,
-                "response_status": acquisition.response_status if acquisition else None,
-            }
+            error_type = (
+                retained_attempt.error_type
+                if retained_attempt is not None
+                else acquisition.error_type
+                if acquisition
+                else None
+            )
             response_digest = None
             if weather.response_bytes is not None:
                 response_digest = self.artifacts.publish_artifact(
@@ -281,17 +337,44 @@ class F11EvidenceRepository:
                     RESPONSE_MEDIA_TYPE,
                 ).digest
                 if weather.response_status == 200:
-                    location = venues[target.fixture_id]
-                    attempt["error_type"] = _parse_error_type(
+                    if weather_request is None:
+                        raise F11Error("Captured weather response has no exact request.")
+                    error_type = _parse_error_type(
                         weather.response_bytes,
-                        WeatherRequest(
-                            target.fixture_id,
-                            target.kickoff_utc or "",
-                            cutoff.cutoff_at_utc,
-                            location,
-                        ),
+                        weather_request,
                         weather.retrieved_at_utc or "",
                     )
+            contextual_attempt = None
+            if retained_attempt is not None:
+                typed_attempt = retained_attempt
+                contextual_attempt = {
+                    "attempt_id": typed_attempt.attempt_id,
+                    "digest": typed_attempt.digest,
+                }
+            elif batch.provider_health_records:
+                if len(batch.provider_health_records) != 1:
+                    raise F11Error("F09 must retain exactly one health record per weather request.")
+                if weather_request is None:
+                    raise F11Error("F09 health exists without an exact Open-Meteo request.")
+                try:
+                    typed_attempt = ContextualResearchAttempt.create(
+                        cutoff=cutoff,
+                        request=weather_request,
+                        weather=weather,
+                        health=batch.provider_health_records[0],
+                        response_artifact_digest=response_digest,
+                        error_type=error_type,
+                        response_status=(
+                            acquisition.response_status if acquisition is not None else None
+                        ),
+                    )
+                    typed_attempt = contextual_attempts.publish(typed_attempt)
+                except F12Error as error:
+                    raise F11Error("F12 contextual attempt validation failed.") from error
+                contextual_attempt = {
+                    "attempt_id": typed_attempt.attempt_id,
+                    "digest": typed_attempt.digest,
+                }
             matches.append(
                 {
                     "cutoff": {
@@ -302,14 +385,19 @@ class F11EvidenceRepository:
                     "workload": workload.to_dict(),
                     "weather": weather.to_dict(),
                     "provider_health_digests": sorted(
-                        r.digest for r in batch.provider_health_records
+                        {r.digest for r in batch.provider_health_records}
+                        | (
+                            {retained_attempt.provider_health_digest}
+                            if retained_attempt is not None
+                            else set()
+                        )
                     ),
                     "response_artifact_digest": response_digest,
-                    "weather_attempt": attempt,
+                    "contextual_attempt": contextual_attempt,
                 }
             )
         payload = {
-            "schema_version": 2,
+            "schema_version": 3,
             "freeze_id": freeze_id,
             "freeze_digest": freeze.freeze_digest,
             "policy_digest": policy_digest,
@@ -393,7 +481,7 @@ class F11EvidenceRepository:
                 "matches",
             }
             or type(value["schema_version"]) is not int
-            or value["schema_version"] != 2
+            or value["schema_version"] != 3
         ):
             raise F11Error("Noncanonical or unsupported F11 evidence contract.")
         freeze, cutoffs = self._inputs(freeze_id, policy_digest)
@@ -438,7 +526,7 @@ class F11EvidenceRepository:
                 "weather",
                 "provider_health_digests",
                 "response_artifact_digest",
-                "weather_attempt",
+                "contextual_attempt",
             } or match["cutoff"] != {
                 **asdict(cutoff),
                 "cutoff_id": cutoff.cutoff_id,
@@ -514,6 +602,8 @@ class F11EvidenceRepository:
             )
             if len(match["provider_health_digests"]) != int(attempted):
                 raise F11Error("F09 health does not cover the retained weather attempt.")
+            if (match["contextual_attempt"] is not None) != attempted:
+                raise F11Error("F12 attempt presence differs from whether a request was performed.")
             for health_digest in match["provider_health_digests"]:
                 record = ProviderHealthRepository(self.store).get(health_digest)
                 if (
@@ -537,9 +627,20 @@ class F11EvidenceRepository:
                         reference.digest != response_digest
                     ):
                         raise F11Error("F09 health describes a different weather response.")
-                attempt = match["weather_attempt"]
-                if set(attempt) != {"error_type", "response_status"}:
-                    raise F11Error("Malformed F09 acquisition metadata.")
+                attempt_ref = match["contextual_attempt"]
+                if not isinstance(attempt_ref, dict) or set(attempt_ref) != {
+                    "attempt_id",
+                    "digest",
+                }:
+                    raise F11Error("F12 attempt reference is missing or malformed.")
+                try:
+                    typed_attempt = ContextualAttemptRepository(self.store).get(
+                        attempt_ref["attempt_id"]
+                    )
+                except F12Error as error:
+                    raise F11Error("F12 attempt artifact is missing or corrupt.") from error
+                if attempt_ref["digest"] != typed_attempt.digest:
+                    raise F11Error("F12 attempt digest reference differs.")
                 if response is not None:
                     expected_error = (
                         _parse_error_type(
@@ -555,18 +656,17 @@ class F11EvidenceRepository:
                         if weather["response_status"] == 200
                         else None
                     )
-                    if attempt != {
-                        "error_type": expected_error,
-                        "response_status": weather["response_status"],
-                    }:
+                    if typed_attempt.response_status != weather["response_status"] or (
+                        typed_attempt.error_type != expected_error
+                    ):
                         raise F11Error("F09 acquisition metadata differs from its response.")
                 event = {
                     "request_scope_id": record.requested_scope.scope_id,
                     "checked_at_utc": record.checked_at_utc,
                     "response_digest": response_digest,
-                    "response_status": attempt["response_status"],
+                    "response_status": typed_attempt.response_status,
                     "retrieved_at_utc": weather["retrieved_at_utc"],
-                    "error_type": attempt["error_type"],
+                    "error_type": typed_attempt.error_type,
                 }
                 event_digest = "sha256:" + _digest(_bytes(event))
                 events = [
@@ -574,6 +674,43 @@ class F11EvidenceRepository:
                 ]
                 if len(events) != 1 or events[0].digest != event_digest:
                     raise F11Error("F09 health differs from retained weather acquisition.")
+                expected_outcome = (
+                    AttemptOutcome.SUCCEEDED
+                    if weather["state"] == "OBSERVED" and typed_attempt.error_type is None
+                    else AttemptOutcome.FAILED
+                )
+                expected_usability = (
+                    AttemptUsability.USABLE
+                    if weather["state"] == "OBSERVED"
+                    and weather["cutoff_eligibility"] == "CUTOFF_VALID"
+                    else AttemptUsability.UNUSABLE
+                )
+                if attempt_ref["digest"] != typed_attempt.digest or (
+                    typed_attempt.fixture_id,
+                    typed_attempt.fixture_revision_ref,
+                    typed_attempt.fixture_revision_digest,
+                    typed_attempt.cutoff_id,
+                    typed_attempt.cutoff_digest,
+                    typed_attempt.requested_scope_id,
+                    typed_attempt.provider_health_digest,
+                    typed_attempt.response_artifact_digest,
+                    typed_attempt.response_digest,
+                    typed_attempt.outcome,
+                    typed_attempt.usability,
+                ) != (
+                    cutoff.fixture_id,
+                    cutoff.fixture_revision_ref,
+                    cutoff.fixture_revision_digest,
+                    cutoff.cutoff_id,
+                    cutoff.digest,
+                    record.requested_scope.scope_id,
+                    health_digest,
+                    response_artifact_digest,
+                    response_digest,
+                    expected_outcome,
+                    expected_usability,
+                ):
+                    raise F11Error("F12 attempt differs from its exact F07/F09/weather references.")
 
     def _verify_history(
         self,

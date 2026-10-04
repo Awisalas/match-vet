@@ -1,6 +1,7 @@
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
 from test_match_evidence_cutoff import _freeze
 
 from matchvet.f11 import F11EvidenceRepository
@@ -24,6 +25,7 @@ def test_exact_f06_f07_evidence_is_immutable_and_replays(tmp_path: Path) -> None
         }
         assert match["workload"]["cutoff_utc"] == "2026-09-25T18:00:00.000000+00:00"
         assert match["weather"]["state"] == "UNKNOWN"
+        assert match["contextual_attempt"] is None
         assert repo.replay(evidence.digest, freeze_id=freeze_id, policy_digest=policy) == evidence
         assert repo.build(freeze_id, policy, weather_client=None).to_bytes() == evidence.to_bytes()
 
@@ -615,3 +617,137 @@ def test_existing_v1_weather_response_artifact_keeps_its_metadata(tmp_path: Path
         assert store.artifact_metadata(legacy.digest) == metadata
         assert artifacts.read_artifact(legacy.digest) == raw
         assert repo.replay(evidence.digest, freeze_id=freeze_id, policy_digest=policy) == evidence
+
+
+def test_f11_weather_attempt_is_typed_and_retry_does_not_fetch_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from matchvet.artifacts import ArtifactRecord, ArtifactStore
+    from matchvet.f11 import EVIDENCE_MEDIA_TYPE, F11Error
+    from matchvet.f12 import ContextualAttemptRepository
+    from matchvet.provider_health_repository import ProviderHealthRepository
+    from matchvet.weather import StaticWeatherClient, VenueLocation, WeatherRequest
+    from matchvet.workload import load_canonical_fixture_history
+
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        freeze_id = _freeze(store, tmp_path)
+        cutoffs = MatchEvidenceCutoffRepository(store)
+        policy = cutoffs.persist_policy(CutoffPolicy("test", "1", 3600))
+        cutoff = cutoffs.persist_for_freeze(freeze_id, policy)[0]
+        target = load_canonical_fixture_history(store)[0]
+        location = VenueLocation(
+            "stadium", "Stadium", 6.5, 3.4, "venue", "https://venue.test", "2026-09-01T10:00:00Z"
+        )
+        request = WeatherRequest(
+            target.fixture_id, target.kickoff_utc or "", cutoff.cutoff_at_utc, location
+        )
+        client = StaticWeatherClient(
+            {
+                request.url: {
+                    "latitude": 6.5,
+                    "longitude": 3.4,
+                    "forecast_issue_time": "2026-09-25T10:00:00Z",
+                    "hourly": {"time": [request.interval_start_utc], "temperature_2m": [27]},
+                }
+            },
+            retrieved_at_utc="2026-09-25T12:00:00Z",
+        )
+        repo = F11EvidenceRepository(store)
+        publish = repo.artifacts.publish_artifact
+
+        def interrupt_evidence_publication(
+            content: bytes,
+            media_type: str,
+            *,
+            expected_digest: str | None = None,
+            retention_class: str = "PROTECTED",
+        ) -> ArtifactRecord:
+            if media_type == EVIDENCE_MEDIA_TYPE:
+                raise RuntimeError("simulated interruption before evidence publication")
+            return publish(
+                content,
+                media_type,
+                expected_digest=expected_digest,
+                retention_class=retention_class,
+            )
+
+        monkeypatch.setattr(repo.artifacts, "publish_artifact", interrupt_evidence_publication)
+        with pytest.raises(RuntimeError, match="simulated interruption"):
+            repo.build(
+                freeze_id, policy, weather_client=client, locations={target.fixture_id: location}
+            )
+        monkeypatch.setattr(repo.artifacts, "publish_artifact", publish)
+        evidence = repo.build(
+            freeze_id, policy, weather_client=None, locations={target.fixture_id: location}
+        )
+        match = evidence.to_dict()["matches"][0]
+        attempt_ref = match["contextual_attempt"]
+        assert attempt_ref["attempt_id"].startswith("f12:")
+        value = ContextualAttemptRepository(store).get(attempt_ref["attempt_id"])
+        health_digest = match["provider_health_digests"][0]
+        health = ProviderHealthRepository(store).get(health_digest)
+        assert health is not None
+        assert value.outcome.value == "SUCCEEDED"
+        assert value.fixture_id == cutoff.fixture_id
+        assert (value.cutoff_id, value.cutoff_digest) == (cutoff.cutoff_id, cutoff.digest)
+        assert value.requested_scope_id == health.requested_scope.scope_id
+        assert value.provider_health_digest == health_digest
+        assert value.response_artifact_digest == match["response_artifact_digest"]
+        assert (
+            value.to_bytes() == ContextualAttemptRepository(store).get(value.attempt_id).to_bytes()
+        )
+        assert len(client.calls) == 1
+
+        from matchvet.artifacts import ArtifactStore
+        from matchvet.f11 import EVIDENCE_MEDIA_TYPE
+        from matchvet.matchweek_membership import canonical_json
+
+        forged = evidence.to_dict()
+        forged["matches"][0]["contextual_attempt"]["digest"] = "sha256:" + "0" * 64
+        bad_digest = (
+            ArtifactStore(store)
+            .publish_artifact(canonical_json(forged).encode(), EVIDENCE_MEDIA_TYPE)
+            .digest
+        )
+        with pytest.raises(F11Error, match="F12 attempt digest"):
+            repo.replay(bad_digest, freeze_id=freeze_id, policy_digest=policy)
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_f11_keeps_unavailable_and_malformed_requests_as_failed_attempts(
+    tmp_path: Path, malformed: bool
+) -> None:
+    from matchvet.f12 import AttemptOutcome, AttemptUsability, ContextualAttemptRepository
+    from matchvet.weather import StaticWeatherClient, VenueLocation, WeatherRequest
+    from matchvet.workload import load_canonical_fixture_history
+
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        freeze_id = _freeze(store, tmp_path)
+        cutoffs = MatchEvidenceCutoffRepository(store)
+        policy = cutoffs.persist_policy(CutoffPolicy("test", "1", 3600))
+        cutoff = cutoffs.persist_for_freeze(freeze_id, policy)[0]
+        target = load_canonical_fixture_history(store)[0]
+        location = VenueLocation(
+            "stadium", "Stadium", 6.5, 3.4, "venue", "https://venue.test", "2026-09-01T10:00:00Z"
+        )
+        request = WeatherRequest(
+            target.fixture_id, target.kickoff_utc or "", cutoff.cutoff_at_utc, location
+        )
+        response = b"not-json" if malformed else None
+        client = StaticWeatherClient(
+            {request.url: response} if response is not None else {},
+            retrieved_at_utc="2026-09-25T12:00:00Z",
+        )
+        evidence = F11EvidenceRepository(store).build(
+            freeze_id, policy, weather_client=client, locations={target.fixture_id: location}
+        )
+        match = evidence.to_dict()["matches"][0]
+        reference = match["contextual_attempt"]
+        attempt = ContextualAttemptRepository(store).get(reference["attempt_id"])
+        assert attempt.outcome is AttemptOutcome.FAILED
+        assert attempt.usability is AttemptUsability.UNUSABLE
+        assert attempt.provider_health_digest == match["provider_health_digests"][0]
+        assert (attempt.response_artifact_digest is not None) is malformed
+        assert attempt.error_type is not None
+
+        assert len(client.calls) == 1
