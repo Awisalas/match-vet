@@ -1,5 +1,10 @@
 # F11 V2 workload and weather evidence
 
+This page describes the implemented legacy timing contract. The accepted
+[Matchweek-wide correction](design/matchweek-wide-evidence-cutoff.md) requires
+one common boundary and freezes all Matchweek evidence before it; implementation
+is pending. Historical evidence retains the contract described below.
+
 F11 V2 consumes an exact F06 `freeze_id` and F07 `policy_digest`.
 `F11EvidenceRepository.build` replays that freeze and all persisted cutoffs
 under that policy. Every INCLUDED membership needs exactly one cutoff with

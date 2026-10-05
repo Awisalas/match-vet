@@ -68,16 +68,16 @@ A completed match used for research, backtesting, calibration, or evaluation rat
 A recommendation finalized from evidence available at the Matchweek Research Cutoff, before confirmed starting lineups are released, and never refreshed or revised afterward. Expected lineups and unresolved player availability remain part of its uncertainty.
 
 **Matchweek Research Cutoff**:
-The single point at which the information state for an entire Matchweek is frozen, initially six hours before its earliest eligible kickoff. The lead time is a versioned Selection Policy parameter; later Target Matches receive greater Evidence Freshness and Probability Uncertainty penalties where time-sensitive evidence ages.
+The single point at which all research and evidence collection for an entire Matchweek must be completed and its information state frozen, initially six hours before its earliest eligible kickoff. Every Target Match uses that same frozen state. No later collection, refresh, replacement, or research can change a frozen recommendation. The lead time is an explicit, versioned policy parameter; later Target Matches receive greater Evidence Freshness and Probability Uncertainty penalties where time-sensitive evidence ages.
 
 **Match Evidence Cutoff**:
-The immutable V2 boundary for evidence used in one match analysis, tied to an exact frozen membership, controlling Fixture Revision, and Match Evidence Cutoff Policy. Each match has its own boundary, separate from Matchweek Membership Freeze and its creation time.
+A match's immutable reference to the common Matchweek Research Cutoff, tied to its exact frozen membership, controlling Fixture Revision, and Match Evidence Cutoff Policy. Every included match in the same frozen Matchweek has the same evidence boundary. The boundary is separate from Matchweek Membership Freeze and its creation time.
 
 **Match Evidence Cutoff Policy**:
-A versioned timing rule and explicit configuration that determines a Match Evidence Cutoff from its controlling fixture kickoff. A changed configuration creates separate cutoff state and never changes a retained cutoff.
+A versioned timing rule and explicit lead time that determine the common Matchweek Research Cutoff from the earliest exact eligible kickoff in the frozen Matchweek. A changed configuration creates separate cutoff state and never changes a retained cutoff or permits a frozen recommendation to be refreshed.
 
 **Post-cutoff Evidence**:
-Material information published after the Matchweek Research Cutoff. It cannot alter the frozen recommendation but is recorded during Historical Evaluation to measure whether the cutoff policy systematically causes avoidable failures.
+Material information published or collected after the Matchweek Research Cutoff. It cannot alter the frozen recommendation but is recorded during Historical Evaluation to measure whether the cutoff policy systematically causes avoidable failures. Earlier publication does not make later collection eligible for the frozen recommendation.
 
 **Canonical Timestamp**:
 The UTC time retained for every fixture, cutoff, and item of evidence. User-facing Matchweek boundaries and times use Africa/Lagos, while a fixture's official local kickoff timezone is also retained when available.
@@ -352,7 +352,7 @@ The explicit case for how and why a Betting Preference could fail, including ide
 A presentation-only summary such as `HIGH` derived from Estimated Probability, Probability Uncertainty, Data Quality, Model Agreement, and Failure/Risk Assessment. It never replaces those separate measures and appears only alongside at least Estimated Probability, Conservative Probability, Data Quality, Model Agreement, and a Failure/Risk summary.
 
 **Historical Evaluation**:
-An assessment of past recommendations that reproduces the information state genuinely available at the original Matchweek Research Cutoff. Confirmed lineups, later news, final results, and retrospective corrections unavailable at that cutoff are excluded from the prediction input; materially relevant Post-cutoff Evidence is recorded separately without rewriting the original prediction.
+An assessment of past recommendations that reproduces the information state genuinely available and collected at the original Matchweek Research Cutoff. Confirmed lineups, later news, final results, and retrospective corrections unavailable at that cutoff are excluded from the prediction input; materially relevant Post-cutoff Evidence is recorded separately without rewriting the original prediction. Historical artifacts retain their original timing policy and cannot be relabeled as using a different cutoff.
 
 **Development Period**:
 A chronological span of Historical Matches used for model fitting and feature, research-rule, or candidate development.

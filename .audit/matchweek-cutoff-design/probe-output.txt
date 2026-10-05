@@ -1,0 +1,6 @@
+PASS: shipped legacy arithmetic assigns distinct Friday/Monday cutoffs
+PASS: legacy policy canonical bytes were not modified
+PASS: existing reader fails closed on an unsupported policy rule
+PASS: changed F11 request configuration has a different request identity
+PASS: existing policy layout already carries an explicit digest-bound rule
+NO SQLite connection, network request, or F06/F07/F11/F13/F14/F16/CB01 artifact creation

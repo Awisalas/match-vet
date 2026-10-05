@@ -4,7 +4,7 @@ This document defines the target architecture and the boundary between V1 and V2
 
 Keep historical V1 artifacts and readers under their original versions. Keep SQLite and the Termux CLI. Use free, open, or official data sources and replaceable provider adapters. Do not add paid data or infrastructure, subscriptions, or an external app API in this phase.
 
-This architecture follows [Product V2 direction](PRODUCT-DIRECTION.md) and the [V1 migration audit](V1-MIGRATION-AUDIT.md).
+This architecture follows [Product V2 direction](PRODUCT-DIRECTION.md). The [cutoff correction decision](../adr/0001-matchweek-wide-evidence-cutoff.md) supersedes the independent-cutoff direction recorded in the historical [V1 migration audit](V1-MIGRATION-AUDIT.md). The correction is designed but not yet implemented.
 
 ## Caller contract
 
@@ -66,11 +66,11 @@ AnalyzeMatchweek.execute(request: AnalyzeMatchweekRequest) -> AnalysisProgress
 AnalyzeMatchweek.resume(run_id: str) -> AnalysisProgress
 ```
 
-The Matchweek publication references the membership freeze and every terminal `MatchAnalysis`. A V2 freeze is never a container for one shared evidence cutoff.
+The Matchweek publication references the membership freeze and every terminal `MatchAnalysis`. F06 membership remains separate from research timing. Every INCLUDED match's exact F07 reference binds the same Matchweek Research Cutoff, derived from the earliest exact INCLUDED kickoff in the admitted complete freeze.
 
 `AnalyzeMatchweek` returns durable progress and the identity of each completed artifact. It reports a complete Matchweek result only after schedule coverage is complete and every eligible match has one terminal decision. An unfinished acquisition or research operation leaves the run incomplete. A completed research attempt can still leave evidence `UNKNOWN`; that uncertainty can support AVOID MATCH. Missing evidence never becomes `ABSENT`.
 
-The request names versioned policies but defines no numeric freeze or cutoff lead time. A run cannot claim a cutoff-valid V2 decision until the applicable policy is configured.
+The request names versioned policies. The corrected initial cutoff policy explicitly configures 21600 seconds, without an implicit code default; F06 creation time is not a research cutoff. The complete existing recommendation manifest must be selected once before the common cutoff. After selection, only exact replay may supply recommendations. See the [correction design](../design/matchweek-wide-evidence-cutoff.md) for closure, admission, and historical compatibility.
 
 ## Dependency flow
 
@@ -80,13 +80,15 @@ Termux and CLI
        -> fixture acquisition and provider-health observations
        -> semantic coverage assessment
        -> immutable Matchweek Membership Freeze
+       -> one common Matchweek Research Cutoff from the earliest INCLUDED kickoff
        -> for each frozen match:
-            Match Evidence Cutoff
+            exact Match Evidence Cutoff reference to that common boundary
             -> automated research and frozen evidence
             -> models, calibration, and uncertainty
             -> every enabled preference vetted
             -> one RESEARCH_ONLY Primary Recommendation or AVOID MATCH
-       -> complete audit and atomic Matchweek publication
+       -> complete manifest and single-assignment research selection before cutoff
+       -> exact replay, audit, and permitted pre-kickoff enrollment
 
 INTERNAL settlement use case
   -> settlement providers and manual evidence import
@@ -111,11 +113,11 @@ These are logical ownership boundaries. The first live implementation can call e
 | Scheduling | Query the configured league and time-window scope. Normalize fixture identity, retain source-backed revisions, and assess coverage, unresolved identities, and known gaps. An empty response is not proof that the schedule is empty. | Extend `ingestion.py` and T06 adapters. Keep existing parsers and fixture history for V1. Do not claim a complete slate without coverage evidence for every configured scope. |
 | Provider health | Record provider identity, capability, permitted use, requested scope, retrieval time, freshness, coverage, and failure state. Health is specific to a provider capability and query scope. | Extend T06 acquisition reports and T07 source records. A healthy historical-results feed does not prove upcoming-fixture or contextual-research health. This operational contract is separate from later source-health intelligence. |
 | Matchweek membership | Create an immutable Matchweek Membership Freeze from a complete schedule assessment and its controlling fixture revisions. Preserve its scope, policy version, source coverage references, and digest. Later fixture changes append history; they do not rewrite the freeze. | Add a V2 freeze contract beside the V1 T05 manifest. Do not reinterpret or synthesize a V2 freeze from a V1 cutoff-bound manifest. |
-| Match Evidence Cutoff | Assign each frozen match its own immutable Match Evidence Cutoff, identified by match, controlling fixture revision, temporal-policy version, and digest. | Add a V2 per-match contract. Keep the membership-freeze policy separate from the evidence-cutoff policy. Neither policy has an implicit numeric lead time. A changed kickoff or policy requires a new versioned analysis state, not an in-place cutoff edit. |
-| Research and evidence | Acquire required evidence for every eligible match before deciding. Store source attempts separately from evidence assertions. Preserve publication and retrieval times, source rights, independent origins, conflicts, corrections, and requirement coverage. | Keep T07 provenance and `UNKNOWN` and `ABSENT` semantics. Extend T08 and T09 through V2 adapters that accept a per-match cutoff. Reuse T09 concepts such as research attempts, sufficiency, and frozen evidence where their V1 contract applies. Do not convert failed or unperformed research into `ABSENT`. |
+| Match Evidence Cutoff | Assign each frozen match its own exact immutable reference to the common Matchweek Research Cutoff, identified by F06 membership/revision, temporal-policy version, and digest. | Add a new policy rule alongside the historical per-match rule. Keep F06 membership and research timing separate. Explicitly configure the corrected initial lead as 21600 seconds. Changed policies or later schedule observations cannot refresh a frozen Matchweek. |
+| Research and evidence | Complete collection and research for the entire Matchweek before the common cutoff. Freeze source attempts as well as assertions, including UNKNOWN states. Preserve publication and retrieval times, source rights, independent origins, conflicts, corrections, and requirement coverage. | Keep T07 provenance and `UNKNOWN` and `ABSENT` semantics. Corrected adapters validate the common boundary and sole selected state. Historical adapters retain their original timing policies. Do not convert failed or unperformed research into `ABSENT`. |
 | Models, calibration, and uncertainty | Consume a frozen match-evidence reference and a versioned, cutoff-eligible history snapshot. Produce calibrated probabilities, uncertainty, model availability, and model disagreement. Models do not read mutable latest state or bookmaker odds during a decision. | Keep T11 to T13 distribution models and T14 calibration and uncertainty as V1 components. Version their V2 inputs, fitted artifacts, and outputs. An unavailable model or calibration cannot silently become a valid probability. |
 | Preference capability and vetting | Keep engine market capability separate from an immutable Preference Profile snapshot. Vet every enabled, permitted preference. Apply decision gates and rank only justified candidates. Return exactly one strongest justified Primary Recommendation or AVOID MATCH per completed match. | Preserve T10's V1 catalog, IDs, and grading rules. Add no markets. Keep the founder's allowed preferences and exclude Unders, cards, Over 0.5, Under 0.5, and trivial selections. Version T15 policy inputs and the V2 decision contract. Odds do not affect ranking. Recommendations remain pre-lineup. |
-| `AnalyzeMatchweek` | Coordinate schedule acquisition, coverage assessment, membership freeze, per-match cutoffs, research, prediction, vetting, audit, and publication. Support resume and bounded work. Do not publish a complete Matchweek result when coverage or required work is incomplete. | Make the CLI call this internal application service. Keep one T04 lifecycle around real work. Use existing T06 to T16 operations where they fit; do not start nested run lifecycles for each module. Add per-match durable result or work records only where needed for correct recovery and audit. |
+| `AnalyzeMatchweek` | Coordinate complete schedule coverage, membership freeze, common cutoff and exact per-match references, research, prediction, vetting, and single-assignment publication before cutoff. Support resume and bounded work; after cutoff replay only the selected state. | Keep one T04 lifecycle around real work. Use existing T06 to T16 operations and the proposed shared research-selection owner. Enforce closure in direct writers as well as the CLI. Missing or late work cannot become a complete Matchweek result. |
 | Settlement and evaluation | Settle frozen recommendations from authorized source evidence. Preserve pending or conflicting results and append correction records. Evaluate immutable V2 analyses against genuine chronological outcomes without changing the original decision. | Keep manual T10 grading and V1 grades. Add automatic settlement as a separate versioned use case. Separate preference definitions from settlement ownership as modules move out of T10. Keep T18/T20 V1 evaluation contracts historical; defer Production Promotion until the V2 pipeline and genuine chronological evidence pass revalidation. Begin V2 evidence collection once the live pipeline and automatic settlement work. |
 | Reporting and audit | Publish one immutable V2 audit with schedule coverage, freeze and per-match cutoff identities, evidence and prediction references, every enabled preference result, uncertainty, decision reason, and `RESEARCH_ONLY` status. Publish the Matchweek report only when the complete-slate gate passes. | Keep T16 V1 report and audit readers. Add a V2 schema; do not relabel V1 `Primary Candidate` or `RESEARCH AVOID` as a V2 decision. Preserve artifact digests and atomic publication. |
 | Persistence and repositories | Keep private SQLite as authoritative state and the content-addressed object store for immutable evidence and reports. Domain code uses narrow repository operations for versioned records and artifacts, not generic table CRUD. Keep network calls and model work outside write transactions. | Keep `Store`, `ArtifactStore`, T17 backup and recovery, bounded transactions, and single-writer safeguards. Add forward-only migrations and versioned manifests. Never edit a released migration or rewrite V1 artifacts. |
@@ -125,8 +127,8 @@ These are logical ownership boundaries. The first live implementation can call e
 
 1. Improve fixture acquisition and semantic completeness in the existing T06 path. Keep source adapters replaceable and use no paid data or infrastructure.
 2. Add provider-health and live-source contracts that report capability, scope, freshness, rights, coverage, and failures.
-3. Add V2 Matchweek Membership Freeze and per-match Match Evidence Cutoff contracts with forward-only persistence. Leave their numeric timing policies unset until separately decided.
-4. Add automated contextual research through per-match, cutoff-aware adapters. Record source attempts and retain V1 provenance and evidence-state rules.
+3. Retain V2 Matchweek Membership Freeze and exact per-match Match Evidence Cutoff contracts. Add the shared-earliest-kickoff rule and explicit initial 21600-second policy without reinterpreting historical per-match policies.
+4. Complete all contextual research and the selected recommendation state before that common boundary. Record source attempts and retain historical provenance and evidence-state rules; later information belongs only to permitted audit/evaluation/settlement paths.
 5. Wire the real `AnalyzeMatchweek` use case into `matchvet run` and `resume`. Connect real outputs to T04 checkpoints and publish only after coverage, research, decisions, and audit validation complete.
 6. Add automatic settlement as a separate use case. Keep manual settlement and all V1 grades readable.
 7. After the live flow works, move one responsibility at a time from ticket-number modules into the domain owners above. Keep compatibility adapters for V1 callers and artifact readers.
@@ -139,7 +141,7 @@ Do not create a new persisted workflow model before its idempotency and recovery
 ## Version and decision rules
 
 - V1 SQLite migrations, T05 cutoffs, T09 evidence states, T10 preference and settlement records, T11 to T16 outputs, T18 evaluations, and T19 qualification artifacts retain their original meanings and readers.
-- V2 freezes, cutoffs, research states, profiles, model outputs, decisions, reports, and run contracts carry explicit versions and digests. Compatibility code may read V1, but it must not translate a V1 global information state into a V2 per-match state.
+- V2 freezes, cutoffs, research states, profiles, model outputs, decisions, reports, and run contracts carry explicit versions and digests. Historical V1 and per-match V2 policies remain readable under their original semantics. New shared-cutoff lineage must be explicit; no artifact is relabeled or translated into a different information boundary.
 - A source failure, an unperformed research requirement, and a completed search with no established fact are different states. Preserve those distinctions through persistence, recovery, and reporting.
 - A completed research process may return AVOID MATCH when no candidate is justified. An interrupted process remains incomplete and cannot publish an AVOID MATCH as a substitute for unfinished work.
 - Production Promotion remains a separate gate. `RESEARCH_ONLY` decisions do not authorize production `PLAY` output.

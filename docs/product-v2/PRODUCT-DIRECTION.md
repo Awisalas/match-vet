@@ -10,7 +10,7 @@ Odds do not drive ranking or recommendations. MatchVet may retain odds later as 
 
 ## Research and evidence
 
-Product V2 uses a Matchweek Membership Freeze to define eligible fixtures and a per-match Match Evidence Cutoff to bound each match's research. This replaces the planned V1 single Matchweek Research Cutoff architecture. The numeric lead time for either freeze or cutoff is undecided.
+Product V2 uses a Matchweek Membership Freeze to define the full seven-league Friday-through-Monday slate and one Matchweek Research Cutoff to freeze all its research and evidence collection. Each match's immutable Match Evidence Cutoff references that common boundary. The initial corrected policy explicitly retains six hours (21600 seconds) before the earliest exact eligible kickoff; code supplies no implicit default. Later fixtures never receive new or refreshed recommendation inputs. See the [cutoff correction decision](../adr/0001-matchweek-wide-evidence-cutoff.md); implementation is pending.
 
 Missing evidence remains UNKNOWN. MatchVet never infers ABSENT from missing data. Preserve evidence provenance, immutability, auditability, uncertainty, recovery, and RESEARCH_ONLY safeguards. Keep historical V1 artifacts valid under their original versions.
 

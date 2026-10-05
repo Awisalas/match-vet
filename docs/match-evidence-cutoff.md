@@ -1,5 +1,10 @@
 # F07 Match Evidence Cutoff
 
+This page describes the currently implemented legacy per-match rule. The
+[Matchweek-wide correction](design/matchweek-wide-evidence-cutoff.md) is the
+accepted target for new recommendations; implementation is pending. Its additive
+policy rule must preserve the historical contract described below.
+
 `MatchEvidenceCutoffRepository` persists one immutable V2 Match Evidence Cutoff
 for each frozen `INCLUDED` membership. It accepts an exact F06 freeze identity
 and a persisted evidence cutoff policy digest. Matchweek Membership Freeze and
