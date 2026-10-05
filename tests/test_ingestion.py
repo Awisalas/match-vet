@@ -378,7 +378,15 @@ def test_importer_retains_conflicting_source_assertions_and_unknown_fields(tmp_p
         fixture = importer.fixtures()[0]
         statistics = importer.statistics(fixture.fixture_id)
         conflicts = importer.conflicts(fixture.fixture_id)
+        football_data_capture = next(
+            capture
+            for capture in importer.source_captures()
+            if capture.source_key == "football-data.co.uk"
+        )
 
+        assert football_data_capture.terms_reference == (
+            "GLOSSARY.md: Football-Data.co.uk restricted private local noncommercial use"
+        )
         assert any(
             stat.metric_key == "corners_home" and stat.state is UNKNOWN for stat in statistics
         )

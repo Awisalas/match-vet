@@ -6,7 +6,7 @@ Keep historical V1 contracts and artifacts under their original versions. Add sc
 
 ## Fixture acquisition and completeness
 
-**Current behavior.** T06 imports season files from Football-Data.co.uk and uses OpenFootball where configured. The Belgian Pro League has no OpenFootball fallback. T05 freezes the fixture revisions already in the store and does not prove that acquisition covered every eligible fixture. `CONTEXT.md` and open issue #1 retain the V1 2026/27 seven-league, Friday-to-Monday scope. See `src/matchvet/ingestion.py`, `src/matchvet/matchweek.py`, and `docs/matchweek-freeze.md`.
+**Current behavior.** T06 imports season files from Football-Data.co.uk and uses OpenFootball where configured. The Belgian Pro League has no OpenFootball fallback. T05 freezes the fixture revisions already in the store and does not prove that acquisition covered every eligible fixture. `GLOSSARY.md` and open issue #1 retain the V1 2026/27 seven-league, Friday-to-Monday scope. See `src/matchvet/ingestion.py`, `src/matchvet/matchweek.py`, and `docs/matchweek-freeze.md`.
 
 **Disposition.** REPLACE the V1 completeness contract. Keep existing parsers, source records, and append-only fixture revisions for V1.
 
@@ -56,7 +56,7 @@ Keep historical V1 contracts and artifacts under their original versions. Add sc
 
 ## Preference Set and Preference Profile
 
-**Current behavior.** V1 uses one immutable 37-preference catalog. T10 grading, T15 policy identity, and T16 audit completeness depend on that catalog. See `CONTEXT.md`, `src/matchvet/t10.py`, `src/matchvet/t15.py`, and `src/matchvet/t16.py`.
+**Current behavior.** V1 uses one immutable 37-preference catalog. T10 grading, T15 policy identity, and T16 audit completeness depend on that catalog. See `GLOSSARY.md`, `src/matchvet/t10.py`, `src/matchvet/t15.py`, and `src/matchvet/t16.py`.
 
 **Disposition.** VERSION the preference model. Keep the V1 catalog, identities, and artifacts unchanged.
 

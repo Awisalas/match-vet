@@ -1084,7 +1084,7 @@ _SOURCE_RIGHTS: Mapping[SourceKind, _SourceRights] = MappingProxyType(
             retention_status="RETAIN_PRIVATE",
             redistributable=False,
             terms_reference=(
-                "CONTEXT.md: Football-Data.co.uk restricted private local noncommercial use"
+                "GLOSSARY.md: Football-Data.co.uk restricted private local noncommercial use"
             ),
             artifact_retention_class="PROTECTED",
         ),

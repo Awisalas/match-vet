@@ -2,7 +2,7 @@
 
 Contract name: `v2-candidate-input-derivation`. Document version: `0.1.0`. Decision date: 2026-10-04. Overall status: **INCONCLUSIVE, not executable**. Structural decisions and existing arithmetic below are frozen by this document. Unselected estimators and numerical profiles are explicitly unresolved. There is no ready assembler specification or Production Promotion decision.
 
-This document addresses [#70](https://github.com/Awisalas/match-vet/issues/70). F16 corrective implementation and F17 remain BLOCKED. It preserves the settled [model decision #12](https://github.com/Awisalas/match-vet/issues/12), [policy decision #13](https://github.com/Awisalas/match-vet/issues/13), [evidence catalog #16](https://github.com/Awisalas/match-vet/issues/16), [V2 direction](PRODUCT-DIRECTION.md), and [domain glossary](../../CONTEXT.md). The [statistical research note](../research/v2-candidate-input-statistical-methods.md) supplies primary citations and candidate estimators, not empirical validation of MatchVet.
+This document addresses [#70](https://github.com/Awisalas/match-vet/issues/70). F16 corrective implementation and F17 remain BLOCKED. It preserves the settled [model decision #12](https://github.com/Awisalas/match-vet/issues/12), [policy decision #13](https://github.com/Awisalas/match-vet/issues/13), [evidence catalog #16](https://github.com/Awisalas/match-vet/issues/16), [V2 direction](PRODUCT-DIRECTION.md), and [domain glossary](../../GLOSSARY.md). The [statistical research note](../research/v2-candidate-input-statistical-methods.md) supplies primary citations and candidate estimators, not empirical validation of MatchVet.
 
 ## Evidence available for this decision
 
