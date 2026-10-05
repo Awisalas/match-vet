@@ -206,6 +206,15 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Recommended Matt Pocock skills:** `$architect`, `$tdd`, `$blast-radius`.
 - **Model:** GPT-6 Luna Max is sufficient.
 
+### CB01 Bootstrap live chronological evidence before F17
+- **Status:** Ready for implementation in [#72](https://github.com/Awisalas/match-vet/issues/72).
+- **Type:** Chronological bootstrap path; outside the original F01-F21 numbering.
+- **Goal:** Preserve one outcome-free pre-enrollment per enabled preference for every exact F06 INCLUDED fixture, commit each complete fixture batch to SHA-256, and obtain one verified Sigstore RFC3161 witness before kickoff. Local clocks remain metadata.
+- **Blocked by:** None. F06, F07, F10, F11, F13, F14, F16, F19 and ArtifactStore contracts are complete.
+- **Relationship to #70:** Supplies genuine pre-kickoff predictions and later exact outcomes for the separate frozen methodology assessment. Does not define #70 estimators, thresholds, cohort roles or eligibility.
+- **Relationship to F21:** F21 later adopts the exact CB01 case, batch, enrollment and outcome-attachment identities. It does not replace existing witnesses.
+- **Gate:** F17 remains blocked by F16 and [#70](https://github.com/Awisalas/match-vet/issues/70). CB01 does not weaken or bypass either requirement.
+
 ### F17 Gate publication and recovery
 - **Goal:** Publish the transparent, immutable MatchVet record only after fixture coverage and every eligible match's terminal decision are complete. Include evidence provenance, preference results, uncertainty, decision reason, and RESEARCH_ONLY status. Resume from matching immutable inputs and outputs.
 - **Blocked by:** F16 and [#70](https://github.com/Awisalas/match-vet/issues/70), the frozen V2 CandidateInput derivation methodology and corrective dependency.

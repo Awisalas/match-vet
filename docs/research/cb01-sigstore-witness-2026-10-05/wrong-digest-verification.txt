@@ -1,0 +1,4 @@
+Using configuration from /data/data/com.termux/files/usr/etc/tls/openssl.cnf
+68C0F91977000000:error:17800067:time stamp routines:ts_check_imprints:message imprint mismatch:crypto/ts/ts_rsp_verify.c:508:
+Verification: FAILED
+wrong_digest_exit=1

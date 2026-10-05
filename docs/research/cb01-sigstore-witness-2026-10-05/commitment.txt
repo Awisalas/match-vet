@@ -1,0 +1,1 @@
+CB01 Sigstore RFC3161 feasibility commitment 2026-10-05 fixture-batch placeholder commitment

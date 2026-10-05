@@ -1,0 +1,4 @@
+Using configuration from /data/data/com.termux/files/usr/etc/tls/openssl.cnf
+6820806874000000:error:0680008E:asn1 encoding routines:asn1_d2i_read_bio:not enough data:crypto/asn1/a_d2i_fp.c:272:
+Verification: FAILED
+malformed_exit=1

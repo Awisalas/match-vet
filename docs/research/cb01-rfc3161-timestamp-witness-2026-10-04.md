@@ -1,6 +1,6 @@
 # CB01 RFC 3161 timestamp witness research
 
-Reviewed 2026-10-04 for [CB01 #72](https://github.com/Awisalas/match-vet/issues/72). This note records primary-source findings and a successful Termux request and offline cryptographic verification.
+Historical DigiCert feasibility note reviewed 2026-10-04 for [CB01 #72](https://github.com/Awisalas/match-vet/issues/72). DigiCert is no longer an active CB01 dependency. The service-use question was subsequently resolved by the Sigstore evaluation in [the 2026-10-05 note](cb01-sigstore-rfc3161-timestamp-witness-2026-10-05.md); retain this file as historical research only. This note records primary-source findings and a successful Termux request and offline cryptographic verification.
 
 ## DigiCert endpoint and certificate material
 
@@ -82,4 +82,4 @@ Primary-source review confirmed the endpoint and timestamp policy, but did not e
 
 F19's retained T10 evidence can represent all current F13 full-time, half-time and corner facts, but a preference grade does not guarantee those facts are present or compatible. The contract adds an exact later outcome-fact attachment only for required fact resolution or supplementation, with missing/conflicting counts unavailable and no invented values.
 
-Result: #72 remains OPEN / needs-triage on service-use and rate-limit suitability. CB01 roadmap insertion remains conditional on that blocker. F17's #70 blocker is preserved. This review adds documentation only and runs no production tests or full suite.
+Historical result as of 2026-10-04: #72 remained OPEN / needs-triage on service-use and rate-limit suitability. That DigiCert-specific blocker was resolved by the Sigstore evaluation on 2026-10-05; see the linked current research note. F17's #70 blocker remains preserved.
