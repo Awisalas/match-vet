@@ -7,3 +7,4 @@
 - [x] Scrap: checked for repeated structural workarounds; none required a contract or repository-seam redesign.
 - [x] Verify: run focused and affected checks from the acceptance list; prove the key chronology/recovery safety fact.
 - [x] Review: inspect blast radius, reconcile the decision log, and review the implementation and staged diff.
+- [x] Release: commit and push the verified patch, close #72, and confirm #70 remains open with F17 still blocked.

@@ -29,3 +29,7 @@ The functional and scoped quality gates are green. The failed overlapping-source
 At the reviewed transcript boundary, commit, push, roadmap publication, and issue closure were still pending. The release row says they are ready to proceed; it does not claim they already happened.
 
 The decision trail is reconciled with the matching workspace transcript.
+
+## Release follow-up
+
+The reviewed boundary preceded release. The implementation was then committed as `8733fc2582bcb718c5e161c267b85ab109ddc2b1`, pushed to `main`, and #72 was closed after the gates passed. GitHub reports #70 still OPEN; the roadmap retains F17's block by F16 and #70.
