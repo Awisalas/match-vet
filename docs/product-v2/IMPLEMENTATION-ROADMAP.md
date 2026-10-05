@@ -207,7 +207,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 - **Model:** GPT-6 Luna Max is sufficient.
 
 ### CB01 Bootstrap live chronological evidence before F17
-- **Status:** Ready for implementation in [#72](https://github.com/Awisalas/match-vet/issues/72).
+- **Status:** Complete in [#72](https://github.com/Awisalas/match-vet/issues/72). See the [CB01 operator workflow](../design/cb01-operator-workflow.md).
 - **Type:** Chronological bootstrap path; outside the original F01-F21 numbering.
 - **Goal:** Preserve one outcome-free pre-enrollment per enabled preference for every exact F06 INCLUDED fixture, commit each complete fixture batch to SHA-256, and obtain one verified Sigstore RFC3161 witness before kickoff. Local clocks remain metadata.
 - **Blocked by:** None. F06, F07, F10, F11, F13, F14, F16, F19 and ArtifactStore contracts are complete.
