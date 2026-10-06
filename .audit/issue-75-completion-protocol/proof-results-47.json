@@ -1,0 +1,508 @@
+{
+  "prototype": "THROWAWAY synthetic manifests; future guard contract",
+  "cases": [
+    {
+      "case": "competing_process_writer",
+      "result": "refused"
+    },
+    {
+      "case": "competing_store_same_process",
+      "result": "refused"
+    },
+    {
+      "case": "early",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "copied/reconstructed operation identity refused",
+          "fork capability refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "receipt_late",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "equal",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "late",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "rollback",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "forward_clock",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "reopen_after_sample",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "same-process reopened Store invalidates capability"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "pause_before_sample",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "pause_after_sample",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "selection_object_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "selection_commit_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "sample_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "same_process_reopen_missing_receipt",
+      "result": "refused"
+    },
+    {
+      "case": "receipt_object_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "receipt_transaction_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "receipt_commit_crash",
+      "restart": "qualified",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "receipt_late_commit_crash",
+      "restart": "qualified",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "selection_commit_error_before",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "attempts selection=1 receipt=0 reconciliation_reads=0"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "selection_commit_error_after",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "attempts selection=1 receipt=0 reconciliation_reads=0"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "receipt_commit_error_before",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "attempts selection=1 receipt=1 reconciliation_reads=1"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "reconciliation_reads": 1
+      }
+    },
+    {
+      "case": "receipt_commit_error_after",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays",
+          "attempts selection=1 receipt=1 reconciliation_reads=1"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "reconciliation_reads": 1
+      }
+    },
+    {
+      "case": "receipt_late_commit_error_after",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays",
+          "attempts selection=1 receipt=1 reconciliation_reads=1"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "reconciliation_reads": 1
+      }
+    },
+    {
+      "case": "reentrant_callback",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "reentrant Store operation refused",
+          "reentrant public reserved publication refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "fsync_failure",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic publication into derived selection slot refused"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 0
+        },
+        "commit_attempts": {
+          "selection": 0,
+          "receipt": 0
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "never_selected_candidate_at_cutoff_equality",
+      "result": "refused with zero slot publication attempts and empty indices"
+    },
+    {
+      "case": "unindexed_orphan_selection_retry_after_cutoff",
+      "result": "refused with zero slot publication attempts and empty indices"
+    },
+    {
+      "case": "orphan_selection_object_fresh_retry",
+      "result": "qualified after exact reused object synced before commit",
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic publication into derived selection slot refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays"
+        ],
+        "publication_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "commit_attempts": {
+          "selection": 1,
+          "receipt": 1
+        },
+        "reconciliation_reads": 0
+      }
+    },
+    {
+      "case": "forged_matchweek_public_poison_real_receipt_slot",
+      "result": "guard allowed invalid mapping; domain replay refused permanently"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_parent",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_digest",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_matchweek",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_policy",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_cutoff",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_protocol",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_profile",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_incomplete",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_selection_incomplete",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_selection_matchweek",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_selection_protocol",
+      "result": "domain refused"
+    },
+    {
+      "case": "selection_corrupt",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "selection_delete",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "receipt_corrupt",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "receipt_delete",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "dependency_corrupt",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "dependency_delete",
+      "result": "refused in process and recovery"
+    }
+  ],
+  "all_assertions_passed": true,
+  "clock": {
+    "raw_rollback_counterexample": "wall=70<T while real elapsed upper bound=110>=T",
+    "conservative_bound": "max(wall UTC upper bound, initial UTC upper bound + suspend-inclusive elapsed)",
+    "assumptions": "trusted initial UTC upper bound; trusted elapsed source across suspend; no VM/process-memory rollback"
+  },
+  "limits": [
+    "No full F16 lineage or production module integration",
+    "os._exit proves process-crash recovery, not hardware power-loss durability",
+    "Derived-slot guard remains bypassable by explicitly trusted private Python/raw SQL",
+    "Synthetic clocks assume a trusted absolute UTC upper bound and elapsed source",
+    "No migration or production module changed; no network or live stores"
+  ]
+}

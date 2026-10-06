@@ -1,0 +1,5 @@
+$ ruff check .audit/issue-75-completion-protocol/prototype_protocol.py .audit/issue-75-storage-proof/test_storage_deadline.py
+All checks passed!
+
+$ ruff format --check .audit/issue-75-completion-protocol/prototype_protocol.py .audit/issue-75-storage-proof/test_storage_deadline.py
+2 files already formatted

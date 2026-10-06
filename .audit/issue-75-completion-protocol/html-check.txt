@@ -1,0 +1,1 @@
+{"html_walkthroughs":8,"passed":true,"limit":"Pure reducer and full-script syntax checked; browser rendering not checked"}

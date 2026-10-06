@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matchweek completion protocol prototype</title>
+<style>
+body{font:16px system-ui;max-width:960px;margin:32px auto;padding:0 20px;color:#172c35;background:#f5f8fa}
+h1{font-size:28px}h2{font-size:20px}section{background:white;padding:20px;margin:18px 0;border:1px solid #ccd8de;border-radius:8px}
+button{font:inherit;border:1px solid #7897a6;border-radius:5px;padding:8px 12px;margin:4px;background:white;cursor:pointer}
+button.active{background:#125b79;color:white}dt{font-weight:600}dd{margin:0 0 12px}#status{font-size:20px;color:#125b79}small{color:#536b76}
+</style>
+<h1>Can a later receipt prove an earlier Matchweek selection?</h1>
+<p>Throwaway logic prototype. Select one complete synthetic slate before cutoff T, then preserve evidence of that commit. Explore crashes and delays between those steps. This page uses memory only; the Python scratch-store proof checks actual repository persistence.</p>
+<p><small>Assumptions: trusted repository time, honest durable storage, and the only receipt writer following this operation. Cutoff T is time 10. These assumptions cannot be certified by this page.</small></p>
+<section><h2>Current state</h2><p id="status"></p><dl id="state"></dl><p id="message"></p></section>
+<section><h2>Free play</h2><div id="actions"></div></section>
+<section><h2>Guided walkthroughs</h2><div id="tabs"></div><p id="description"></p><div id="steps"></div></section>
+<script>
+// Pure throwaway reducer. Durable state survives a crash; authority never does.
+const initial=()=>({now:8,selection:null,selectionCommittedAt:null,receipt:null,receiptCommittedAt:null,capability:null,active:true,used:false,message:'No selection. Work is open while time is below T.'});
+function transition(old,action){
+ const s={...old};
+ switch(action){
+ case 'commit':
+  if(s.selection||!s.active||s.now>=10){s.message='A new selection is refused.';break;}
+  s.selection='slate A';s.selectionCommittedAt=s.now;s.message='Exact slate A is durably assigned. It is unavailable until valid receipt evidence exists.';break;
+ case 'ack':
+  if(!s.active||!s.selection||s.receipt||s.capability||s.used){s.message='No fresh live operation can issue authority.';break;}
+  if(s.now>=10){s.active=false;s.message='Acknowledgement is at or after T. This assignment stays unavailable forever.';break;}
+  s.capability={selection:s.selection,observedAt:s.now};s.message='Postcommit observation is before T. One private receipt attempt is authorized.';break;
+ case 'receipt':
+  if(!s.active||!s.capability||s.used){s.message='No live one-use authority. Receipt creation is refused.';break;}
+  s.used=true;s.receipt={...s.capability};s.capability=null;s.receiptCommittedAt=s.now;s.active=false;s.message='Receipt is durable. Its publication may occur after T because selection already committed before its earlier acknowledgement.';break;
+ case 'failed_receipt':s.used=true;s.capability=null;s.active=false;s.message='Receipt publication left only an orphan. No indexed receipt; qualification stays unavailable.';break;
+ case 'crash':s.capability=null;s.active=false;s.message='Crash/reopen erases all live authority. Durable selection and receipt remain.';break;
+ case 'pause':s.now=11;s.message='Time passed beyond T. A pre-T acknowledgement can finish its one receipt attempt; an unsampled commit cannot gain acknowledgement.';break;
+ case 'equal':s.now=10;s.message='The repository observes cutoff equality.';break;
+ case 'alternate':s.message=s.selection?'Slate B cannot replace the logical Matchweek assignment.':'No state selected. A future independent operation would still need to finish before T.';break;
+ case 'backfill':s.message='Disk state grants no receipt authority, even before T. Backfill is refused.';break;
+ case 'delete':s.receipt=null;s.message='Missing receipt means permanent unavailable state. Re-creation is refused.';break;
+ case 'corrupt':s.selection=s.selection?'corrupt':null;s.message='Corrupt selection or lineage refuses replay, even with a receipt.';break;
+ case 'reset':return initial();
+ }
+ return s;
+}
+const labels={commit:'Commit slate A',ack:'Observe postcommit time',receipt:'Persist receipt',failed_receipt:'Interrupt receipt publication',crash:'Crash and reopen',pause:'Pass T',equal:'Reach exactly T',alternate:'Propose slate B',backfill:'Try to backfill receipt',delete:'Lose receipt',corrupt:'Corrupt selected graph',reset:'Reset simulation'};
+const scenarios=[
+ ['Receipt after cutoff','The selection and acknowledgement finish before T. Only the receipt publication is delayed.',['commit','ack','pause','receipt','crash']],
+ ['Crash immediately after selection','Assignment survives; the required acknowledgement and receipt never exist.',['commit','crash','pause','backfill','alternate']],
+ ['Crash after observation','Volatile authority disappears. A stored timestamp alone must never mint it again.',['commit','ack','crash','backfill']],
+ ['Pause before observation','A commit that might have been timely fails conservatively when the operation observes time too late.',['commit','pause','ack','backfill']],
+ ['Cutoff equality','Equality fails the strict comparison.',['commit','equal','ack','backfill']],
+ ['Receipt interrupted','An unindexed receipt object cannot qualify or be adopted on restart.',['commit','ack','failed_receipt','crash','backfill']],
+ ['Receipt loss or graph damage','Availability can be lost, and neither loss permits replacement.',['commit','ack','receipt','delete','backfill','alternate','corrupt']]
+];
+let current=initial(),tab=0,step=0;
+function render(){
+ const qualified=current.receipt&&current.selection===current.receipt.selection&&current.receipt.observedAt<10;
+ document.getElementById('status').textContent=qualified?'Exact selected slate can replay':current.selection?'Assigned slate is unavailable':'No selected slate';
+ const fields=[['Repository time',current.now+'; cutoff T = 10'],['Durable selection',current.selection||'Absent'],['Selection commit time in this simulation',current.selectionCommittedAt??'Absent'],['Live receipt authority',current.capability?'Present for this operation only':'Absent'],['Durable receipt observation',current.receipt?.observedAt??'Absent'],['Receipt persistence time',current.receiptCommittedAt??'Absent'],['Operation still active',String(current.active)],['Receipt attempt consumed',String(current.used)]];
+ const dl=document.getElementById('state');dl.replaceChildren();for(const [key,value]of fields){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=value;dl.append(dt,dd);}
+ document.getElementById('message').textContent=current.message;
+ document.getElementById('description').textContent=scenarios[tab][1];
+ const holder=document.getElementById('steps');holder.replaceChildren();scenarios[tab][2].forEach((action,i)=>{const b=document.createElement('button');b.textContent=(i+1)+'. '+labels[action];b.disabled=i!==step;b.onclick=()=>{current=transition(current,action);step++;render();};holder.append(b);});
+ document.querySelectorAll('#tabs button').forEach((b,i)=>b.classList.toggle('active',i===tab));
+}
+for(const action of Object.keys(labels)){const b=document.createElement('button');b.textContent=labels[action];b.onclick=()=>{current=transition(current,action);render();};document.getElementById('actions').append(b);}
+scenarios.forEach(([title],i)=>{const b=document.createElement('button');b.textContent=title;b.onclick=()=>{tab=i;step=0;current=initial();render();};document.getElementById('tabs').append(b);});
+render();
+</script></html>

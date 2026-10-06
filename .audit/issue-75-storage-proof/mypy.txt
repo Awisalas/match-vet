@@ -1,0 +1,2 @@
+.audit/issue-75-storage-proof/test_storage_deadline.py:55: error: Incompatible types in assignment (expression has type "Callable[[VarArg(Any), KwArg(Any)], Connection]", variable has type overloaded function)  [assignment]
+Found 1 error in 1 file (checked 1 source file)

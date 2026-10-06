@@ -1,0 +1,28 @@
+{
+  "root_independent_protocol_run": {
+    "cases": 47,
+    "all_assertions_passed": true
+  },
+  "html": {
+    "html_walkthroughs": 8,
+    "passed": true,
+    "limit": "Pure reducer and full-script syntax checked; browser rendering not checked"
+  },
+  "ruff_check_and_format": "passed for both new and preserved original proof Python",
+  "git_diff_check": "passed",
+  "production_source_tests_dependency_files": "unchanged",
+  "original_proof_files_unchanged": 15,
+  "durable_original_records": 14,
+  "previous_output_checkpoint_counts": [
+    25,
+    36,
+    37,
+    45
+  ],
+  "limits": [
+    "Synthetic lineage, not full F16 integration",
+    "Modeled future publication guards",
+    "No hardware power-loss or live UTC-accuracy proof",
+    "Prior persistence/F16 regressions preserved, not rerun"
+  ]
+}

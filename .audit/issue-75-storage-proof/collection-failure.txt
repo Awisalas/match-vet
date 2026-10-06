@@ -1,0 +1,16 @@
+
+==================================== ERRORS ====================================
+___ ERROR collecting .audit/issue-75-storage-proof/test_storage_deadline.py ____
+ImportError while importing test module '/data/data/com.termux/files/home/projects/match-vet/.audit/issue-75-storage-proof/test_storage_deadline.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../../usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.audit/issue-75-storage-proof/test_storage_deadline.py:15: in <module>
+    import matchvet.artifacts as artifact_module
+E   ModuleNotFoundError: No module named 'matchvet'
+=========================== short test summary info ============================
+ERROR .audit/issue-75-storage-proof/test_storage_deadline.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 2.60s

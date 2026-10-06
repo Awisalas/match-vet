@@ -1,0 +1,1 @@
+PASS: all 15 original proof files remain byte-for-byte unchanged (14 durable records plus one ignored bytecode cache).

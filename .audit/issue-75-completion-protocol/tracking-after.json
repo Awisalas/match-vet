@@ -1,0 +1,70 @@
+{
+  "issues": [
+    {
+      "number": 73,
+      "state": "open",
+      "title": "Correct F07 and downstream evidence freeze to one Matchweek-wide cutoff",
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "total_blocked_by": 9,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "html_url": "https://github.com/Awisalas/match-vet/issues/73"
+    },
+    {
+      "number": 75,
+      "state": "open",
+      "title": "Pin one complete Matchweek research selection before cutoff",
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 1,
+        "blocking": 1,
+        "total_blocking": 1
+      },
+      "html_url": "https://github.com/Awisalas/match-vet/issues/75"
+    },
+    {
+      "number": 76,
+      "state": "open",
+      "title": "Enforce the selected cutoff across F11\u2013F16 writers and replay",
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "total_blocked_by": 1,
+        "blocking": 1,
+        "total_blocking": 1
+      },
+      "html_url": "https://github.com/Awisalas/match-vet/issues/76"
+    },
+    {
+      "number": 77,
+      "state": "open",
+      "title": "Bind CB01 and evaluation to the corrected Matchweek lineage",
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "total_blocked_by": 1,
+        "blocking": 1,
+        "total_blocking": 1
+      },
+      "html_url": "https://github.com/Awisalas/match-vet/issues/77"
+    },
+    {
+      "number": 78,
+      "state": "open",
+      "title": "Prove one corrected Matchweek information state end to end",
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "total_blocked_by": 1,
+        "blocking": 1,
+        "total_blocking": 1
+      },
+      "html_url": "https://github.com/Awisalas/match-vet/issues/78"
+    }
+  ],
+  "issue76_blockers": [
+    {
+      "number": 75,
+      "state": "open"
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+{
+  "prototype": "THROWAWAY synthetic manifests; future guard contract",
+  "cases": [
+    {
+      "case": "competing_process_writer",
+      "result": "refused"
+    },
+    {
+      "case": "competing_store_same_process",
+      "result": "refused"
+    },
+    {
+      "case": "early",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic receipt forgery refused",
+          "copied/reconstructed operation identity refused",
+          "fork capability refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays"
+        ]
+      }
+    },
+    {
+      "case": "receipt_late",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic receipt forgery refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays"
+        ]
+      }
+    },
+    {
+      "case": "equal",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic receipt forgery refused"
+        ]
+      }
+    },
+    {
+      "case": "late",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic receipt forgery refused"
+        ]
+      }
+    },
+    {
+      "case": "rollback",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic receipt forgery refused"
+        ]
+      }
+    },
+    {
+      "case": "forward_clock",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic receipt forgery refused"
+        ]
+      }
+    },
+    {
+      "case": "reopen_after_sample",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic receipt forgery refused",
+          "same-process reopened Store invalidates capability"
+        ]
+      }
+    },
+    {
+      "case": "pause_before_sample",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic receipt forgery refused"
+        ]
+      }
+    },
+    {
+      "case": "pause_after_sample",
+      "restart": "qualified",
+      "process_exit": 0,
+      "live": {
+        "operation": "qualified",
+        "checks": [
+          "generic receipt forgery refused",
+          "changed cutoff/dependencies/profile-version rejected; original replays"
+        ]
+      }
+    },
+    {
+      "case": "selection_object_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "selection_commit_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "sample_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "same_process_reopen_missing_receipt",
+      "result": "refused"
+    },
+    {
+      "case": "receipt_object_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "receipt_transaction_crash",
+      "restart": "refused",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "receipt_commit_crash",
+      "restart": "qualified",
+      "process_exit": 37,
+      "live": "crashed"
+    },
+    {
+      "case": "fsync_failure",
+      "restart": "refused",
+      "process_exit": 0,
+      "live": {
+        "operation": "refused",
+        "checks": [
+          "generic receipt forgery refused"
+        ]
+      }
+    },
+    {
+      "case": "generic_valid_wrong_receipt_parent",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_digest",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_matchweek",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_policy",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_cutoff",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_protocol",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_profile",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_receipt_incomplete",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_selection_incomplete",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_selection_matchweek",
+      "result": "domain refused"
+    },
+    {
+      "case": "generic_valid_wrong_selection_protocol",
+      "result": "domain refused"
+    },
+    {
+      "case": "3_corrupt",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "3_delete",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "7_corrupt",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "7_delete",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "dependency_corrupt",
+      "result": "refused in process and recovery"
+    },
+    {
+      "case": "dependency_delete",
+      "result": "refused in process and recovery"
+    }
+  ],
+  "all_assertions_passed": true,
+  "clock": {
+    "raw_rollback_counterexample": "wall=70<T while real elapsed upper bound=110>=T",
+    "conservative_bound": "max(wall UTC upper bound, initial UTC upper bound + suspend-inclusive elapsed)",
+    "assumptions": "trusted initial UTC upper bound; trusted elapsed source across suspend; no VM/process-memory rollback"
+  },
+  "limits": [
+    "No full F16 lineage or production namespace integration",
+    "os._exit proves process-crash recovery, not hardware power-loss durability",
+    "Synthetic guard is bypassable by arbitrary trusted Python/SQL code",
+    "No migration or production module changed; no network or live stores"
+  ]
+}
