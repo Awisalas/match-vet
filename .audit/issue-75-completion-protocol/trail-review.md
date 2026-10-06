@@ -28,3 +28,7 @@ The canonical trail matches the named workspace transcript and its evidence. The
 - Prior persistence and F16 regression results were preserved rather than rerun during the final proof.
 
 The original `.audit/issue-75-storage-proof` evidence remains unchanged. The final work stays within design, isolated proof, documentation, and issue-tracking scope.
+
+## Publication addendum
+
+The later `publication` row is supported. The transcript records commit `96ce73a6aaa36923c680b0cfde351c6427c79fdb`, a successful push of that commit to `main`, and an independent `git ls-remote` equality check against `origin/main`. `publication.json` records the same full hashes and verifies 14 original durable proof records against their committed blobs. The completed TODO item therefore describes the published design and proof commit accurately. This addendum and its bookkeeping changes are later work and are not claimed as committed or pushed here.

@@ -7,4 +7,4 @@
 - [x] Record an agreed design; production implementation excluded
 - [x] Scrap unsafe candidates
 - [x] Audit proof and preserve prior evidence
-- [ ] Commit and push design/proof records; keep #75 open
+- [x] Commit and push design/proof records; keep #75 open

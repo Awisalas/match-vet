@@ -30,6 +30,7 @@ needed by the chosen representation.
 | `review-prompt.md`, `interrogation.md`, `trail-review.md`, `decisions.tsv` | Independent attacks, resolved findings and append-only decision trail. |
 | `issue75-before.json`, `issue75-proposed.md`, `issue75-after.json`, `tracking-before.json`, `tracking-after.json` | Acceptance clarification and unchanged open/blocked state. |
 | `prior-evidence-sha256.json`, `preservation-check.txt` | Original failed storage-proof files remain unchanged. |
+| `staged-scope.json`, `publication.json` | Authorized staged paths and confirmed design/proof publication to main. |
 
 The baseline hash file includes an ignored Python bytecode cache as a local preservation
 check. All 14 durable original files are committed; generated cache files are not.
