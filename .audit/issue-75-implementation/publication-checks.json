@@ -1,0 +1,74 @@
+{
+  "implementation_commit": "5c8d56aceb255aec7f5592da85ac069142261efa",
+  "remote_main_verified": "5c8d56aceb255aec7f5592da85ac069142261efa",
+  "issue_body_preserved": true,
+  "original_audit_records_unchanged": 55,
+  "issues": {
+    "73": {
+      "number": 73,
+      "state": "open",
+      "html_url": "https://github.com/Awisalas/match-vet/issues/73",
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "total_blocked_by": 9,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "labels": []
+    },
+    "75": {
+      "number": 75,
+      "state": "closed",
+      "html_url": "https://github.com/Awisalas/match-vet/issues/75",
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 1,
+        "blocking": 1,
+        "total_blocking": 1
+      },
+      "labels": []
+    },
+    "76": {
+      "number": 76,
+      "state": "open",
+      "html_url": "https://github.com/Awisalas/match-vet/issues/76",
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 1,
+        "blocking": 1,
+        "total_blocking": 1
+      },
+      "labels": [
+        "ready-for-agent"
+      ]
+    },
+    "77": {
+      "number": 77,
+      "state": "open",
+      "html_url": "https://github.com/Awisalas/match-vet/issues/77",
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "total_blocked_by": 1,
+        "blocking": 1,
+        "total_blocking": 1
+      },
+      "labels": []
+    },
+    "78": {
+      "number": 78,
+      "state": "open",
+      "html_url": "https://github.com/Awisalas/match-vet/issues/78",
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "total_blocked_by": 1,
+        "blocking": 1,
+        "total_blocking": 1
+      },
+      "labels": []
+    }
+  },
+  "project_items": {
+    "75": [],
+    "76": []
+  }
+}
