@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 
 from matchvet.artifacts import ArtifactError, ArtifactStore
+from matchvet.matchweek import MatchweekWindow
 from matchvet.matchweek_membership import (
     MatchweekMembershipError,
     MatchweekMembershipFreeze,
@@ -44,7 +45,10 @@ class CutoffPolicy:
     def __post_init__(self) -> None:
         if type(self.schema_version) is not int or self.schema_version != 1:
             raise _refuse("VERSION-UNSUPPORTED", "Unsupported F07 policy schema.")
-        if self.rule != "KICKOFF_MINUS_LEAD_TIME":
+        if self.rule not in (
+            "KICKOFF_MINUS_LEAD_TIME",
+            "MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+        ):
             raise _refuse("VERSION-UNSUPPORTED", "Unsupported F07 timing rule.")
         if any(type(v) is not str or not v.strip() for v in (self.policy_id, self.policy_version)):
             raise _refuse("POLICY-INVALID", "Policy identity and version must be explicit.")
@@ -222,6 +226,14 @@ class MatchEvidenceCutoffRepository:
         policy = self.read_policy(policy_digest)
         if policy.lead_time_seconds is None:
             raise _refuse("POLICY-UNCONFIGURED", "F07 requires an explicitly configured lead time.")
+        if policy.rule == "MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME":
+            window_start = _utc(MatchweekWindow.for_friday(freeze.matchweek_friday).start_utc)
+            if _utc(freeze.created_at_utc) >= window_start:
+                raise _refuse(
+                    "FREEZE-LATE",
+                    "Corrected F07 requires a complete F06 freeze created before Matchweek begins.",
+                )
+            _matchweek_boundary(freeze, policy)
         return freeze, policy
 
     def _read(self, digest: str, media_type: str) -> bytes:
@@ -246,15 +258,18 @@ def _cutoff(
     policy: CutoffPolicy,
     policy_digest: str,
 ) -> MatchEvidenceCutoff:
-    kickoff = member.controlling_revision.kickoff_utc
-    if kickoff is None or member.controlling_revision.kickoff_precision != "INSTANT":
-        raise _refuse("KICKOFF-INVALID", "An exact controlling kickoff is required.")
-    if policy.lead_time_seconds is None:
-        raise _refuse("POLICY-UNCONFIGURED", "Cutoff policy has no configured lead time.")
-    try:
-        boundary = _utc(kickoff) - timedelta(seconds=policy.lead_time_seconds)
-    except OverflowError as error:
-        raise _refuse("POLICY-INVALID", "Configured lead time exceeds timestamp range.") from error
+    if policy.rule == "KICKOFF_MINUS_LEAD_TIME":
+        kickoff = member.controlling_revision.kickoff_utc
+        if kickoff is None or member.controlling_revision.kickoff_precision != "INSTANT":
+            raise _refuse("KICKOFF-INVALID", "An exact controlling kickoff is required.")
+        try:
+            boundary = _utc(kickoff) - timedelta(seconds=policy.lead_time_seconds or 0)
+        except OverflowError as error:
+            raise _refuse(
+                "POLICY-INVALID", "Configured lead time exceeds timestamp range."
+            ) from error
+    else:
+        boundary = _matchweek_boundary(freeze, policy)
     return MatchEvidenceCutoff(
         1,
         freeze.freeze_id,
@@ -269,6 +284,28 @@ def _cutoff(
         policy_digest,
         boundary.isoformat(timespec="microseconds"),
     )
+
+
+def _matchweek_boundary(
+    freeze: MatchweekMembershipFreeze, policy: CutoffPolicy
+) -> datetime:
+    included = tuple(
+        member for member in freeze.memberships if member.decision is MembershipState.INCLUDED
+    )
+    if not included:
+        raise _refuse("SLATE-EMPTY", "Corrected F07 requires at least one INCLUDED membership.")
+    kickoffs: list[datetime] = []
+    for member in included:
+        revision = member.controlling_revision
+        if revision.kickoff_utc is None or revision.kickoff_precision != "INSTANT":
+            raise _refuse("KICKOFF-INVALID", "Every INCLUDED membership requires an exact kickoff.")
+        kickoffs.append(_utc(revision.kickoff_utc))
+    if policy.lead_time_seconds is None:
+        raise _refuse("POLICY-UNCONFIGURED", "F07 requires an explicitly configured lead time.")
+    try:
+        return min(kickoffs) - timedelta(seconds=policy.lead_time_seconds)
+    except OverflowError as error:
+        raise _refuse("POLICY-INVALID", "Configured lead time exceeds timestamp range.") from error
 
 
 def _utc(value: str) -> datetime:

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -32,7 +33,9 @@ def test_cutoffs_persist_independently_retry_and_reopen_without_changing_freeze(
         )
         FixtureCoverageRepository(store).persist(assessment)
         ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
-        freezes = MatchweekMembershipRepository(store)
+        freezes = MatchweekMembershipRepository(
+            store, clock=lambda: datetime(2026, 9, 16, 12, tzinfo=UTC)
+        )
         freeze = freezes.freeze_exact(
             "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
         )
@@ -42,6 +45,10 @@ def test_cutoffs_persist_independently_retry_and_reopen_without_changing_freeze(
         policy = repo.persist_policy(CutoffPolicy("test-cutoff", "experiment-1", 3600))
         cutoffs = repo.persist_for_freeze(freeze.freeze_id, policy)
         assert len(cutoffs) == 2
+        assert tuple(item.digest for item in cutoffs) == (
+            "sha256:e4cb5077d9c5ff8413337ea0ba72862312f65772bc42240be7054a2ea7c3e12b",
+            "sha256:3b824fe15ce964de1a2b17c94f701360480b899a1a48095f996acca90067b2f5",
+        )
         assert {c.cutoff_at_utc for c in cutoffs} == {
             "2026-09-25T18:00:00.000000+00:00",
             "2026-09-28T18:00:00.000000+00:00",
@@ -62,6 +69,114 @@ def test_cutoffs_persist_independently_retry_and_reopen_without_changing_freeze(
         repo = MatchEvidenceCutoffRepository(store)
         assert repo.replay_for_freeze(freeze.freeze_id, policy) == cutoffs
         assert repo.persist_for_freeze(freeze.freeze_id, policy) == cutoffs
+
+
+def test_matchweek_rule_uses_earliest_exact_included_kickoff_for_every_member(
+    tmp_path: Path,
+) -> None:
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        assessment = _persistable_schedule_assessment(
+            store,
+            tmp_path,
+            (("2026-09-25", "20:00", "Friday United", "Friday City"),
+             ("2026-09-28", "20:00", "Monday United", "Monday City")),
+            rows_by_league={
+                "premier_league": (("2026-09-28", "20:00", "Monday United", "Monday City"),),
+                "serie_a": (("2026-09-25", "20:00", "Friday United", "Friday City"),),
+            },
+        )
+        FixtureCoverageRepository(store).persist(assessment)
+        ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+        freeze = MatchweekMembershipRepository(
+            store, clock=lambda: datetime(2026, 9, 16, 12, tzinfo=UTC)
+        ).freeze_exact(
+            "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+        )
+        repo = MatchEvidenceCutoffRepository(store)
+        policy = repo.persist_policy(CutoffPolicy(
+            "matchweek-cutoff", "1", 21600,
+            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+        ))
+        inclusions = [m for m in freeze.memberships if m.decision.value == "INCLUDED"]
+        monday = next(
+            m
+            for m in inclusions
+            if m.controlling_revision.kickoff_utc.startswith("2026-09-28")
+        )
+        single = repo.persist_exact(freeze.freeze_id, monday.membership_id, policy)
+        all_cutoffs = repo.persist_for_freeze(freeze.freeze_id, policy)
+        assert len(all_cutoffs) == 2
+        assert single.cutoff_at_utc == "2026-09-25T12:00:00.000000+00:00"
+        assert {item.cutoff_at_utc for item in all_cutoffs} == {single.cutoff_at_utc}
+        assert repo.replay(single.cutoff_id) == single
+        changed_policy = repo.persist_policy(CutoffPolicy(
+            "matchweek-cutoff", "2", 3600,
+            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+        ))
+        changed = repo.persist_exact(freeze.freeze_id, monday.membership_id, changed_policy)
+        assert changed.cutoff_id != single.cutoff_id
+        assert changed.cutoff_at_utc == "2026-09-25T17:00:00.000000+00:00"
+
+
+def test_corrected_policy_refuses_freeze_created_after_matchweek_started(tmp_path: Path) -> None:
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        assessment = _persistable_schedule_assessment(
+            store, tmp_path, (("2026-09-28", "20:00", "Home United", "Away City"),)
+        )
+        FixtureCoverageRepository(store).persist(assessment)
+        ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+        freeze = MatchweekMembershipRepository(
+            store, clock=lambda: datetime(2026, 9, 26, tzinfo=UTC)
+        ).freeze_exact(
+            "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+        )
+        repo = MatchEvidenceCutoffRepository(store)
+        policy = repo.persist_policy(CutoffPolicy(
+            "matchweek-cutoff", "1", 21600,
+            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+        ))
+        with pytest.raises(MatchEvidenceCutoffError):
+            repo.persist_exact(
+                freeze.freeze_id,
+                next(
+                    m.membership_id
+                    for m in freeze.memberships
+                    if m.decision.value == "INCLUDED"
+                ),
+                policy,
+            )
+
+
+def test_corrected_policy_refuses_empty_included_set(tmp_path: Path) -> None:
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        assessment = _persistable_schedule_assessment(
+            store,
+            tmp_path,
+            (),
+            rows_by_league={
+                "premier_league": (),
+                "serie_a": (),
+                "la_liga": (),
+                "bundesliga": (),
+                "ligue_1": (),
+                "liga_portugal": (),
+                "belgian_pro_league": (),
+            },
+        )
+        FixtureCoverageRepository(store).persist(assessment)
+        ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+        freeze = MatchweekMembershipRepository(
+            store, clock=lambda: datetime(2026, 9, 16, 12, tzinfo=UTC)
+        ).freeze_exact(
+            "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+        )
+        repo = MatchEvidenceCutoffRepository(store)
+        policy = repo.persist_policy(CutoffPolicy(
+            "matchweek-cutoff", "1", 21600,
+            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+        ))
+        with pytest.raises(MatchEvidenceCutoffError, match="INCLUDED"):
+            repo.persist_for_freeze(freeze.freeze_id, policy)
 
 
 def _freeze(store: Store, tmp_path: Path) -> str:
