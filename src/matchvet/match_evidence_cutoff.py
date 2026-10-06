@@ -227,13 +227,13 @@ class MatchEvidenceCutoffRepository:
         if policy.lead_time_seconds is None:
             raise _refuse("POLICY-UNCONFIGURED", "F07 requires an explicitly configured lead time.")
         if policy.rule == "MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME":
-            window_start = _utc(MatchweekWindow.for_friday(freeze.matchweek_friday).start_utc)
-            if _utc(freeze.created_at_utc) >= window_start:
+            boundary = _matchweek_boundary(freeze, policy)
+            if _utc(freeze.created_at_utc) >= boundary:
                 raise _refuse(
                     "FREEZE-LATE",
-                    "Corrected F07 requires a complete F06 freeze created before Matchweek begins.",
+                    "Corrected F07 requires the exact F06 freeze before the common cutoff.",
                 )
-            _matchweek_boundary(freeze, policy)
+            _validate_original_slate(freeze)
         return freeze, policy
 
     def _read(self, digest: str, media_type: str) -> bytes:
@@ -306,6 +306,37 @@ def _matchweek_boundary(
         return min(kickoffs) - timedelta(seconds=policy.lead_time_seconds)
     except OverflowError as error:
         raise _refuse("POLICY-INVALID", "Configured lead time exceeds timestamp range.") from error
+
+
+def _validate_original_slate(freeze: MatchweekMembershipFreeze) -> None:
+    """Reject retained excluded candidates that could move the original K earlier.
+
+    Exact F06 replay has already verified its complete seven-scope F01 coverage and candidate
+    references. A precise out-of-window NOT_SCHEDULED candidate is harmless; an in-window or
+    imprecise one leaves original eligibility unresolved.
+    """
+    window = MatchweekWindow.for_friday(freeze.matchweek_friday)
+    for member in freeze.memberships:
+        if member.reason_code != "NOT_SCHEDULED":
+            continue
+        revision = member.controlling_revision
+        if revision.kickoff_utc is None or revision.kickoff_precision != "INSTANT":
+            raise _refuse(
+                "ORIGINAL-SLATE-UNRESOLVED",
+                "F06 cannot establish whether a NOT_SCHEDULED candidate was earlier in-window.",
+            )
+        try:
+            is_in_window = window.contains(revision.kickoff_utc)
+        except (TypeError, ValueError) as error:
+            raise _refuse(
+                "ORIGINAL-SLATE-UNRESOLVED",
+                "F06 has malformed kickoff evidence for a NOT_SCHEDULED candidate.",
+            ) from error
+        if is_in_window:
+            raise _refuse(
+                "ORIGINAL-SLATE-UNRESOLVED",
+                "F06 contains a NOT_SCHEDULED candidate inside the original Matchweek window.",
+            )
 
 
 def _utc(value: str) -> datetime:

@@ -118,7 +118,75 @@ def test_matchweek_rule_uses_earliest_exact_included_kickoff_for_every_member(
         assert changed.cutoff_at_utc == "2026-09-25T17:00:00.000000+00:00"
 
 
-def test_corrected_policy_refuses_freeze_created_after_matchweek_started(tmp_path: Path) -> None:
+def test_corrected_policy_accepts_friday_morning_freeze_before_friday_kickoff_cutoff(
+    tmp_path: Path,
+) -> None:
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        assessment = _persistable_schedule_assessment(
+            store, tmp_path, (("2026-09-25", "20:00", "Friday United", "Friday City"),)
+        )
+        FixtureCoverageRepository(store).persist(assessment)
+        ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+        freeze = MatchweekMembershipRepository(
+            store, clock=lambda: datetime(2026, 9, 25, 8, tzinfo=UTC)
+        ).freeze_exact(
+            "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+        )
+        repo = MatchEvidenceCutoffRepository(store)
+        policy = repo.persist_policy(CutoffPolicy(
+            "matchweek-cutoff", "1", 21600,
+            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+        ))
+        cutoffs = repo.persist_for_freeze(freeze.freeze_id, policy)
+        assert len(cutoffs) == 1
+        assert cutoffs[0].cutoff_at_utc == "2026-09-25T13:00:00.000000+00:00"
+
+
+@pytest.mark.parametrize(
+    ("kickoff_state", "kickoff_utc"),
+    ((None, None), ("UNKNOWN", None)),
+)
+def test_corrected_policy_refuses_cold_freeze_with_completed_friday_candidate(
+    tmp_path: Path,
+    kickoff_state: str | None,
+    kickoff_utc: str | None,
+) -> None:
+    from test_matchweek_membership import _assessment_with_revision
+
+    with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+        assessment = _persistable_schedule_assessment(
+            store,
+            tmp_path,
+            (
+                ("2026-09-25", "20:00", "Friday United", "Friday City"),
+                ("2026-09-28", "20:00", "Monday United", "Monday City"),
+            ),
+        )
+        assessment = _assessment_with_revision(
+            store,
+            assessment,
+            status="COMPLETED",
+            kickoff_state=kickoff_state,
+            kickoff_utc=kickoff_utc,
+        )
+        FixtureCoverageRepository(store).persist(assessment)
+        ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+        freeze = MatchweekMembershipRepository(
+            store, clock=lambda: datetime(2026, 9, 26, 8, tzinfo=UTC)
+        ).freeze_exact(
+            "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+        )
+        repo = MatchEvidenceCutoffRepository(store)
+        policy = repo.persist_policy(CutoffPolicy(
+            "matchweek-cutoff", "1", 21600,
+            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+        ))
+        with pytest.raises(MatchEvidenceCutoffError) as error:
+            repo.persist_for_freeze(freeze.freeze_id, policy)
+        assert error.value.code == "MV-F07-ORIGINAL-SLATE-UNRESOLVED"
+
+
+def test_corrected_policy_allows_saturday_freeze_before_monday_cutoff(tmp_path: Path) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         assessment = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-28", "20:00", "Home United", "Away City"),)
@@ -135,16 +203,8 @@ def test_corrected_policy_refuses_freeze_created_after_matchweek_started(tmp_pat
             "matchweek-cutoff", "1", 21600,
             rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
         ))
-        with pytest.raises(MatchEvidenceCutoffError):
-            repo.persist_exact(
-                freeze.freeze_id,
-                next(
-                    m.membership_id
-                    for m in freeze.memberships
-                    if m.decision.value == "INCLUDED"
-                ),
-                policy,
-            )
+        cutoffs = repo.persist_for_freeze(freeze.freeze_id, policy)
+        assert len(cutoffs) == 1
 
 
 def test_corrected_policy_refuses_empty_included_set(tmp_path: Path) -> None:
