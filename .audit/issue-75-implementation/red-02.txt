@@ -1,0 +1,60 @@
+E                                                                        [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_object_sync_crossing_cutoff_cannot_start_selection_commit _
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x6dacc24770>, _basetemp=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-3'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def graph(tmp_path_factory: pytest.TempPathFactory) -> Graph:
+        root = tmp_path_factory.mktemp("research-graph")
+        with open_store(root / "store.sqlite3", private_root=root) as store:
+            assessment = _persistable_schedule_assessment(
+                store,
+                root,
+                (
+                    ("2026-09-25", "20:00", "Friday United", "Friday City"),
+                    ("2026-09-28", "20:00", "Monday United", "Monday City"),
+                ),
+            )
+            FixtureCoverageRepository(store).persist(assessment)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+            freeze = MatchweekMembershipRepository(
+                store, clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC)
+            ).freeze_exact(
+                "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+            )
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(
+                CutoffPolicy(
+                    "test-common",
+                    "1",
+                    21600,
+                    rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+                )
+            )
+            boundaries = cutoffs.persist_for_freeze(freeze.freeze_id, policy)
+            assert {item.cutoff_at_utc for item in boundaries} == {
+                CUTOFF.isoformat(timespec="microseconds")
+            }
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",))
+            progress = AnalyzeMatchweek(store).start(
+                AnalyzeMatchweekRequest(
+                    matchweek="2026-09-25",
+                    freeze_id=freeze.freeze_id,
+                    cutoff_policy_digest=policy,
+                    cutoff_ids=tuple(sorted(item.cutoff_id for item in boundaries)),
+                    research_contract_digest=V2_REQUIREMENT_CATALOG.digest,
+                    model_version_identity=engine_version_identity(),
+                    preference_profile_digest=profile.digest,
+                    policy=PolicyVersion(version="research-policy-v1"),
+                )
+            )
+>           identity = next(
+                item for item in progress.durable_result_identities if item.startswith("F16_MANIFEST:")
+            )
+E           StopIteration
+
+tests/test_matchweek_research.py:91: StopIteration
+=========================== short test summary info ============================
+ERROR tests/test_matchweek_research.py::test_object_sync_crossing_cutoff_cannot_start_selection_commit
+1 deselected, 1 error in 46.84s

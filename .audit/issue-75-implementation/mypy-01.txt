@@ -1,0 +1,3 @@
+src/matchvet/store.py:4652: error: Return type "object" of "__reduce__" incompatible with return type "str | tuple[Any, ...]" in supertype "object"  [override]
+src/matchvet/matchweek_research.py:260: error: Incompatible types in assignment (expression has type "ArtifactRecord", variable has type "FrozenMatchweekResearch")  [assignment]
+Found 2 errors in 2 files (checked 4 source files)

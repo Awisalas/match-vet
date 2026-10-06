@@ -1,0 +1,64 @@
+E                                                                        [100%]
+==================================== ERRORS ====================================
+__ ERROR at setup of test_fresh_complete_selection_and_receipt_replay_exactly __
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x6ea8ba0770>, _basetemp=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-1'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def graph(tmp_path_factory: pytest.TempPathFactory) -> Graph:
+        root = tmp_path_factory.mktemp("research-graph")
+        with open_store(root / "store.sqlite3", private_root=root) as store:
+            assessment = _persistable_schedule_assessment(
+                store, root, (("2026-09-25", "20:00", "Friday United", "Friday City"),
+                              ("2026-09-28", "20:00", "Monday United", "Monday City"))
+            )
+            FixtureCoverageRepository(store).persist(assessment)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+            freeze = MatchweekMembershipRepository(
+                store, clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC)
+            ).freeze_exact("2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1")
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(CutoffPolicy(
+                "test-common", "1", 21600,
+                rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+            ))
+            boundaries = cutoffs.persist_for_freeze(freeze.freeze_id, policy)
+            assert {item.cutoff_at_utc for item in boundaries} == {CUTOFF.isoformat(timespec="microseconds")}
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",))
+>           progress = AnalyzeMatchweek(store).start(AnalyzeMatchweekRequest(
+                matchweek="2026-09-25", freeze_id=freeze.freeze_id, cutoff_policy_digest=policy,
+                cutoff_ids=tuple(item.cutoff_id for item in boundaries),
+                research_contract_digest=V2_REQUIREMENT_CATALOG.digest,
+                model_version_identity=engine_version_identity(), preference_profile_digest=profile.digest,
+                policy=PolicyVersion(version="research-policy-v1"),
+            ))
+
+tests/test_matchweek_research.py:67:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<string>:11: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = AnalyzeMatchweekRequest(matchweek='2026-09-25', freeze_id='sha256:bb6e27db9a21605b42d44aaf9ed9f8b6475bdc2883a32fec06f4...idence={}, catalog_version='1.0.0', catalog_digest='8566a6cd9862d35e883c1c389283e7913d62e2279f4c3c083d64cc4814865392'))
+
+    def __post_init__(self) -> None:
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in (
+                self.matchweek,
+                self.freeze_id,
+                self.cutoff_policy_digest,
+                self.research_contract_digest,
+                self.model_version_identity,
+                self.preference_profile_digest,
+            )
+        ):
+            raise ValueError("F15 request identities must be explicit non-empty strings.")
+        if not self.cutoff_ids or tuple(sorted(set(self.cutoff_ids))) != self.cutoff_ids:
+>           raise ValueError("F15 cutoff IDs must be non-empty, sorted, and unique.")
+E           ValueError: F15 cutoff IDs must be non-empty, sorted, and unique.
+
+src/matchvet/f15.py:66: ValueError
+=========================== short test summary info ============================
+ERROR tests/test_matchweek_research.py::test_fresh_complete_selection_and_receipt_replay_exactly
+1 error in 12.41s

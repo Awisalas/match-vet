@@ -1,0 +1,3 @@
+tests/test_matchweek_research.py:549: error: Item "None" of "ArtifactMetadata | None" has no attribute "relative_path"  [union-attr]
+tests/test_matchweek_research.py:550: error: Unused "type: ignore" comment  [unused-ignore]
+Found 2 errors in 1 file (checked 6 source files)

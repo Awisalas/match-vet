@@ -1,0 +1,27 @@
+{
+  "base": "5c70bb2",
+  "focused_cases_covered": 62,
+  "storage_regressions": 48,
+  "f16_regressions": 2,
+  "mypy_files": 6,
+  "ruff_format_files": 7,
+  "historical_records_unchanged": 55,
+  "evidence": {
+    "protocol-03.txt": "14 passed",
+    "guards-crashes-04.txt": "11 passed",
+    "integrity-06.txt": "26 passed",
+    "proposals-05.txt": "5 passed",
+    "lifetime-durability-07.txt": "4 passed",
+    "final-fresh-sync-08.txt": "2 passed",
+    "final-exact-replay-09.txt": "1 passed",
+    "storage-regressions.txt": "48 passed",
+    "f16-regressions.txt": "2 passed",
+    "mypy-final.txt": "Success: no issues found in 6 source files",
+    "ruff-final.txt": "All checks passed!",
+    "format-final.txt": "7 files already formatted",
+    "collection-final.txt": "62 tests collected"
+  },
+  "live_store_opened": false,
+  "operational_utc_proven": false,
+  "schema_migration_added": false
+}

@@ -1,0 +1,16 @@
+
+==================================== ERRORS ====================================
+______________ ERROR collecting tests/test_matchweek_research.py _______________
+ImportError while importing test module '/data/data/com.termux/files/home/projects/match-vet/tests/test_matchweek_research.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../../usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_matchweek_research.py:20: in <module>
+    from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCUpperBound
+E   ModuleNotFoundError: No module named 'matchvet.matchweek_research'
+=========================== short test summary info ============================
+ERROR tests/test_matchweek_research.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 5.31s

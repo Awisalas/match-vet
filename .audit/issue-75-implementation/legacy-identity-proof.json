@@ -1,0 +1,9 @@
+{
+  "base": "5c70bb2",
+  "legacy_roundtrip_digests": [
+    "490c9122ef9a9021f683c54b2817b878e8fa8e9f57efe0c6143f11c79935e2a1",
+    "385fbf935f25174ea4e422760668687ea1fa9905372ac0b5177a30105a8ba313"
+  ],
+  "unchanged_migrations": 14,
+  "sqlite_opened": false
+}

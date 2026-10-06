@@ -491,3 +491,21 @@ Do not start any U01-U06 ticket unless P02 records a successful V2 Production Pr
 - **Size:** M.
 - **Recommended Matt Pocock skills:** `$blast-radius`, `$interrogate`.
 - **Model:** GPT-6 Luna Max is sufficient.
+
+## Matchweek-wide cutoff correction tracking
+
+This correction follows [parent #73](https://github.com/Awisalas/match-vet/issues/73)
+and the accepted [completion protocol](../design/matchweek-selection-completion-protocol.md).
+It supplements the historical roadmap entries above.
+
+| Issue | Delivery | Dependency state |
+| --- | --- | --- |
+| #74 | Corrected whole-freeze F07 boundary delivered | Complete |
+| #75 | Complete F16 selection, protected completion receipt, exact replay and shared preselection gate delivered; see [repository contract](../matchweek-research.md) | Complete |
+| #76 | Downstream writer enforcement | Ready after #75 closure; not started |
+| #77 | Bind CB01 and evaluation to corrected lineage | Open; retain native dependencies |
+| #78 | Prove one corrected information state end to end | Open; retain native dependencies |
+
+#73 remains open. Production prospective qualification still requires an operational
+trusted UTC upper-bound provider; the default clock refuses. This operational limit
+does not prevent #76 from integrating the shared gate and deterministic tests.

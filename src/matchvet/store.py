@@ -8,6 +8,7 @@ import re
 import sqlite3
 import stat
 import sys
+import threading
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
@@ -16,7 +17,9 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import IO, Self
+from typing import IO, Any, Never, Self
+
+from matchvet.research_identity import completion_slot, is_reserved_research_slot, selection_slot
 
 APPLICATION_ID = 0x4D564554
 BUSY_TIMEOUT_MS = 5_000
@@ -4329,6 +4332,8 @@ class Store:
         self.status = status
         self._pid = os.getpid()
         self._closed = False
+        self._research_owner: _ResearchOperation | None = None
+        self._verified_artifacts: set[str] | None = None
 
     def _ensure_write_allowed(self) -> None:
         if self._closed:
@@ -4364,6 +4369,39 @@ class Store:
             raise
         finally:
             transaction.close()
+
+    @contextmanager
+    def _research_operation(
+        self, matchweek_id: str, ensure_selection_open: Callable[[], None]
+    ) -> Iterator[_ResearchOperation]:
+        self._ensure_write_allowed()
+        if self._research_owner is not None:
+            raise RuntimeError("A Matchweek selection operation is already active.")
+        connection = self._connection_for_repository()
+        if connection.in_transaction or (
+            connection.execute("PRAGMA journal_mode").fetchone()[0] != "wal"
+            or connection.execute("PRAGMA synchronous").fetchone()[0] != 2
+        ):
+            raise RuntimeError("Selection requires a fresh WAL/FULL transaction boundary.")
+        operation = _ResearchOperation(self, matchweek_id, ensure_selection_open)
+        self._research_owner = operation
+        try:
+            yield operation
+        finally:
+            operation._phase = "revoked"
+            self._research_owner = None
+
+    @contextmanager
+    def _capture_verified_artifacts(self) -> Iterator[set[str]]:
+        self._ensure_connection_owner()
+        if self._verified_artifacts is not None:
+            raise RuntimeError("Exact graph verification is already active.")
+        digests: set[str] = set()
+        self._verified_artifacts = digests
+        try:
+            yield digests
+        finally:
+            self._verified_artifacts = None
 
     def has_identifier(self, identifier: CanonicalIdentifier) -> bool:
         self._ensure_connection_owner()
@@ -4593,6 +4631,135 @@ class Store:
         self.close()
 
 
+class _ResearchOperation:
+    """Lexical, single-use authority. Only repository-owned private code sees it."""
+
+    def __init__(
+        self, store: Store, matchweek_id: str, ensure_selection_open: Callable[[], None]
+    ) -> None:
+        self._store = store
+        self._matchweek_id = matchweek_id
+        self._ensure_selection_open = ensure_selection_open
+        self._pid = os.getpid()
+        self._thread = threading.get_ident()
+        self._phase = "fresh"
+        self._expected_digest: str | None = None
+        self._inserted = False
+        self._selection_digest: str | None = None
+        self._upper_bound: str | None = None
+
+    def __copy__(self) -> Self:
+        raise TypeError("Selection authority cannot be copied.")
+
+    def __deepcopy__(self, memo: dict[int, object]) -> Self:
+        raise TypeError("Selection authority cannot be copied.")
+
+    def __reduce__(self) -> Never:
+        raise TypeError("Selection authority cannot be serialized.")
+
+    def _check(self) -> None:
+        self._store._ensure_write_allowed()
+        if (
+            self._store._research_owner is not self
+            or os.getpid() != self._pid
+            or threading.get_ident() != self._thread
+            or self._phase == "revoked"
+        ):
+            raise RuntimeError("Selection authority has expired or belongs to another operation.")
+
+    def _start(self, role: str) -> None:
+        self._check()
+        expected = "fresh" if role == "selection" else "acknowledged"
+        if role not in ("selection", "receipt") or self._phase != expected:
+            raise RuntimeError("Selection authority cannot be reused or borrowed.")
+        # Consume before verification, staging or any receipt-publication attempt.
+        self._phase = role + "_attempt"
+        self._expected_digest = None
+        self._inserted = False
+
+    def _bind(
+        self,
+        *,
+        digest: str,
+        snapshot_id: str,
+        matchweek_id: str,
+        parent_snapshot_id: str | None,
+        created_at_utc: str,
+        artifact_digests: tuple[str, ...],
+    ) -> None:
+        self._check()
+        receipt = self._phase == "receipt_attempt"
+        if self._phase not in ("selection_attempt", "receipt_attempt") or (
+            self._expected_digest is not None
+            or matchweek_id != self._matchweek_id
+            or snapshot_id
+            != (completion_slot(matchweek_id) if receipt else selection_slot(matchweek_id))
+            or parent_snapshot_id != (selection_slot(matchweek_id) if receipt else None)
+            or (
+                receipt
+                and (
+                    created_at_utc != self._upper_bound
+                    or artifact_digests != (self._selection_digest,)
+                )
+            )
+        ):
+            raise RuntimeError("Private publication differs from its exact operation.")
+        self._expected_digest = digest
+
+    def _before_commit(self) -> None:
+        self._check()
+        if self._phase == "selection_attempt":
+            self._ensure_selection_open()
+        self._check()
+
+    def _authorize_insert(self, connection: sqlite3.Connection, metadata: dict[str, Any]) -> None:
+        self._check()
+        receipt = self._phase == "receipt_attempt"
+        if (
+            connection is not self._store._connection
+            or self._inserted
+            or self._expected_digest is None
+            or metadata["manifest_digest"] != self._expected_digest
+            or metadata["matchweek_id"] != self._matchweek_id
+            or metadata["snapshot_id"]
+            != (
+                completion_slot(self._matchweek_id)
+                if receipt
+                else selection_slot(self._matchweek_id)
+            )
+        ):
+            raise RuntimeError("Private insertion authority is invalid or consumed.")
+        self._inserted = True
+        if (
+            connection.execute(
+                "SELECT 1 FROM snapshot_manifests WHERE snapshot_id = ?", (metadata["snapshot_id"],)
+            ).fetchone()
+            is not None
+        ):
+            raise RuntimeError("A reserved slot is already occupied; fresh assignment is required.")
+
+    def _committed(self, digest: str) -> None:
+        self._check()
+        if not self._inserted or self._expected_digest != digest:
+            raise RuntimeError("No fresh protected insertion completed.")
+        if self._phase == "selection_attempt":
+            self._selection_digest = digest
+            self._phase = "selection_committed"
+        elif self._phase == "receipt_attempt":
+            self._phase = "finished"
+        else:
+            raise RuntimeError("Invalid protected commit state.")
+
+    def _acknowledge(self, upper_bound: str, cutoff: str) -> None:
+        self._check()
+        if self._phase != "selection_committed" or datetime.fromisoformat(
+            upper_bound
+        ) >= datetime.fromisoformat(cutoff):
+            raise RuntimeError("Only a fresh pre-cutoff selection can be acknowledged.")
+        self._upper_bound = upper_bound
+        self._phase = "acknowledged"
+
+
 class StoreTransaction:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
@@ -4707,6 +4874,49 @@ class StoreTransaction:
         )
 
     def record_snapshot_manifest(
+        self,
+        *,
+        manifest_digest: str,
+        snapshot_id: str,
+        matchweek_id: str,
+        research_cutoff_id: str,
+        version_manifest_id: str,
+        research_cutoff_utc: str,
+        aggregate_sha256: str,
+        completeness_state: str,
+        manifest_schema_version: int,
+        created_at_utc: str,
+        verification_state: str,
+        verified_at_utc: str | None,
+        parent_snapshot_id: str | None,
+    ) -> None:
+        self._ensure_active()
+        if is_reserved_research_slot(snapshot_id, matchweek_id):
+            raise ValueError("Matchweek research role slots require private publication authority.")
+        self._record_snapshot_manifest(
+            manifest_digest=manifest_digest,
+            snapshot_id=snapshot_id,
+            matchweek_id=matchweek_id,
+            research_cutoff_id=research_cutoff_id,
+            version_manifest_id=version_manifest_id,
+            research_cutoff_utc=research_cutoff_utc,
+            aggregate_sha256=aggregate_sha256,
+            completeness_state=completeness_state,
+            manifest_schema_version=manifest_schema_version,
+            created_at_utc=created_at_utc,
+            verification_state=verification_state,
+            verified_at_utc=verified_at_utc,
+            parent_snapshot_id=parent_snapshot_id,
+        )
+
+    def _record_protected_snapshot_manifest(
+        self, operation: _ResearchOperation, **metadata: Any
+    ) -> None:
+        self._ensure_active()
+        operation._authorize_insert(self._connection, metadata)
+        self._record_snapshot_manifest(**metadata)
+
+    def _record_snapshot_manifest(
         self,
         *,
         manifest_digest: str,

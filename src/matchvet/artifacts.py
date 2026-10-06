@@ -15,11 +15,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from matchvet.research_identity import is_reserved_research_slot
 from matchvet.store import (
     ArtifactMetadata,
     CanonicalIdentifier,
     Store,
     VersionIdentity,
+    _ResearchOperation,
     termux_private_root,
 )
 
@@ -592,6 +594,31 @@ class ArtifactStore:
         verified_at_utc: str | None = None,
     ) -> ArtifactRecord:
         self._ensure_writeable()
+        if isinstance(manifest, SnapshotManifest) and is_reserved_research_slot(
+            manifest.snapshot_id.value, manifest.matchweek_id.value
+        ):
+            raise ManifestError(
+                "MV-MANIFEST-RESERVED",
+                "Matchweek research slots require private publication authority.",
+            )
+        return self._publish_manifest(manifest, verified_at_utc=verified_at_utc)
+
+    def _publish_research_manifest(
+        self, manifest: SnapshotManifest, operation: _ResearchOperation, *, role: str
+    ) -> ArtifactRecord:
+        if operation._store is not self.store:
+            raise RuntimeError("Private authority belongs to another Store.")
+        operation._start(role)
+        return self._publish_manifest(manifest, operation=operation)
+
+    def _publish_manifest(
+        self,
+        manifest: SnapshotManifest,
+        *,
+        verified_at_utc: str | None = None,
+        operation: _ResearchOperation | None = None,
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
         if not isinstance(manifest, SnapshotManifest):
             raise ManifestError("MV-MANIFEST-MALFORMED", "A SnapshotManifest value is required.")
         if manifest.verification_state != "UNVERIFIED" or manifest.verified_at_utc is not None:
@@ -626,6 +653,8 @@ class ArtifactStore:
         existing_digest = self.store.snapshot_manifest_digest_for_snapshot(
             manifest.snapshot_id.value
         )
+        if existing_digest is not None and operation is not None:
+            raise ManifestError("MV-MANIFEST-RESERVED", "A fresh reserved assignment is required.")
         if existing_digest is not None:
             existing = self.verify_manifest(existing_digest)
             if _manifest_publication_key(existing) == _manifest_publication_key(manifest):
@@ -651,7 +680,26 @@ class ArtifactStore:
             created_at_utc=verified_manifest.created_at_utc,
             retention_class="PROTECTED",
         )
+        if operation is not None:
+            operation._bind(
+                digest=record.digest,
+                snapshot_id=verified_manifest.snapshot_id.value,
+                matchweek_id=verified_manifest.matchweek_id.value,
+                parent_snapshot_id=(
+                    verified_manifest.parent_snapshot_id.value
+                    if verified_manifest.parent_snapshot_id
+                    else None
+                ),
+                created_at_utc=verified_manifest.created_at_utc,
+                artifact_digests=tuple(ref.digest for ref in verified_manifest.artifacts),
+            )
         self._publish_object(content, record)
+        if operation is not None:
+            self._sync_graph(
+                (record, *(self.verify_artifact(ref.digest) for ref in manifest.artifacts))
+            )
+        if operation is not None:
+            operation._before_commit()
         try:
             with self.store.transaction() as transaction:
                 for identifier in (
@@ -674,7 +722,14 @@ class ArtifactStore:
                         retention_class=record.retention_class,
                     )
                 )
-                transaction.record_snapshot_manifest(
+                insert = (
+                    transaction.record_snapshot_manifest
+                    if operation is None
+                    else lambda **metadata: transaction._record_protected_snapshot_manifest(
+                        operation, **metadata
+                    )
+                )
+                insert(
                     manifest_digest=verified_manifest.digest,
                     snapshot_id=verified_manifest.snapshot_id.value,
                     matchweek_id=verified_manifest.matchweek_id.value,
@@ -714,6 +769,8 @@ class ArtifactStore:
                 "MV-ARTIFACT-DB_PUBLICATION_FAILED",
                 "Snapshot Manifest catalog publication failed; the object remains unreferenced.",
             ) from error
+        if operation is not None:
+            operation._committed(record.digest)
         return self._record_or_raise(verified_manifest.digest)
 
     def verify_artifact(self, digest: str) -> ArtifactRecord:
@@ -736,6 +793,8 @@ class ArtifactStore:
                 "MV-ARTIFACT-PATH_MISMATCH", f"Artifact {digest} has an unsafe private path."
             )
         _verify_file(expected_path, digest, metadata.byte_length)
+        if self.store._verified_artifacts is not None:
+            self.store._verified_artifacts.add(digest)
         return _record_from_metadata(metadata)
 
     def read_artifact(self, digest: str) -> bytes:
@@ -856,6 +915,28 @@ class ArtifactStore:
 
     def _object_path(self, digest: str) -> Path:
         return self.store.path.parent / ARTIFACT_RELATIVE_ROOT / digest[:2] / digest
+
+    def _sync_graph(self, records: tuple[ArtifactRecord, ...]) -> None:
+        """Sync reused files and every containing directory before acknowledgement."""
+        directories: set[Path] = {self.store.path.parent}
+        try:
+            for record in records:
+                path = self._object_path(record.digest)
+                descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+                parent = path.parent
+                while parent != self.store.path.parent:
+                    directories.add(parent)
+                    parent = parent.parent
+            for directory in sorted(directories, key=lambda path: len(path.parts), reverse=True):
+                _fsync_directory(directory)
+        except OSError as error:
+            raise ArtifactError(
+                "MV-ARTIFACT-SYNC_FAILED", "Exact graph synchronization failed."
+            ) from error
 
     def _publish_object(self, content: bytes, record: ArtifactRecord) -> None:
         _ensure_private_directory(self.staging_root, self.store.path.parent)

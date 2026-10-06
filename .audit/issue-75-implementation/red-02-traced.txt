@@ -1,0 +1,46 @@
+Timeout (0:00:20)!
+Thread 0x00000074762d6068 (most recent call first):
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/provider_health.py", line 2152 in _json_value
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/provider_health.py", line 2145 in _json_value
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/provider_health.py", line ??? in _json_value
+  <invalid frame>
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________ test_object_sync_crossing_cutoff_cannot_start_selection_commit ________
+
+research_store = <matchvet.store.Store object at 0x71d934ee90>
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-4/research-graph0'), f16='3e5d67558...af9ed9f8b6475bdc2883a32fec06f43f6948638100', policy='59406b65b658421bf3531df722d0a3a6015a904624175efc89d28978a43b892f')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x71d9189a70>
+
+    def test_object_sync_crossing_cutoff_cannot_start_selection_commit(
+        research_store: Store, graph: Graph, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import os
+        from matchvet.matchweek_research import MatchweekResearchError
+        from matchvet.research_identity import logical_matchweek_id, selection_slot
+
+        clock = Clock()
+        sync = os.fsync
+
+        def crossing_sync(descriptor: int) -> None:
+            sync(descriptor)
+            operation = research_store._research_owner
+            if operation is not None and operation._phase == "selection_attempt":
+                clock.value = CUTOFF
+
+        monkeypatch.setattr(os, "fsync", crossing_sync)
+        with pytest.raises(MatchweekResearchError):
+            MatchweekResearchRepository(research_store, clock=clock).seal_completed(graph.f16)
+>       assert research_store.snapshot_manifest_digest_for_snapshot(
+            selection_slot(logical_matchweek_id("2026-27", "2026-09-25"))
+        ) is None
+E       AssertionError: assert '053221988ba711276b150bfb27fcae860061848b0f2a3f175d5067bcb746c193' is None
+E        +  where '053221988ba711276b150bfb27fcae860061848b0f2a3f175d5067bcb746c193' = snapshot_manifest_digest_for_snapshot('1dfbfcba-f96d-56b8-95fc-806d202bf1ff')
+E        +    where snapshot_manifest_digest_for_snapshot = <matchvet.store.Store object at 0x71d934ee90>.snapshot_manifest_digest_for_snapshot
+E        +    and   '1dfbfcba-f96d-56b8-95fc-806d202bf1ff' = <function selection_slot at 0x71d9adf270>('97226694-2f0a-58c0-b818-15062dfaf62c')
+E        +      where '97226694-2f0a-58c0-b818-15062dfaf62c' = <function logical_matchweek_id at 0x71d9adf110>('2026-27', '2026-09-25')
+
+tests/test_matchweek_research.py:141: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_matchweek_research.py::test_object_sync_crossing_cutoff_cannot_start_selection_commit
+1 failed, 1 deselected in 197.51s (0:03:17)
