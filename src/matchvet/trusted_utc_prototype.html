@@ -7,13 +7,13 @@
 <section><h2>Current state</h2><dl id="state"></dl><p id="verdict" role="status"></p></section>
 <section><h2>Try actions</h2><div id="actions"></div></section>
 <section><h2>Guided cases</h2><div role="tablist" id="tabs"></div><p id="description"></p><button id="step">Next step</button><p id="progress"></p></section>
-<small>Version: synthetic-clock-model-v1. A signed interval is a simulated premise here. The companion Python experiment performs real synthetic Ed25519 signing in temporary files and exercises the existing repository gate. These files stay on the prototype branch.</small>
+<small>Version: synthetic-clock-model-v2. A signed interval is a simulated premise here. The companion Python experiment performs real synthetic Ed25519 signing in temporary files and exercises the existing repository gate. These files stay on the prototype branch.</small>
 <script>
-const initial=()=>({actualUtc:994,cutoff:1000,committed:false,serverUpper:null,lastSample:null,returnedUpper:null,scope:"NONE",elapsedRateProven:false,returnDelayProven:false,online:true,boot:1,anchorBoot:null,trust:"REFUSED",reason:"No qualified source",wallEstimate:994});
+const initial=()=>({actualUtc:994,cutoff:1000,committed:false,commitUtc:null,commitSequence:0,serverEventUtc:null,sourceAfterCommit:false,sourceCommitSequence:null,serverUpper:null,lastSample:null,returnedUpper:null,scope:"NONE",elapsedRateProven:false,returnDelayProven:false,online:true,boot:1,anchorBoot:null,trust:"REFUSED",reason:"No qualified source",wallEstimate:994});
 function reduce(s,action){s={...s};switch(action){
 case "reset":return initial();
-case "commit":s.committed=true;break;
-case "server":if(s.online){s.actualUtc+=1;s.serverUpper=s.actualUtc+1;s.anchorBoot=s.boot;s.scope="SERVER_EVENT";s.reason="Bounds server processing only";}else{s.reason="Source unavailable";}break;
+case "commit":s.committed=true;s.commitUtc=s.actualUtc;s.commitSequence+=1;break;
+case "server":if(s.online){s.sourceAfterCommit=s.committed;s.sourceCommitSequence=s.committed?s.commitSequence:null;s.actualUtc+=1;s.serverEventUtc=s.actualUtc;s.serverUpper=s.actualUtc+1;s.anchorBoot=s.boot;s.scope="SERVER_EVENT";s.reason="Bounds server processing only";}else{s.reason="Source unavailable";}break;
 case "rate":s.elapsedRateProven=true;s.returnDelayProven=true;s.reason="Synthetic oracle premises; not Android evidence";break;
 case "sample":s.lastSample=s.actualUtc;s.returnedUpper=s.actualUtc+1;s.scope="FINAL_SAMPLE";s.reason="Bound covers final sample; later pause still possible";break;
 case "suspend":s.actualUtc+=10;s.returnDelayProven=false;s.reason="Suspension after last observation";break;
@@ -24,14 +24,16 @@ case "offline":s.online=false;s.reason="Offline prospective qualification refuse
 case "reboot":s.boot+=1;s.elapsedRateProven=false;s.returnDelayProven=false;s.reason="Reboot invalidates live anchor";break;
 case "refuse":s.returnedUpper=null;s.scope="NONE";s.reason="Default provider refuses";break;
 }s.trust="REFUSED";return s;}
+function hasCausalEvidence(s){return s.committed&&s.sourceAfterCommit&&s.sourceCommitSequence===s.commitSequence&&s.commitUtc<=s.serverEventUtc&&s.serverEventUtc<=s.serverUpper&&s.serverUpper<s.cutoff;}
 const labels={reset:"Reset",commit:"Complete commit",server:"Obtain signed server interval",rate:"Assume synthetic exact elapsed oracle",sample:"Read final elapsed sample",suspend:"Suspend or delay ten seconds",deliver:"Return server bound",rollback:"Roll wall clock backward",wall:"Return wall estimate",offline:"Go offline",reboot:"Reboot",refuse:"Use default refusal"};
 const cases=[
 {name:"Late server response",text:"A token created before cutoff bounds the earlier commit. Its delivery after cutoff cannot become current UTC authority.",steps:["commit","server","suspend","deliver"]},
+{name:"Token before commit",text:"A server event obtained first cannot witness a later commit. The exact fresh challenge must follow that commit.",steps:["server","suspend","commit"]},
 {name:"Final-read pause",text:"Even a perfect synthetic elapsed clock can be read before a pause. Its returned value then understates current UTC.",steps:["commit","rate","sample","suspend"]},
 {name:"Wall rollback",text:"Changing wall time does not change UTC. The default refuses to trust it.",steps:["rollback","suspend","wall","refuse"]},
 {name:"Restart and offline",text:"Historical signatures cannot restore a live current-time guarantee after reboot or source loss.",steps:["server","reboot","offline","refuse"]}];
 let state=initial(),selected=0,next=0;
-function render(){const dl=document.querySelector("#state");dl.replaceChildren();for(const [k,v] of Object.entries(state)){const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=k;dd.textContent=String(v);dl.append(dt,dd);}const u=state.returnedUpper;const causal=state.committed&&state.serverUpper!==null&&state.serverUpper<state.cutoff;const stale=u!==null&&u<state.actualUtc;document.querySelector("#verdict").textContent=stale?"Returned value understates actual UTC. Qualification must refuse.":causal?"Earlier commit has a simulated causal bound. Current-at-return authority is still unavailable.":"Production qualification refuses; source confidence is unproved.";document.querySelector("#description").textContent=cases[selected].text;document.querySelector("#progress").textContent=`Step ${next} of ${cases[selected].steps.length}`;document.querySelector("#step").disabled=next>=cases[selected].steps.length;}
+function render(){const dl=document.querySelector("#state");dl.replaceChildren();for(const [k,v] of Object.entries(state)){const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=k;dd.textContent=String(v);dl.append(dt,dd);}const u=state.returnedUpper;const causal=hasCausalEvidence(state);const stale=u!==null&&u<state.actualUtc;document.querySelector("#verdict").textContent=stale?"Returned value understates actual UTC. Qualification must refuse.":causal?"Earlier commit has a simulated causal bound. Current-at-return authority is still unavailable.":"Production qualification refuses; source confidence is unproved.";document.querySelector("#description").textContent=cases[selected].text;document.querySelector("#progress").textContent=`Step ${next} of ${cases[selected].steps.length}`;document.querySelector("#step").disabled=next>=cases[selected].steps.length;}
 for(const [action,label] of Object.entries(labels)){const b=document.createElement("button");b.textContent=label;b.onclick=()=>{state=reduce(state,action);render();};document.querySelector("#actions").append(b);}
 cases.forEach((c,i)=>{const b=document.createElement("button");b.role="tab";b.textContent=c.name;b.setAttribute("aria-selected",String(i===0));b.onclick=()=>{selected=i;next=0;state=initial();document.querySelectorAll("[role=tab]").forEach((t,j)=>t.setAttribute("aria-selected",String(j===i)));render();};document.querySelector("#tabs").append(b);});
 document.querySelector("#step").onclick=()=>{state=reduce(state,cases[selected].steps[next++]);render();};render();

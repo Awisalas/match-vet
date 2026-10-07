@@ -4,7 +4,7 @@
   "node": "/data/data/com.termux/files/usr/bin/node",
   "openssl": "OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)",
   "platform": "Android",
-  "prototype_source_sha256": "6e9e2b1f0a5c468b7d43db3542288cb54a9ea87334aee8e5a64a2519bf925c48",
+  "prototype_source_sha256": "20c83a29ae2e6fb23f1b463716695c6ab5133191a7ccf4d380f6164c88e2cffd",
   "python": "3.14.6",
   "qualification": "NONE",
   "retained_synthetic_signature_verified": true

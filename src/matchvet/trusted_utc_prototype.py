@@ -11,12 +11,14 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import platform
 import secrets
 import subprocess
 import tempfile
 import time
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -90,8 +92,16 @@ def signed_interval(root: Path) -> dict[str, object]:
         str(signature),
     ]
     valid = subprocess.run(command, capture_output=True).returncode == 0
+
+    def accepts_for_request(expected_nonce: str) -> bool:
+        authenticated = subprocess.run(command, capture_output=True).returncode == 0
+        return authenticated and json.loads(message.read_bytes())["nonce"] == expected_nonce
+
+    fresh_request_accepted = accepts_for_request(nonce)
+    distinct_nonce = f"{int(nonce[0], 16) ^ 1:x}" + nonce[1:]
+    replay_rejected = not accepts_for_request(distinct_nonce)
     message.write_bytes(payload.replace(b"996", b"990"))
-    tamper_rejected = subprocess.run(command, capture_output=True).returncode != 0
+    tamper_rejected = not accepts_for_request(nonce)
     return {
         "signature_verified": valid,
         "tamper_rejected": tamper_rejected,
@@ -107,7 +117,9 @@ def signed_interval(root: Path) -> dict[str, object]:
         "actual_client_return": 1005,
         "current_at_return_bound_valid": False,
         "prior_commit_994_causal_bound_valid": valid and 994 <= 995 <= 996 < 1000,
-        "replayed_nonce_matches_new_request": nonce == secrets.token_hex(32),
+        "fresh_request_accepted": fresh_request_accepted,
+        "new_request_nonce": distinct_nonce,
+        "replayed_response_rejected_for_new_request": replay_rejected,
     }
 
 
@@ -161,19 +173,6 @@ def scenarios() -> dict[str, object]:
             "not repository validation. Exact elapsed is a synthetic oracle, "
             "never an Android qualification."
         ),
-        "synthetic_confidence_record": {
-            "schema_version": 1,
-            "scope": "RETURN_TIME",
-            "estimate_utc": None,
-            "upper_bound_utc": None,
-            "error_bound_seconds": None,
-            "trust_state": "REFUSED",
-            "failure_reasons": ["NO_ELAPSED_RATE_GUARANTEE", "NO_RETURN_DELIVERY_BOUND"],
-            "source_protocol": "synthetic-interval-v1",
-            "software_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "evidence": "authenticated_interval; gate_cases",
-            "operational_authority": False,
-        },
     }
 
 
@@ -216,6 +215,7 @@ def main() -> None:
     args = parser.parse_args()
     result: dict[str, object] = {
         "prototype": True,
+        "record_kind": "utc_clock_proof_bundle",
         "schema_version": 1,
         "python": platform.python_version(),
         "platform": platform.system(),
@@ -225,9 +225,10 @@ def main() -> None:
         ).stdout.strip(),
         "proof": scenarios(),
     }
+    probes: list[dict[str, object]] = []
     if args.https:
         with ThreadPoolExecutor(max_workers=3) as pool:
-            result["https_diagnostics"] = list(
+            probes = list(
                 pool.map(
                     https_probe,
                     (
@@ -237,6 +238,78 @@ def main() -> None:
                     ),
                 )
             )
+        result["https_diagnostics"] = probes
+    result["clock_confidence"] = {
+        "record_kind": "utc_clock_confidence",
+        "schema_version": 1,
+        "prototype": True,
+        "observation_id": str(uuid.uuid4()),
+        "observation_scope": "UTC_AT_OBSERVE_RETURN",
+        "timescale": "UTC",
+        "estimate_utc": probes[0]["wall_estimate_at_start"] if probes else None,
+        "estimate_reference": "UNTRUSTED_CLIENT_WALL_SAMPLE_AT_FIRST_REQUEST_START",
+        "conservative_lower_bound_utc": None,
+        "conservative_upper_bound_utc": None,
+        "uncertainty_seconds": None,
+        "uncertainty_kind": "UNKNOWN",
+        "error_terms": {
+            "source_accuracy": None,
+            "counter_read_0": None,
+            "counter_read_1": None,
+            "minimum_counter_rate": None,
+            "return_delivery": None,
+            "outward_rounding": None,
+        },
+        "trust_state": "REFUSED",
+        "failure_reasons": [
+            "NO_SOURCE_ACCURACY_GUARANTEE",
+            "NO_ELAPSED_RATE_GUARANTEE",
+            "NO_RETURN_DELIVERY_BOUND",
+        ],
+        "identity": {
+            "protocol": "https-date-diagnostic-v1",
+            "source_policy_sha256": None,
+            "verifier_identity": "stdlib TLS diagnostic; no UTC-bound verifier approved",
+            "verifier_content_sha256": None,
+            "software_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "dependencies": {"python": platform.python_version(), "openssl": result["openssl"]},
+            "dependency_content_digests": None,
+            "qualification_profile_sha256": None,
+            "trust_profile_sha256": None,
+        },
+        "sources": probes,
+        "observations": {
+            "clock_id": "CLOCK_BOOTTIME",
+            "boot_identity": None,
+            "process_id": os.getpid(),
+            "request_receipt_samples": [
+                {
+                    key: probe[key]
+                    for key in (
+                        "url",
+                        "wall_estimate_at_start",
+                        "boottime_before_ns",
+                        "boottime_after_ns",
+                    )
+                }
+                for probe in probes
+            ],
+            "verification_final_sample": None,
+            "actual_return_time": None,
+        },
+        "binding": {
+            "freshness": "NOT_ESTABLISHED",
+            "request_metadata": [{"method": "HEAD", "url": probe["url"]} for probe in probes],
+            "raw_request_response_artifacts": None,
+            "request_response_wire_hashes": None,
+            "synthetic_signed_experiment_ref": "proof.authenticated_interval",
+        },
+        "retention": {
+            "operational_authority": False,
+            "selection_digest": None,
+            "completion_receipt_digest": None,
+        },
+    }
     print(json.dumps(result, indent=2, sort_keys=True))
 
 

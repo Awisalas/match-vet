@@ -174,7 +174,8 @@ observation. If the device contract guarantees
 verification, retry delay, and suspend. Add outward representation rounding
 and a separately justified bound through the actual return boundary. No
 symmetric-delay assumption is necessary. `read_error`, `minimum_rate`, and any
-return-boundary allowance cannot be invented constants.
+return-boundary allowance cannot be invented constants. Here `read_error` is the
+aggregate differential error of both counter samples, not one sample's error.
 
 The final sample-to-return interval matters. Python can be descheduled after
 its final clock read. Returning the value of that read with a fixed guessed

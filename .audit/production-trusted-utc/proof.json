@@ -1,53 +1,173 @@
 {
   "boottime_available": true,
+  "clock_confidence": {
+    "binding": {
+      "freshness": "NOT_ESTABLISHED",
+      "raw_request_response_artifacts": null,
+      "request_metadata": [
+        {
+          "method": "HEAD",
+          "url": "https://www.cloudflare.com/"
+        },
+        {
+          "method": "HEAD",
+          "url": "https://www.google.com/"
+        },
+        {
+          "method": "HEAD",
+          "url": "https://www.microsoft.com/"
+        }
+      ],
+      "request_response_wire_hashes": null,
+      "synthetic_signed_experiment_ref": "proof.authenticated_interval"
+    },
+    "conservative_lower_bound_utc": null,
+    "conservative_upper_bound_utc": null,
+    "error_terms": {
+      "counter_read_0": null,
+      "counter_read_1": null,
+      "minimum_counter_rate": null,
+      "outward_rounding": null,
+      "return_delivery": null,
+      "source_accuracy": null
+    },
+    "estimate_reference": "UNTRUSTED_CLIENT_WALL_SAMPLE_AT_FIRST_REQUEST_START",
+    "estimate_utc": "2026-10-07T19:16:46.198155+00:00",
+    "failure_reasons": [
+      "NO_SOURCE_ACCURACY_GUARANTEE",
+      "NO_ELAPSED_RATE_GUARANTEE",
+      "NO_RETURN_DELIVERY_BOUND"
+    ],
+    "identity": {
+      "dependencies": {
+        "openssl": "OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)",
+        "python": "3.14.6"
+      },
+      "dependency_content_digests": null,
+      "protocol": "https-date-diagnostic-v1",
+      "qualification_profile_sha256": null,
+      "software_sha256": "20c83a29ae2e6fb23f1b463716695c6ab5133191a7ccf4d380f6164c88e2cffd",
+      "source_policy_sha256": null,
+      "trust_profile_sha256": null,
+      "verifier_content_sha256": null,
+      "verifier_identity": "stdlib TLS diagnostic; no UTC-bound verifier approved"
+    },
+    "observation_id": "fa670fc1-0c5b-4658-ae8a-82b1a36dbc88",
+    "observation_scope": "UTC_AT_OBSERVE_RETURN",
+    "observations": {
+      "actual_return_time": null,
+      "boot_identity": null,
+      "clock_id": "CLOCK_BOOTTIME",
+      "process_id": 29722,
+      "request_receipt_samples": [
+        {
+          "boottime_after_ns": 3529474390858,
+          "boottime_before_ns": 3509063555641,
+          "url": "https://www.cloudflare.com/",
+          "wall_estimate_at_start": "2026-10-07T19:16:46.198155+00:00"
+        },
+        {
+          "boottime_after_ns": 3529005435743,
+          "boottime_before_ns": 3509068897526,
+          "url": "https://www.google.com/",
+          "wall_estimate_at_start": "2026-10-07T19:16:46.203499+00:00"
+        },
+        {
+          "boottime_after_ns": 3525513419591,
+          "boottime_before_ns": 3509072690295,
+          "url": "https://www.microsoft.com/",
+          "wall_estimate_at_start": "2026-10-07T19:16:46.207288+00:00"
+        }
+      ],
+      "verification_final_sample": null
+    },
+    "prototype": true,
+    "record_kind": "utc_clock_confidence",
+    "retention": {
+      "completion_receipt_digest": null,
+      "operational_authority": false,
+      "selection_digest": null
+    },
+    "schema_version": 1,
+    "sources": [
+      {
+        "boottime_after_ns": 3529474390858,
+        "boottime_before_ns": 3509063555641,
+        "error": "TimeoutError: The read operation timed out",
+        "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+        "measured_elapsed_ns": 20410835217,
+        "trust_state": "REFUSED",
+        "uncertainty_seconds": null,
+        "upper_bound_utc": null,
+        "url": "https://www.cloudflare.com/",
+        "wall_estimate_at_start": "2026-10-07T19:16:46.198155+00:00"
+      },
+      {
+        "boottime_after_ns": 3529005435743,
+        "boottime_before_ns": 3509068897526,
+        "error": "RemoteDisconnected: Remote end closed connection without response",
+        "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+        "measured_elapsed_ns": 19936538217,
+        "trust_state": "REFUSED",
+        "uncertainty_seconds": null,
+        "upper_bound_utc": null,
+        "url": "https://www.google.com/",
+        "wall_estimate_at_start": "2026-10-07T19:16:46.203499+00:00"
+      },
+      {
+        "boottime_after_ns": 3525513419591,
+        "boottime_before_ns": 3509072690295,
+        "error": "URLError: <urlopen error _ssl.c:1064: The handshake operation timed out>",
+        "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+        "measured_elapsed_ns": 16440729296,
+        "trust_state": "REFUSED",
+        "uncertainty_seconds": null,
+        "upper_bound_utc": null,
+        "url": "https://www.microsoft.com/",
+        "wall_estimate_at_start": "2026-10-07T19:16:46.207288+00:00"
+      }
+    ],
+    "timescale": "UTC",
+    "trust_state": "REFUSED",
+    "uncertainty_kind": "UNKNOWN",
+    "uncertainty_seconds": null
+  },
   "https_diagnostics": [
     {
-      "boottime_after_ns": 1530368423787,
-      "boottime_before_ns": 1529131983865,
-      "error": "HTTPError: HTTP Error 403: Forbidden",
+      "boottime_after_ns": 3529474390858,
+      "boottime_before_ns": 3509063555641,
+      "error": "TimeoutError: The read operation timed out",
       "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-      "measured_elapsed_ns": 1236439922,
+      "measured_elapsed_ns": 20410835217,
       "trust_state": "REFUSED",
       "uncertainty_seconds": null,
       "upper_bound_utc": null,
       "url": "https://www.cloudflare.com/",
-      "wall_estimate_at_start": "2026-10-07T18:43:46.266933+00:00"
+      "wall_estimate_at_start": "2026-10-07T19:16:46.198155+00:00"
     },
     {
-      "age": null,
-      "boottime_after_ns": 1530727633787,
-      "boottime_before_ns": 1529138000058,
-      "cache_control": "private",
-      "date": "Wed, 07 Oct 2026 18:43:47 GMT",
+      "boottime_after_ns": 3529005435743,
+      "boottime_before_ns": 3509068897526,
+      "error": "RemoteDisconnected: Remote end closed connection without response",
       "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-      "final_url": "https://www.google.com/",
-      "measured_elapsed_ns": 1589633729,
-      "status": 200,
-      "tls_policy": "stdlib default certificate and hostname verification",
-      "trust_state": "ESTIMATE_ONLY",
+      "measured_elapsed_ns": 19936538217,
+      "trust_state": "REFUSED",
       "uncertainty_seconds": null,
       "upper_bound_utc": null,
       "url": "https://www.google.com/",
-      "via": null,
-      "wall_estimate_at_start": "2026-10-07T18:43:46.272596+00:00"
+      "wall_estimate_at_start": "2026-10-07T19:16:46.203499+00:00"
     },
     {
-      "age": null,
-      "boottime_after_ns": 1581063720636,
-      "boottime_before_ns": 1529141384865,
-      "cache_control": "max-age=0, no-cache, no-store",
-      "date": "Wed, 07 Oct 2026 18:44:38 GMT",
+      "boottime_after_ns": 3525513419591,
+      "boottime_before_ns": 3509072690295,
+      "error": "URLError: <urlopen error _ssl.c:1064: The handshake operation timed out>",
       "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-      "final_url": "https://www.microsoft.com/",
-      "measured_elapsed_ns": 51922335771,
-      "status": 200,
-      "tls_policy": "stdlib default certificate and hostname verification",
-      "trust_state": "ESTIMATE_ONLY",
+      "measured_elapsed_ns": 16440729296,
+      "trust_state": "REFUSED",
       "uncertainty_seconds": null,
       "upper_bound_utc": null,
       "url": "https://www.microsoft.com/",
-      "via": null,
-      "wall_estimate_at_start": "2026-10-07T18:43:46.275979+00:00"
+      "wall_estimate_at_start": "2026-10-07T19:16:46.207288+00:00"
     }
   ],
   "openssl": "OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)",
@@ -56,14 +176,16 @@
     "authenticated_interval": {
       "actual_client_return": 1005,
       "current_at_return_bound_valid": false,
-      "message_sha256": "e5b23b6aed894d63dc5c5524260b876844acd2a2bae93e35cb4b01189d1c5533",
-      "payload_utf8": "{\"lower\":995,\"nonce\":\"be48c0d115de63b7022daf132906d0a05ef632b83d20e3ae4767e16d4024cfb5\",\"protocol\":\"synthetic-interval-v1\",\"upper\":996}",
+      "fresh_request_accepted": true,
+      "message_sha256": "6af2e52b5b91bb0ff1caa9ccb797837fa0ba8d3575a2fb53cae35a32fa96c5a4",
+      "new_request_nonce": "0dbb12be0b5b2ab843e0fe528b136fb2c3dc97ad9da682571b4271473ad98059",
+      "payload_utf8": "{\"lower\":995,\"nonce\":\"1dbb12be0b5b2ab843e0fe528b136fb2c3dc97ad9da682571b4271473ad98059\",\"protocol\":\"synthetic-interval-v1\",\"upper\":996}",
       "prior_commit_994_causal_bound_valid": true,
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAqIFpUdokjiWgVVPBl4KGWzvouc1OCPCBO5jtmbM84SQ=\n-----END PUBLIC KEY-----\n",
-      "public_key_sha256": "afa01885ae2f1303d8144e2d3ca63380dcbc12423af2f1f5399d982a10ddc117",
-      "replayed_nonce_matches_new_request": false,
-      "request_nonce_sha256": "f5c2fb861450950645aaaaed67e7436d97ad7e8a9821b428ea40c7450c70dbea",
-      "signature_base64": "SpAGyfOOv+vB5B7mX8aBQHjtzotLwf5T6KL7K4t5hEGxKDi+uXp8Gk6bjQY45por7En6wnMO8RzJRqQ7iJ5IDg==",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEALMmfVL9S+3La+3TsC52xE38LM52efjcbEccDaVRTcFM=\n-----END PUBLIC KEY-----\n",
+      "public_key_sha256": "197feb9b5e2ca9fc01d8f73f8815cf3c4869c2e3c9a68f4feaef10cb085bc0fb",
+      "replayed_response_rejected_for_new_request": true,
+      "request_nonce_sha256": "6f75538d90e9405e37e4a3a4dd43074b958bd35511a9e66e65e9be41607b8ac1",
+      "signature_base64": "F9QSzth0PXKrnN2e+HX/Kxf8g8H+dFjytWKNqvlw/K2S3IPtAwBAa5J0H0crl5T5RcZYjbwW+FNpyXqH7bhJCA==",
       "signature_verified": true,
       "source_event_upper": 996,
       "source_is_synthetic": true,
@@ -145,25 +267,10 @@
         "synthetic_actual_utc_at_return": 1000
       }
     ],
-    "interpretation": "Gate trusts injected assertions. Unsafe cases violate the provider contract, not repository validation. Exact elapsed is a synthetic oracle, never an Android qualification.",
-    "synthetic_confidence_record": {
-      "error_bound_seconds": null,
-      "estimate_utc": null,
-      "evidence": "authenticated_interval; gate_cases",
-      "failure_reasons": [
-        "NO_ELAPSED_RATE_GUARANTEE",
-        "NO_RETURN_DELIVERY_BOUND"
-      ],
-      "operational_authority": false,
-      "schema_version": 1,
-      "scope": "RETURN_TIME",
-      "software_sha256": "6e9e2b1f0a5c468b7d43db3542288cb54a9ea87334aee8e5a64a2519bf925c48",
-      "source_protocol": "synthetic-interval-v1",
-      "trust_state": "REFUSED",
-      "upper_bound_utc": null
-    }
+    "interpretation": "Gate trusts injected assertions. Unsafe cases violate the provider contract, not repository validation. Exact elapsed is a synthetic oracle, never an Android qualification."
   },
   "prototype": true,
   "python": "3.14.6",
+  "record_kind": "utc_clock_proof_bundle",
   "schema_version": 1
 }
