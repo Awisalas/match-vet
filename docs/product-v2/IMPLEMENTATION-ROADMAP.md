@@ -502,10 +502,10 @@ It supplements the historical roadmap entries above.
 | --- | --- | --- |
 | #74 | Corrected whole-freeze F07 boundary delivered | Complete |
 | #75 | Complete F16 selection, protected completion receipt, exact replay and shared preselection gate delivered; see [repository contract](../matchweek-research.md) | Complete |
-| #76 | F11–F16 direct writers and resume call the shared gate; exact selected replay and legacy bytes preserved | Implemented; 25 focused cases and affected checks passed; issue closure follows push |
-| #77 | Bind CB01 and evaluation to corrected lineage | Open; retain native dependencies |
+| #76 | F11–F16 direct writers and resume call the shared gate; exact selected replay and legacy bytes preserved | Complete; pushed in `53bb02c`; #76 closed after focused and affected checks passed |
+| #77 | Bind CB01 and evaluation to corrected lineage | Ready; #76 closed, native blocker count is zero; not started |
 | #78 | Prove one corrected information state end to end | Open; retain native dependencies |
 
 #73 remains open. Production prospective qualification still requires an operational
 trusted UTC upper-bound provider; the default clock refuses. This operational limit
-does not prevent #76 from integrating the shared gate and deterministic tests.
+does not affect the delivered #76 gate integration and deterministic tests.

@@ -2,14 +2,13 @@
 
 reviewed by gpt-5.6-sol
 
-Final precommit review.
+Delivered implementation review.
 
 ## Attention
 
-- **Functional evidence:** No unresolved functional flag. `focused-scope-final.txt` passed 24 final-code cases and `green-audit-catalog-final.txt` passed the separately run late-audit case, covering all 25. `f75-scope-final.txt` passed 16 affected #75 selection and recovery cases. `legacy-readers-scope-final.txt` passed two historical readers.
-- **Compatibility:** No unresolved compatibility flag. `legacy-scope-final.txt` proves 30 archived artifacts remain byte-identical with zero catalog writes. The F13 engine and research-adapter identities, stored payloads and schemas remain unchanged.
-- **Trail truth:** The final replay, regression and verification rows map to completed artifacts and preserve the earlier reds, fixture mistakes and inconclusive experiments. `checks.md` and `blast-radius.md` now describe the split 24-plus-1 focused result and the 16-case #75 result accurately. The early source-only gate row is superseded by the later public-seam evidence.
-- **Delivery checks:** No unresolved check flag. Ruff and format passed on 16 files, strict mypy passed on 15 files, and `git diff --check` passed after the final documentation and audit refresh.
-- **Commit-boundary semantics are stated accurately:** `docs/matchweek-research.md` says a crossing sync or commit refuses the operation while orphan bytes or an ambiguously late catalog entry cannot qualify. `test_commit_return_at_t_is_refused_and_late_candidate_cannot_be_adopted` checks refusal, absence of completed F11 evidence, and no indexed selection. The trail must keep this lineage and acknowledgement guarantee; it must not claim zero physical orphan or intermediate catalog retention.
-- **Commit scope:** HEAD remains `6470abf2d1f8df4ebe01d2b9f110c5ad01e2e483`; no issue #76 commit exists yet. Stage the explicit issue #76 source, docs, tests and intended audit files. Exclude the downloaded Ruff archive and binary and the unrelated dirty `.audit/cb01-implementation/trail-review.md`.
-- **Remaining delivery:** Commit and push have not run. #76 remains open, and #77 remains open with `blocked_by: 1`. After the push, close #76 and verify GitHub reports #77 with `blocked_by: 0`; do not begin #77.
+- **Prior review:** The functional, compatibility and check verdict committed in `53bb02c` is unchanged. No source or check delta followed that review.
+- **Implementation delivery:** Local HEAD, `origin/main` and `git ls-remote origin refs/heads/main` all resolve to `53bb02c6d60897ebd9510594ee9c55a5a73a49a9`. `push-implementation.txt` records the `6470abf..53bb02c` push. No second commit or push is claimed.
+- **Tracker state:** #76 is closed as completed, all eight acceptance boxes are checked, and the completion comment names the implementation SHA and verified checks. #77 remains open and unassigned, has `ready-for-agent`, and GitHub reports `blocked_by: 0`. #73 and #78 remain open with their native dependencies intact.
+- **Trail truth:** The delivery row maps to the pushed SHA, push output and `delivery.json`. Its result accurately says the tracking-only follow-up push is pending. Earlier reds, fixture mistakes and inconclusive experiments remain visible; later rows supersede their pending results with exact green artifacts.
+- **Remaining tracking update:** The implementation is delivered. A tracking-only commit and push still need to add `delivery.json`, `push-implementation.txt` and this final review, plus the updated decision trail, verification summary and roadmap. Stage those explicit paths only. Exclude `blast-b-proof.py`, `contracts-fix.py`, `fix-review.py`, the Ruff archive/binary, and unrelated `.audit/cb01-implementation/trail-review.md`. Record the second SHA only after that commit and push succeed.
+- **Unresolved discrepancies:** None.
