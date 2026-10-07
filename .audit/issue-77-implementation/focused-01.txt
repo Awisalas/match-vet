@@ -1,0 +1,76 @@
+...........FF
+=================================== FAILURES ===================================
+_ test_corrected_witness_uses_strict_common_t_and_own_kickoff[0-2026-09-25T12:59:59.9999999Z-False] _
+
+slate_store = <matchvet.store.Store object at 0x7ae41d3790>
+slate = Slate(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-11/issue77-slate0'), freeze_digest=...a86ac71e056e70ba29dfa3beb4b', f16_manifest_digest='02250ba13bf83dac57f5c64dc7b61bd2a66d748a7c56c6c738e3965e0c290c13')))
+fixture = 0, gen_time = '2026-09-25T12:59:59.9999999Z', qualifies = False
+
+        batch["anchor"]["membership"]["id"] = slate.requests[1].membership_id
+    elif tamper == "manifest":
+        batch["lineage"]["f16_manifest"]["digest"] = "f" * 64
+    elif tamper == "batch_preferences":
+        batch["expected_preference_ids"] = batch["expected_preference_ids"][:1]
+        batch["entries"] = batch["entries"][:1]
+    forged_batch = artifacts.publish_artifact(
+        encode_artifact("FixtureEnrollmentBatch", batch), MEDIA_TYPES["FixtureEnrollmentBatch"]
+    ).digest
+    failure = decode_artifact(artifacts.read_artifact(failed.failure_digests[0]))[1]
+    failure["batch_digest"] = forged_batch
+    if tamper == "batch_preferences":
+        failure["expected_preference_ids"] = batch["expected_preference_ids"]
+    elif tamper == "failure_preferences":
+        failure["expected_preference_ids"] = failure["expected_preference_ids"][:1]
+    forged_failure = artifacts.publish_artifact(
+        encode_artifact("TimestampFailure", failure), MEDIA_TYPES["TimestampFailure"]
+    ).digest
+    view = MatchweekEvaluationRepository(slate_store).inspect_cohort(
+        slate.freeze_digest, slate.profile, slate.policy, selection_digest=slate.selection
+    )
+>   assert view.included_count == 4
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: assert 0 == 2
+E    +  where 0 = len(())
+E    +    where () = BatchResult(batch_digest='e6f28f45c16689f8d837580b9da3b5ebcfe3d94419dbb93419fa4fd5e35c4de4', attempt_digest='e704c0334...ne, failure_digests=('893906e6bddc25b0c7ebf47d656c73de0b3c504c7ac3b834b245ae1cb8ce35db',), state='INCOMPLETE', rows=()).rows
+
+tests/test_issue77.py:379: AssertionError
+_ test_corrected_witness_uses_strict_common_t_and_own_kickoff[0-2026-09-25T13:00:00Z-False] _
+
+slate_store = <matchvet.store.Store object at 0x7ae4167650>
+slate = Slate(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-11/issue77-slate0'), freeze_digest=...a86ac71e056e70ba29dfa3beb4b', f16_manifest_digest='02250ba13bf83dac57f5c64dc7b61bd2a66d748a7c56c6c738e3965e0c290c13')))
+fixture = 0, gen_time = '2026-09-25T13:00:00Z', qualifies = False
+
+        batch["anchor"]["membership"]["id"] = slate.requests[1].membership_id
+    elif tamper == "manifest":
+        batch["lineage"]["f16_manifest"]["digest"] = "f" * 64
+    elif tamper == "batch_preferences":
+        batch["expected_preference_ids"] = batch["expected_preference_ids"][:1]
+        batch["entries"] = batch["entries"][:1]
+    elif tamper == "entry":
+        batch["entries"][0]["disposition"] = "INCOMPLETE"
+    forged_batch = artifacts.publish_artifact(
+        encode_artifact("FixtureEnrollmentBatch", batch), MEDIA_TYPES["FixtureEnrollmentBatch"]
+    ).digest
+    if tamper == "verified":
+        assert failed.verification_digest is not None
+        verification = decode_artifact(artifacts.read_artifact(failed.verification_digest))[1]
+        failure = {
+            "batch_digest": failed.batch_digest, "attempt_digest": failed.attempt_digest,
+            "attempt_result_digest": verification["attempt_result_digest"],
+            "verification_digest": failed.verification_digest,
+            "expected_preference_ids": batch["expected_preference_ids"],
+            "reasons": ["RFC3161_SIGNATURE_INVALID"],
+        }
+>   else:
+E   AssertionError: assert 0 == 2
+E    +  where 0 = len(())
+E    +    where () = BatchResult(batch_digest='e6f28f45c16689f8d837580b9da3b5ebcfe3d94419dbb93419fa4fd5e35c4de4', attempt_digest='e704c0334...ne, failure_digests=('05383f34935e82b527f824a4e4125d0249581e7c2a04ec13d299a96f0b3bd1c7',), state='INCOMPLETE', rows=()).rows
+
+tests/test_issue77.py:379: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_issue77.py::test_corrected_witness_uses_strict_common_t_and_own_kickoff[0-2026-09-25T12:59:59.9999999Z-False]
+FAILED tests/test_issue77.py::test_corrected_witness_uses_strict_common_t_and_own_kickoff[0-2026-09-25T13:00:00Z-False]
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/data/data/com.termux/files/home/projects/match-vet/src/matchvet/provider_health.py:46: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+2 failed, 11 passed in 1474.41s (0:24:34)

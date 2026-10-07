@@ -1,0 +1,37 @@
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/match_evidence_cutoff.py", line 248, in _read
+    return self._artifacts.read_artifact(digest)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/artifacts.py", line 810, in read_artifact
+    record = self.verify_artifact(digest)
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/artifacts.py", line 804, in verify_artifact
+    _verify_file(expected_path, digest, metadata.byte_length)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/artifacts.py", line 1192, in _verify_file
+    raise ArtifactError("MV-ARTIFACT-MISSING", f"Artifact {digest} is missing.")
+matchvet.artifacts.ArtifactError: Artifact 7501a15663801197800f940281ec09d0c6ccd4083fc1743266d99cf182bf2963 is missing.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 76, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 71, in main
+    getattr(test_issue77, args.test)(store, slate)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/tests/test_issue77.py", line 320, in test_failed_witness_denominator_survives_missing_cutoff_lineage
+    view = MatchweekEvaluationRepository(slate_store, witness_backend=backend).inspect_cohort(
+        slate.freeze_digest, slate.profile, slate.policy
+    )
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/cb01_evaluation.py", line 165, in inspect_cohort
+    boundary = cutoffs.replay(batch["anchor"]["cutoff"]["id"])
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/match_evidence_cutoff.py", line 174, in replay
+    cutoff = self.get_by_id(cutoff_id)
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/match_evidence_cutoff.py", line 145, in get_by_id
+    encoded = self._read(digest, CUTOFF_MEDIA_TYPE)
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/match_evidence_cutoff.py", line 250, in _read
+    raise _refuse(
+        "REFERENCE-CORRUPT", "Required F07 artifact failed verification."
+    ) from error
+matchvet.match_evidence_cutoff.MatchEvidenceCutoffError: Required F07 artifact failed verification.

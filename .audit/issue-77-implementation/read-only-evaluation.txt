@@ -1,0 +1,56 @@
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 88, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 83, in main
+    function(**{key: supplied[key] for key in inspect.signature(function).parameters})
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/tests/test_issue77.py", line 267, in test_evaluation_is_read_only_and_never_repairs_missing_enrollment
+    view = repository.inspect_cohort(
+        slate.freeze_digest,
+    ...<3 lines>...
+        exact_publication_digests=(enrolled.publication_digest,),
+    )
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/cb01_evaluation.py", line 75, in inspect_cohort
+    return self._inspect_cohort(
+           ~~~~~~~~~~~~~~~~~~~~^
+        view,
+        ^^^^^
+    ...<3 lines>...
+        exact_attachment_digests,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/cb01_evaluation.py", line 145, in _inspect_cohort
+    selection = MatchweekResearchRepository(self.store).replay(selection_digest)
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/matchweek_research.py", line 563, in replay
+    graph = self._admit(f16[0], references=selection.artifacts)
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/matchweek_research.py", line 180, in _admit
+    manifest = F16MatchweekProcessor(self._store).replay_manifest(f16_digest)
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/f16.py", line 381, in replay_manifest
+    child = self._replay_match_result(row["match_result_digest"])
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/f16.py", line 616, in _replay_match_result
+    decision = DecisionRepository(self.store).replay(value["decision_digest"])
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/f14.py", line 471, in replay
+    expected = self._evaluate(bundle, input_digest)
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/f14.py", line 555, in _evaluate
+    .replay(bundle.model_result_digest, bundle.evidence_digest, bundle.cutoff_id)
+     ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/f13.py", line 821, in replay
+    binding = self._binding(evidence_digest, cutoff_id)
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/f13.py", line 184, in _binding
+    .replay(evidence_digest, freeze_id=cutoff.freeze_id, policy_digest=cutoff.policy_digest)
+     ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/f11.py", line 564, in replay
+    self._validate(evidence, freeze_id, policy_digest)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/f11.py", line 651, in _validate
+    referenced_history = load_canonical_fixture_history(
+        self.store, season=freeze.season, context_fixtures=context
+    )
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/workload.py", line 1017, in load_canonical_fixture_history
+    + WorkloadScheduleRecorder(store).fixtures(season=season)
+      ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/workload.py", line 819, in __init__
+    raise PermissionError("Workload schedule recording requires a healthy writable store.")
+PermissionError: Workload schedule recording requires a healthy writable store.

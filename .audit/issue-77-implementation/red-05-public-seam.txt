@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 67, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 62, in main
+    getattr(test_issue77, args.test)(store, slate)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/tests/test_issue77.py", line 230, in test_corrected_receipt_qualifies_without_hiding_unattempted_preferences
+    view = MatchweekEvaluationRepository(slate_store, witness_backend=backend).inspect_cohort(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: MatchweekEvaluationRepository.__init__() got an unexpected keyword argument 'witness_backend'

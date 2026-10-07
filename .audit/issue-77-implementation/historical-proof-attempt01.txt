@@ -1,0 +1,41 @@
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/historical-proof.py", line 155, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/historical-proof.py", line 124, in main
+    _child(args.mode, args.source, args.work, args.oracle)
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/historical-proof.py", line 65, in _child
+    case = next(fixture)
+  File "/data/data/com.termux/files/usr/tmp/matchvet-issue77-history-_pppy_7m/old/tests/test_cb01_repository.py", line 97, in enrollment_case
+    F16MatchweekProcessor(store).process_phase(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        context,
+        ^^^^^^^^
+    ...<4 lines>...
+        policy=PolicyVersion(version="research-policy-v1"),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/data/data/com.termux/files/usr/tmp/matchvet-issue77-history-_pppy_7m/old/src/matchvet/f16.py", line 168, in process_phase
+    raise F16Error("Prospective F16 requires the corrected F07 rule.")
+matchvet.f16.F16Error: Prospective F16 requires the corrected F07 rule.
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/historical-proof.py", line 155, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/historical-proof.py", line 147, in main
+    subprocess.run(
+    ~~~~~~~~~~~~~~^
+        [sys.executable, __file__, "--mode", mode, "--source", str(origin),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         "--work", str(work), "--oracle", str(oracle)],
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        cwd=ROOT, env=environment, check=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/data/data/com.termux/files/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/data/data/com.termux/files/home/projects/match-vet/.venv/bin/python', '/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/historical-proof.py', '--mode', 'build', '--source', '/data/data/com.termux/files/usr/tmp/matchvet-issue77-history-_pppy_7m/old', '--work', '/data/data/com.termux/files/usr/tmp/matchvet-issue77-history-_pppy_7m', '--oracle', '/data/data/com.termux/files/usr/tmp/matchvet-issue77-history-_pppy_7m/oracle.json']' returned non-zero exit status 1.

@@ -1,0 +1,19 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________ test_corrected_cb01_preparation_requires_qualified_selection _________
+
+research_store = <matchvet.store.Store object at 0x7103a40b90>
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-0/research-graph0'), f16='8d6bdaf32...b892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-0/research-predecessors0'))
+
+    def test_corrected_cb01_preparation_requires_qualified_selection(
+        research_store: Store, graph: Graph
+    ) -> None:
+        before = research_store.artifact_catalog()
+>       with pytest.raises(CB01SourceError, match="selected"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE CB01SourceError
+
+tests/test_issue77.py:33: Failed
+=========================== short test summary info ============================
+FAILED tests/test_issue77.py::test_corrected_cb01_preparation_requires_qualified_selection
+1 failed in 135.64s (0:02:15)

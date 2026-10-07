@@ -1,0 +1,7 @@
+.audit/issue-77-implementation/historical-proof.py:64: error: "FixtureFunctionDefinition" has no attribute "__wrapped__"  [attr-defined]
+tests/test_issue77.py:107: error: "MatchEvidenceCutoff" has no attribute "kickoff_at_utc"; maybe "cutoff_at_utc"?  [attr-defined]
+tests/test_issue77.py:205: error: Unexpected keyword argument "witness_backend" for "MatchweekEvaluationRepository"  [call-arg]
+src/matchvet/cb01_evaluation.py:48: note: "MatchweekEvaluationRepository" defined here
+tests/test_issue77.py:205: error: Unexpected keyword argument "exact_publication_digests" for "inspect_cohort" of "MatchweekEvaluationRepository"  [call-arg]
+src/matchvet/cb01_evaluation.py:51: note: "inspect_cohort" of "MatchweekEvaluationRepository" defined here
+Found 4 errors in 2 files (checked 6 source files)

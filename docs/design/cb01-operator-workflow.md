@@ -4,7 +4,9 @@ Use `BootstrapRepository` to enroll one exact F06 INCLUDED fixture for one exact
 
 ## Enroll a fixture
 
-Pass the exact retained IDs from F06, F07, and F14. Pass the exact F16 manifest digest when one is available. Use `None` when F16 is missing so the denominator can still be retained as incomplete.
+Pass the exact retained IDs from F06, F07, and F14. Corrected-policy preparation requires the exact F16 manifest in the qualified selected Matchweek state. It replays the complete selected F16/F11/F13/F14 graph before preparing a fixture batch. A candidate manifest or later witness cannot authorize another recommendation state.
+
+For historical per-match-policy reconstruction, `None` retains the existing missing-F16 incomplete-batch behavior. For corrected cohorts with missing F16, selection, or witness data, inspect the full denominator through `MatchweekEvaluationRepository` below.
 
 ```python
 from pathlib import Path
@@ -69,6 +71,14 @@ def resume_fixture(
 If the process stopped after retaining a request but before publishing its `TimestampAttempt`, call `enroll_fixture` again with the same exact input. The repository adopts the retained request. An explicit retry creates a new attempt and nonce. CB01 permits one normal request and one explicit retry per exact batch.
 
 ## Inspect the full denominator
+
+For corrected-policy evaluation, use `MatchweekEvaluationRepository.inspect_cohort(freeze_digest, profile_digest, policy_digest, selection_digest=selection_digest, exact_publication_digests=publication_digests, exact_attachment_digests=attachment_digests)`. The exact selection must replay and agree with every supplied receipt. Omitting selection and receipts still returns the full INCLUDED memberships × enabled preferences as unavailable rows. Exclusions remain visible separately. Missing F07, F16, or witness artifacts never remove denominator rows.
+
+Outcome attachments are explicit version selections. The reader does not discover the latest settlement. Legacy per-match policies cannot enter this corrected cohort, even when their timestamps coincide. See [chronology 0.2.0](../product-v2/CANDIDATE-INPUT-CHRONOLOGY-0.2.0.md) for the shared forecast origin and evaluation limits.
+
+Use `inspect_denominator(freeze_digest, profile_digest)` when only the exact F06/Profile count is needed. Admission errors carry the same complete view on `CB01EvaluationError.denominator`. Evaluation verifies retained receipt bytes without publishing or repairing artifacts. Failure digests whose cohort identity cannot replay remain separately visible; they cannot mark corrected rows as attempted.
+
+The following historical inspection API retains its existing receipt and denominator behavior:
 
 Name the exact F06 freeze, exact F14 Profile, and the publication digests you want to inspect. The result includes each frozen membership multiplied by each enabled preference. F06 exclusions and unattempted included fixtures remain visible.
 

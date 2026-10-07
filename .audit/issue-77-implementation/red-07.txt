@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 76, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 71, in main
+    getattr(test_issue77, args.test)(store, slate)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/data/data/com.termux/files/home/projects/match-vet/tests/test_issue77.py", line 285, in test_legacy_failure_cannot_mark_a_corrected_case_as_attempted
+    assert all(row.state == "INCOMPLETE_FOR_NOT_ATTEMPTED" for row in view.denominator.rows)
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

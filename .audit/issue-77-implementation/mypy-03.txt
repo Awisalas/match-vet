@@ -1,0 +1,12 @@
+.audit/issue-77-implementation/historical-proof.py:102: error: Incompatible types in assignment (expression has type "CaseView", variable has type "EnrollmentCase")  [assignment]
+.audit/issue-77-implementation/historical-proof.py:103: error: "EnrollmentCase" has no attribute "batch_digest"  [attr-defined]
+.audit/issue-77-implementation/historical-proof.py:111: error: "EnrollmentCase" has no attribute "records"  [attr-defined]
+.audit/issue-77-implementation/historical-proof.py:117: error: "EnrollmentCase" has no attribute "records"  [attr-defined]
+.audit/issue-77-implementation/historical-proof.py:118: error: "EnrollmentCase" has no attribute "batch_digest"  [attr-defined]
+.audit/issue-77-implementation/historical-proof.py:119: error: "EnrollmentCase" has no attribute "publication_digest"  [attr-defined]
+tests/test_issue77.py:375: error: Unexpected keyword argument "exact_attachment_digests" for "inspect_cohort" of "MatchweekEvaluationRepository"  [call-arg]
+src/matchvet/cb01_evaluation.py:55: note: "inspect_cohort" of "MatchweekEvaluationRepository" defined here
+tests/test_issue77.py:453: error: Unexpected keyword argument "exact_attachment_digests" for "inspect_cohort" of "MatchweekEvaluationRepository"  [call-arg]
+.audit/issue-77-implementation/run-slate-slice.py:60: error: Argument "key" to "sorted" has incompatible type "Callable[[Any], str | None]"; expected "Callable[[Any], SupportsDunderLT[Any] | SupportsDunderGT[Any]]"  [arg-type]
+.audit/issue-77-implementation/run-slate-slice.py:60: error: Incompatible return value type (got "str | None", expected "SupportsDunderLT[Any] | SupportsDunderGT[Any]")  [return-value]
+Found 10 errors in 3 files (checked 8 source files)

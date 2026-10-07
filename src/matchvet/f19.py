@@ -13,6 +13,7 @@ from matchvet.artifacts import ArtifactError, ArtifactStore
 from matchvet.f14 import DecisionRepository, F14Error
 from matchvet.f16 import F16Error, F16MatchweekProcessor
 from matchvet.matchweek_membership import canonical_json
+from matchvet.matchweek_research import MatchweekResearchError, MatchweekResearchRepository
 from matchvet.store import Store
 from matchvet.t10 import (
     DEFAULT_PREFERENCE_CATALOG,
@@ -275,6 +276,19 @@ class SettlementRepository:
     def _lineage(
         self, manifest_digest: str, match_result_digest: str, preference_id: str
     ) -> tuple[dict[str, str], str, BettingPreference]:
+        # Check policy admission even on cache hits; the selected receipt may disappear.
+        # Full F16 replay remains necessary when constructing a new lineage cache entry.
+        manifest_value = json.loads(self.artifacts.read_artifact(manifest_digest))
+        owner = MatchweekResearchRepository(self.store)
+        if owner.is_corrected(manifest_value["cutoff_policy_digest"]):
+            try:
+                selected = owner.selected_for_boundary(
+                    manifest_value["freeze_id"], manifest_value["cutoff_policy_digest"]
+                )
+            except MatchweekResearchError as error:
+                raise F19Error("Corrected settlement selected lineage failed replay.") from error
+            if selected is None or selected.f16_manifest_digest != manifest_digest:
+                raise F19Error("Corrected settlement requires the exact selected F16 manifest.")
         cache_key = (manifest_digest, match_result_digest, preference_id)
         cached = self._lineage_cache.get(cache_key)
         if cached is not None:

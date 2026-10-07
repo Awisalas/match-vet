@@ -56,7 +56,7 @@ def f19_fixture(tmp_path_factory: pytest.TempPathFactory) -> F19Fixture:
             predecessor_digest="0" * 64,
             cpu_concurrency=1,
         )
-        F16MatchweekProcessor(store).process_phase(
+        F16MatchweekProcessor(store, legacy_research=True).process_phase(
             context,
             freeze_id=freeze_id,
             cutoff_policy_digest=cutoff_policy_digest,

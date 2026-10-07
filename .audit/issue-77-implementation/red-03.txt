@@ -1,0 +1,14 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____ test_corrected_denominator_exists_without_f16_selection_or_attempts ______
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-3/test_corrected_denominator_exi0')
+
+    def test_corrected_denominator_exists_without_f16_selection_or_attempts(tmp_path: Path) -> None:
+>       from matchvet.cb01_evaluation import MatchweekEvaluationRepository
+E       ModuleNotFoundError: No module named 'matchvet.cb01_evaluation'
+
+tests/test_issue77.py:61: ModuleNotFoundError
+=========================== short test summary info ============================
+FAILED tests/test_issue77.py::test_corrected_denominator_exists_without_f16_selection_or_attempts
+1 failed, 2 deselected in 5.31s

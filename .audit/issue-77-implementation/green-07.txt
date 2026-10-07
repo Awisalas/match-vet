@@ -1,0 +1,1 @@
+PASS test_legacy_failure_cannot_mark_a_corrected_case_as_attempted

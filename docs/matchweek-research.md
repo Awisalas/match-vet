@@ -144,3 +144,35 @@ keeps its existing reference closure; selected replay neither discovers later au
 attempts nor promotes incidental audit references to F11 attempts. Stored payloads
 remain unchanged. Ordinary retained artifact readers remain available for historical integrity
 inspection.
+
+## CB01 and F19 consumers
+
+Corrected CB01 source preparation resolves the exact indexed selection for the
+supplied F06 and F07 policy, replays its complete graph and requires the selected
+F16 manifest and common T. The manifest supplies the exact Profile and per-member
+F11, F13 and F14 identities. The adapter adds no CB01 payload fields and changes
+neither historical core software digest. Legacy preparation reconstructs its
+original per-match commitments.
+
+`MatchweekEvaluationRepository.inspect_cohort` counts the exact F06 memberships
+and enabled Profile preferences before joining explicitly named publications.
+Its corrected cohort carries the exact selection, completion receipt, policy and
+common forecast origin under
+[chronology 0.2.0](product-v2/CANDIDATE-INPUT-CHRONOLOGY-0.2.0.md). Missing F16 or
+selection, failed witnesses and unattempted rows stay unavailable. Legacy policy
+and mixed exact identities refuse corrected evaluation. F06 exclusions stay visible
+with their original reasons outside the INCLUDED count.
+
+`inspect_denominator(freeze_digest, profile_digest)` is independent of research and
+witness artifacts. An admission refusal also carries this full view on
+`CB01EvaluationError.denominator`. Exact receipt replay verifies would-be CB01
+publications against already-retained bytes without writing or repairing them.
+Successful retries retain failed-attempt history. Failures without a provable
+selected policy/F16 identity remain in `unavailable_failure_digests` outside the
+cohort's attempted rows. Unreadable failures with no provable freeze/Profile anchor
+are separate store-wide `catalog_unavailable_failure_digests`; they do not change
+cohort row status or count.
+
+F19 checks the selected corrected manifest before settlement, correction or cached
+lineage reuse. Its schema, T10 grading and append-only predecessors remain unchanged.
+Outcome facts and later witnesses cannot reopen the frozen recommendation graph.

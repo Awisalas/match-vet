@@ -24,6 +24,11 @@ from matchvet.matchweek_membership import (
     MembershipState,
 )
 from matchvet.matchweek_membership_repository import MatchweekMembershipRepository
+from matchvet.matchweek_research import (
+    CORRECTED_RULE,
+    MatchweekResearchError,
+    MatchweekResearchRepository,
+)
 from matchvet.store import Store
 
 
@@ -96,6 +101,26 @@ def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> Pr
         membership.controlling_revision_digest,
     ):
         raise CB01SourceError("Exact F07 cutoff differs from the selected F06 membership.")
+
+    # Policy dispatch preserves legacy reconstruction, including incomplete batches.
+    # Corrected batches cannot exist as recommendation commitments before selection.
+    if (
+        MatchEvidenceCutoffRepository(store).read_policy(cutoff.policy_digest).rule
+        == CORRECTED_RULE
+    ):
+        try:
+            selected = MatchweekResearchRepository(store).selected_for_boundary(
+                freeze.freeze_id, cutoff.policy_digest
+            )
+        except MatchweekResearchError as error:
+            raise CB01SourceError(
+                "Corrected CB01 selected Matchweek lineage failed replay."
+            ) from error
+        if selected is None or (
+            selected.f16_manifest_digest != request.f16_manifest_digest
+            or normalize_utc(selected.cutoff_at_utc) != normalize_utc(cutoff.cutoff_at_utc)
+        ):
+            raise CB01SourceError("Corrected CB01 requires the exact selected F16/common cutoff.")
 
     home_id, away_id, kickoff = _fixture_identity(store, membership)
     scope = next((item for item in freeze.scopes if item.scope_id == membership.scope_id), None)

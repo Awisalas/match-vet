@@ -1,0 +1,2 @@
+pre-77 source built a deterministic complete legacy CB01 receipt
+current reader reconstructed 2 exact legacy records; zero writes

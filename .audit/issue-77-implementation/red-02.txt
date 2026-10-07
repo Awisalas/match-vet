@@ -1,0 +1,14 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+___________ test_corrected_f19_cannot_settle_an_unselected_candidate ___________
+
+research_store = <matchvet.store.Store object at 0x7beba48050>
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-2/research-graph0'), f16='8d6bdaf32...b892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-2/research-predecessors0'))
+
+>   ???
+E   Failed: DID NOT RAISE F19Error
+
+tests/test_issue77.py:43: Failed
+=========================== short test summary info ============================
+FAILED tests/test_issue77.py::test_corrected_f19_cannot_settle_an_unselected_candidate
+1 failed, 1 deselected in 167.09s (0:02:47)

@@ -1,0 +1,12 @@
+E501 Line too long (111 > 100)
+   --> .audit/issue-77-implementation/historical-proof.py:111:101
+    |
+109 |                 assert ArtifactStore(store).read_artifact(digest) == base64.b64decode(content)
+110 |             print(
+111 |                 f"current reader reconstructed {len(replayed_case.records)} exact legacy records; zero writes",
+    |                                                                                                     ^^^^^^^^^^^
+112 |                 flush=True,
+113 |             )
+    |
+
+Found 1 error.

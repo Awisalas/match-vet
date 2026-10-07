@@ -1,0 +1,1 @@
+PASS test_corrected_chronology_has_one_shared_origin_across_fixture_kickoffs

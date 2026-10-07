@@ -1,0 +1,15 @@
+{
+  "artifact_count": 53,
+  "base_commit": "6470abf",
+  "catalog_writes": 0,
+  "exact_batch_digest": "3abd4dd92af02a37cf7158f460d7130c3f638c300363b8d252dc0d276905f521",
+  "exact_publication_digest": "2d91a8ac9fe46f065584ba5c3615eed3cc8b4be80403ec5de70898ef12f51dfa",
+  "historical_sha256": {
+    "docs/product-v2/CANDIDATE-INPUT-METHODOLOGY.md": "1ebeb80f33190f18440d2dcfa5b2526d3907223471f4b2711b7445b0ece8e200",
+    "src/matchvet/cb01.py": "7de7f617d652329146a3fa3c4f2b9638134dfb3c8d4c931bb35b6a90ac200092",
+    "src/matchvet/cb01_trust.py": "4f75585163f353bc6dfcac1e566ee1502562d9a03b7c6e2b1fefc2800974c9be"
+  },
+  "network_calls": 0,
+  "record_count": 2,
+  "replay_publication_writes": 0
+}

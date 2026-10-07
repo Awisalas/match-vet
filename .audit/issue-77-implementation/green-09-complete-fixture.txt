@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 81, in <module>
+    main()
+    ~~~~^^
+  File "/data/data/com.termux/files/home/projects/match-vet/.audit/issue-77-implementation/run-slate-slice.py", line 46, in main
+    selected = MatchweekResearchRepository(store).replay_for_matchweek(
+        season="2026-27", matchweek_friday="2026-09-25"
+    )
+  File "/data/data/com.termux/files/home/projects/match-vet/src/matchvet/matchweek_research.py", line 546, in replay_for_matchweek
+    raise MatchweekResearchError("No indexed selection exists for this Matchweek.")
+matchvet.matchweek_research.MatchweekResearchError: No indexed selection exists for this Matchweek.

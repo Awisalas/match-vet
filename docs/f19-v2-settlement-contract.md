@@ -21,6 +21,12 @@ assert corrected.predecessor_digest == record.digest
 
 `build` replays the protected F16 manifest and verifies it contains the named match result. F16 replay verifies its F14 decision. F19 then checks that the exact preference is enabled in that decision and is an unchanged T10 preference. Every evidence record must name that match's fixture.
 
+For the corrected Matchweek cutoff policy, F19 also replays the exact indexed
+Matchweek selection and completion receipt before using its lineage cache. Only
+that selected F16 manifest can receive a settlement or correction. Unselected
+candidates, different freezes or policies, and missing completion evidence refuse.
+Legacy settlements retain their original per-match policy and exact bytes.
+
 ## Settlement states
 
 F19 preserves T10's deterministic grading rules and records one of these states:
@@ -49,6 +55,13 @@ Replay validates the artifact digest and schema, replays the exact F16 and F14 l
 F19 accepts T10 source evidence records and retains their source identity, authority, times, assertions, and provenance as supplied. It does not acquire data or claim that an operator-entered source record came from an automated provider. Manual T10 grading records are not accepted as F19 evidence and remain in the separate V1 grading path.
 
 F19 does not add F17 behavior, automatic acquisition from F20, markets, or bookmaker odds. Odds fields in retained evidence provenance are rejected.
+
+Later outcomes and post-cutoff source corrections belong to settlement and
+evaluation history. They cannot enter the selected F11 evidence, F13 model inputs
+or F14 recommendation. Corrected evaluation uses the separate
+[chronology 0.2.0](product-v2/CANDIDATE-INPUT-CHRONOLOGY-0.2.0.md) and explicitly
+named CB01 outcome attachments. It never discovers a latest settlement to replace
+the outcome version selected by its caller.
 
 ## Design choice
 
