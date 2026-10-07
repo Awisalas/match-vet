@@ -514,4 +514,6 @@ remain unresolved. The default clock refuses.
 [Production UTC research and ADR 0002](../adr/0002-production-trusted-utc.md)
 preserve that refusal. No evaluated source satisfies the unchanged return-time
 contract on Termux/Android. A timing-boundary decision is required before a
-production implementation ticket can be ready. No live rebuild has started.
+production implementation ticket can be ready.
+[Issue #79](https://github.com/Awisalas/match-vet/issues/79) tracks that prerequisite
+under `needs-triage`. No live rebuild has started.

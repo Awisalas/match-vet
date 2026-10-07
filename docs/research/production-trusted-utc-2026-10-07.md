@@ -1,8 +1,10 @@
 # Production trusted UTC upper bounds on Termux/Android
 
 Research date: 2026-10-07. Primary documentation and source inspection only.
-No live Matchweek data, operational SQLite stores, or live timestamp requests
-were used. This note distinguishes published guarantees, provider assertions,
+No live Matchweek data, operational SQLite stores, or NTP/Roughtime/TSA requests
+were used. The isolated prototype made diagnostic HTTPS Date HEAD probes to
+three origins; their estimates established no UTC bound. This note distinguishes
+published guarantees, provider assertions,
 and deductions for MatchVet. It does not establish a production device's clock
 error by observing a few successful network queries.
 

@@ -71,3 +71,10 @@ The final sample-to-return counterexample is a logical possibility under the
 contract's arbitrary-suspension premise. The prototype illustrates it; repeated
 fast executions cannot prove a worst-case latency bound. Device qualification
 alone does not remove that gap. No production modules or schemas are changed.
+
+## Tracking
+
+Design/research/proof capture: main commit `55a3a1b`.
+[Issue #79](https://github.com/Awisalas/match-vet/issues/79) is open with
+`needs-triage`, for the timing-boundary prerequisite. It does not authorize a
+production adapter or a changed clock contract. Live rebuild remains unstarted.

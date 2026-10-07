@@ -211,7 +211,8 @@ using it to bypass the unchanged clock contract.
 
 ## Next work
 
-There is no implementation-ready provider ticket. Track one prerequisite timing
+There is no implementation-ready provider ticket.
+[Issue #79](https://github.com/Awisalas/match-vet/issues/79) tracks one prerequisite timing
 decision: supply a genuine compatible execution guarantee, or explicitly review
 a different observation/event contract while preserving every cutoff, writer,
 receipt, restart and single-selection acceptance condition. Continue refusing

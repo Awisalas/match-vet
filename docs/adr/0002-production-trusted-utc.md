@@ -68,6 +68,10 @@ records the isolated counterexamples, source identities, and prototype branch.
 - The next issue is a timing-contract decision prerequisite, not a ready provider
   implementation. No production mechanism passed the requested qualification.
 
+[Issue #79](https://github.com/Awisalas/match-vet/issues/79) tracks that prerequisite
+with `needs-triage`. It must establish and explicitly authorize a feasible boundary
+before a production implementation issue can be ready.
+
 ## Rejected alternatives
 
 Android UTC/network/Play services uncertainty lacks a hard guaranteed bound.
