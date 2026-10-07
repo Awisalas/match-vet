@@ -1,0 +1,6 @@
+Command: .venv/bin/python -m pytest tests/test_issue76.py::test_direct_f11_acquisition_refuses_cutoff_equality tests/test_issue76.py::test_direct_f16_missing_phase_refuses_after_cutoff -q
+..                                                                       [100%]
+2 passed in 90.52s (0:01:30)
+
+The two tests use isolated tmp_path stores and deterministic local fixtures.
+The separate blast-b-proof.py full-chain experiment was stopped after 14581 CPU contention was observed; it produced no verification result. It is not evidence for an accepted or rejected chain.

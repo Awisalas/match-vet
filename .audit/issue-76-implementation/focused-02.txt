@@ -1,0 +1,116 @@
+.......F
+=================================== FAILURES ===================================
+____ test_late_unknown_attempt_cannot_replace_selected_weather_or_decision _____
+
+candidate = Case(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-39/issue76-candidate0'), request=Ana...dence={}, catalog_version='1.0.0', catalog_digest='8566a6cd9862d35e883c1c389283e7913d62e2279f4c3c083d64cc4814865392')))
+candidate_store = <matchvet.store.Store object at 0x6d6f8e9e50>
+
+                cutoff_ids=request.cutoff_ids,
+                profile_digest=request.preference_profile_digest,
+                policy=request.policy,
+            )
+        assert candidate_store.artifact_catalog() == before
+
+
+    def test_late_unknown_attempt_cannot_replace_selected_weather_or_decision(
+        candidate: Case, candidate_store: Store
+    ) -> None:
+        from matchvet.f12 import ContextualAttemptRepository, ContextualResearchAttempt, F12Error
+        from matchvet.f14 import DecisionRepository
+        from matchvet.runs import RunPhase, WorkContext
+        from matchvet.weather import (
+            StaticWeatherClient,
+            VenueLocation,
+            WeatherHTTPResponse,
+            WeatherRequest,
+            WeatherUnavailable,
+            build_weather_evidence,
+        )
+        from matchvet.weather_provider_health import OpenMeteoHealthRecorder
+
+        request = candidate.request
+        cutoff = MatchEvidenceCutoffRepository(candidate_store).replay(request.cutoff_ids[0])
+        location = VenueLocation(
+            "stadium", "Stadium", 6.5, 3.4, "venue", "https://venue.test", BEFORE.isoformat()
+        )
+        weather_request = WeatherRequest(
+            cutoff.fixture_id, "2026-09-25T19:00:00Z", cutoff.cutoff_at_utc, location
+        )
+        client = StaticWeatherClient(
+            {
+                weather_request.url: {
+                    "latitude": 6.5,
+                    "longitude": 3.4,
+                    "forecast_issue_time": "2026-09-25T11:00:00Z",
+                    "hourly": {"time": [weather_request.interval_start_utc], "temperature_2m": [27]},
+                }
+            },
+            retrieved_at_utc=BEFORE.isoformat(),
+        )
+        evidence = F11EvidenceRepository(candidate_store, clock=Clock()).build(
+            request.freeze_id,
+            request.cutoff_policy_digest,
+            weather_client=client,
+            locations={cutoff.fixture_id: location},
+        )
+        ref = evidence.to_dict()["matches"][0]["contextual_attempt"]
+        attempt = ContextualAttemptRepository(candidate_store).get(ref["attempt_id"])
+        before = candidate_store.artifact_catalog()
+        with pytest.raises(MatchweekResearchError, match="cutoff"):
+            ContextualAttemptRepository(candidate_store, clock=Clock(CUTOFF)).publish(attempt)
+        assert candidate_store.artifact_catalog() == before
+        context = WorkContext(
+            "synthetic",
+            "synthetic",
+            "2026-09-25",
+            RunPhase.PREFERENCE_VETTING,
+            1,
+            "RESEARCH_ONLY",
+            "0" * 64,
+            "0" * 64,
+            1,
+        )
+        result = F16MatchweekProcessor(candidate_store, clock=Clock()).process_phase(
+            context,
+            freeze_id=request.freeze_id,
+            cutoff_policy_digest=request.cutoff_policy_digest,
+            cutoff_ids=request.cutoff_ids,
+            profile_digest=request.preference_profile_digest,
+            policy=request.policy,
+        )
+        selected = MatchweekResearchRepository(candidate_store, clock=Clock()).seal_completed(
+            result.result_digest
+        )
+>       row = (
+            ^^^^
+            F16MatchweekProcessor(candidate_store)
+            .replay_manifest(selected.f16_manifest_digest)
+            .match_results[0]
+        )
+
+tests/test_issue76.py:350:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.f12.ContextualAttemptRepository object at 0x6d705d8670>
+attempt = ContextualResearchAttempt(contract_version='matchvet-v2-contextual-research-attempt', schema_version=1, attempt_id='f1...20db64a3720c2b6eb6e', provider_health_digest='sha256:d329fdcdbdc3f0851ee51b1e59f50f87a78485c61da5e64b1e64a04e73121675')
+
+    def publish(self, attempt: ContextualResearchAttempt) -> ContextualResearchAttempt:
+        checked = ContextualResearchAttempt.from_bytes(attempt.to_bytes())
+        from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
+
+        cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(checked.cutoff_id)
+        if cutoff is None:
+            raise F12Error("Exact F07 cutoff is missing.")
+        selected = self.research.selected_for_boundary(cutoff.freeze_id, cutoff.policy_digest)
+        if selected is not None:
+            manifest = self.artifacts.verify_manifest(selected.digest)
+            digest = checked.digest.removeprefix("sha256:")
+            if not any(ref.digest == digest for ref in manifest.artifacts):
+>               raise F12Error("Attempt differs from the exact selected references.")
+E               matchvet.f12.F12Error: Attempt differs from the exact selected references.
+
+src/matchvet/f12.py:249: F12Error
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_late_unknown_attempt_cannot_replace_selected_weather_or_decision
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 7 passed in 1245.59s (0:20:45)

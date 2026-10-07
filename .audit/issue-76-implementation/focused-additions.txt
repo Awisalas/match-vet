@@ -1,0 +1,162 @@
+.F.F                                                                     [100%]
+=================================== FAILURES ===================================
+_________ test_partial_weather_attempt_pins_boundary_before_final_f11 __________
+
+candidate = Case(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-42/issue76-candidate0'), request=Ana...dence={}, catalog_version='1.0.0', catalog_digest='8566a6cd9862d35e883c1c389283e7913d62e2279f4c3c083d64cc4814865392')))
+candidate_store = <matchvet.store.Store object at 0x6ec95e56d0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x6ec88ceea0>
+
+    def test_partial_weather_attempt_pins_boundary_before_final_f11(
+        candidate: Case,
+        candidate_store: Store,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from matchvet.artifacts import ArtifactStore
+        from matchvet.f11 import EVIDENCE_MEDIA_TYPE
+        from matchvet.f12 import F12_ATTEMPT_MEDIA_TYPE
+        from matchvet.weather import StaticWeatherClient, VenueLocation, WeatherRequest
+
+        request = candidate.request
+        cutoffs = MatchEvidenceCutoffRepository(candidate_store)
+        cutoff = cutoffs.replay(request.cutoff_ids[0])
+        location = VenueLocation(
+            "stadium", "Stadium", 6.5, 3.4, "venue", "https://venue.test", BEFORE.isoformat()
+        )
+        weather_request = WeatherRequest(
+            cutoff.fixture_id, "2026-09-25T19:00:00Z", cutoff.cutoff_at_utc, location
+        )
+        client = StaticWeatherClient(
+            {
+                weather_request.url: {
+                    "latitude": 6.5,
+                    "longitude": 3.4,
+                    "forecast_issue_time": "2026-09-25T11:00:00Z",
+                    "hourly": {"time": [weather_request.interval_start_utc], "temperature_2m": [27]},
+                }
+            },
+            retrieved_at_utc=BEFORE.isoformat(),
+        )
+        original = ArtifactStore.publish_artifact
+
+        def fail_final(
+            self: ArtifactStore, content: bytes, media_type: str = "application/octet-stream"
+        ) -> object:
+            if media_type == EVIDENCE_MEDIA_TYPE:
+                raise RuntimeError("interrupt before final evidence retention")
+            return original(self, content, media_type)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(ArtifactStore, "publish_artifact", fail_final)
+            with pytest.raises(RuntimeError, match="interrupt"):
+                F11EvidenceRepository(candidate_store, clock=Clock()).build(
+                    request.freeze_id,
+                    request.cutoff_policy_digest,
+                    weather_client=client,
+                    locations={cutoff.fixture_id: location},
+                )
+        assert any(
+            row.media_type == F12_ATTEMPT_MEDIA_TYPE for row in candidate_store.artifact_catalog()
+        )
+        assert not any(
+            row.media_type == EVIDENCE_MEDIA_TYPE for row in candidate_store.artifact_catalog()
+        )
+        alternate_policy = cutoffs.persist_policy(
+            CutoffPolicy("alternate", "1", 21600, rule=CORRECTED_RULE)
+        )
+        alternate = cutoffs.persist_for_freeze(request.freeze_id, alternate_policy)
+        assert alternate[0].cutoff_at_utc == cutoff.cutoff_at_utc
+        with pytest.raises(MatchweekResearchError, match="candidate boundary"):
+            F11EvidenceRepository(candidate_store, clock=Clock()).build(
+                request.freeze_id, alternate_policy, weather_client=None
+            )
+        freeze = MatchweekMembershipRepository(candidate_store).get_by_id(request.freeze_id)
+        assert freeze is not None
+>       other = MatchweekMembershipRepository(candidate_store, clock=lambda: BEFORE).freeze_exact(
+            freeze.season,
+            freeze.matchweek_friday,
+            freeze.assessment_digest,
+            "matchvet:matchweek-membership",
+            "alternate",
+        )
+
+tests/test_issue76.py:830:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matchvet/matchweek_membership_repository.py:117: in freeze_exact
+    policy = policy_snapshot(policy_id, policy_version)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy_id = 'matchvet:matchweek-membership', policy_version = 'alternate'
+
+    def policy_snapshot(policy_id: str, policy_version: str) -> PolicySnapshot:
+        if policy_id != F06_POLICY_ID or policy_version not in ("1", "2"):
+>           raise MatchweekMembershipError(
+                "MV-F06-POLICY-UNSUPPORTED",
+                "POLICY_UNSUPPORTED",
+                f"Unsupported F06 membership policy {policy_id!r} version {policy_version!r}.",
+            )
+E           matchvet.matchweek_membership.MatchweekMembershipError: Unsupported F06 membership policy 'matchvet:matchweek-membership' version 'alternate'.
+
+src/matchvet/matchweek_membership.py:183: MatchweekMembershipError
+____ test_legacy_f15_inspection_survives_corrected_selection_same_matchweek ____
+
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-42/research-graph0'), f16='8d6bdaf3...892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-42/research-predecessors0'))
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-42/test_legacy_f15_inspection_sur0')
+
+            yield from source
+
+        with pytest.raises(MatchweekResearchError, match="cutoff"):
+            ModelContractRepository(candidate_store, clock=Clock(CUTOFF)).build(
+                evidence.digest, request.cutoff_ids[0], history=mutable_history()
+            )
+        assert not consumed
+
+
+    def test_legacy_f15_inspection_survives_corrected_selection_same_matchweek(
+        graph: Graph,
+        tmp_path: Path,
+    ) -> None:
+        shutil.copytree(graph.root / "objects", tmp_path / "objects")
+        shutil.copyfile(graph.root / "store.sqlite3", tmp_path / "store.sqlite3")
+        with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+            manifest = F16MatchweekProcessor(store).replay_manifest(graph.f16)
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            legacy_policy = cutoffs.persist_policy(CutoffPolicy("legacy", "1", 21600))
+            boundaries = cutoffs.persist_for_freeze(graph.freeze, legacy_policy)
+            request = AnalyzeMatchweekRequest(
+                "2026-09-25",
+                graph.freeze,
+                legacy_policy,
+                tuple(sorted(row.cutoff_id for row in boundaries)),
+                V2_REQUIREMENT_CATALOG.digest,
+                engine_version_identity(),
+>               manifest.to_dict()["profile_digest"],
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                PolicyVersion.from_mapping(manifest.to_dict()["policy"]),
+            )
+
+tests/test_issue76.py:921:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matchvet/f16.py:297: in replay_manifest
+    raise F16Error("Verified F16 manifest disappeared from the artifact catalog.")
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.f16.F16MatchweekProcessor object at 0x6ec87a6190>
+digest = '989e05a1-65af-5879-81fa-18bd71a038d1:sha256:fdb9c4a6e5d82c7961194d07d7b420cc08732be689a2c69d33ecf3ca47f055cd'
+media_type = 'application/vnd.matchvet.f16-processing-manifest.v1+json'
+
+        AttributeError,
+        F11Error,
+        F13Error,
+        F14Error,
+        MatchEvidenceCutoffError,
+    ) as error:
+>       raise F16Error("Malformed F16 match result lineage.") from error
+E       matchvet.f16.F16Error: Missing or invalid protected F16 artifact for application/vnd.matchvet.f16-processing-manifest.v1+json.
+
+src/matchvet/f16.py:647: F16Error
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_partial_weather_attempt_pins_boundary_before_final_f11
+FAILED tests/test_issue76.py::test_legacy_f15_inspection_survives_corrected_selection_same_matchweek
+2 failed, 2 passed, 20 deselected in 831.22s (0:13:51)

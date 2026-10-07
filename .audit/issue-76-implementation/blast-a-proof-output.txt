@@ -1,0 +1,12 @@
+Independent reviewer A public-seam execution
+
+Command:
+.venv/bin/pytest -q tests/test_issue76.py::test_direct_f11_acquisition_refuses_cutoff_equality tests/test_issue76.py::test_direct_f16_missing_phase_refuses_after_cutoff
+
+Output:
+..                                                                       [100%]
+2 passed in 46.94s
+
+No live stores or network data were used. Both tests construct isolated temporary stores with deterministic local fixtures and trusted clocks.
+
+Earlier duplicate selected-chain and legacy-start runs were interrupted to reduce CPU contention. They are INCONCLUSIVE. SIGINT was caught by F15's RunCoordinator and returned incomplete progress, which made the interrupted test's manifest lookup fail. The isolated run status reported MV-RUN-INTERRUPTED and terminal interruption; this was not a product regression.

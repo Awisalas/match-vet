@@ -6,11 +6,13 @@ import base64
 import hashlib
 import json
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
 from matchvet.artifacts import ArtifactStore
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoff
+from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
 from matchvet.provider_health import (
     CapabilityCoverageEvidenceReference,
     OtherVersionedEvidenceReference,
@@ -226,12 +228,71 @@ class ContextualResearchAttempt:
 class ContextualAttemptRepository:
     """Publish and resolve exact F12 attempts as protected immutable artifacts."""
 
-    def __init__(self, store: Store) -> None:
+    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
         self.artifacts = ArtifactStore(store)
+        self.research = MatchweekResearchRepository(store, clock=clock)
+        self._clock = clock
         self.store = store
 
     def publish(self, attempt: ContextualResearchAttempt) -> ContextualResearchAttempt:
         checked = ContextualResearchAttempt.from_bytes(attempt.to_bytes())
+        from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
+
+        cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(checked.cutoff_id)
+        if cutoff is None:
+            raise F12Error("Exact F07 cutoff is missing.")
+        selected = self.research.selected_for_boundary(cutoff.freeze_id, cutoff.policy_digest)
+        if selected is not None:
+            manifest = self.artifacts.verify_manifest(selected.digest)
+            digest = _sha256(checked.to_bytes())
+            if not any(ref.digest == digest for ref in manifest.artifacts):
+                raise F12Error("Attempt differs from the exact selected references.")
+            value = json.loads(self.artifacts.read_artifact(selected.f16_manifest_digest))
+            rows = [row for row in value["matches"] if row["cutoff_id"] == checked.cutoff_id]
+            if len(rows) != 1:
+                raise F12Error("Attempt differs from the exact selected cutoff.")
+            evidence = json.loads(self.artifacts.read_artifact(rows[0]["evidence_digest"]))
+            matches = [
+                row
+                for row in evidence["matches"]
+                if row["cutoff"]["cutoff_id"] == checked.cutoff_id
+            ]
+            if len(matches) != 1 or matches[0]["contextual_attempt"] != {
+                "attempt_id": checked.attempt_id,
+                "digest": checked.digest,
+            }:
+                raise F12Error("Attempt differs from the exact selected F11 reference.")
+            selected_attempt = self.get(checked.attempt_id, cutoff_id=checked.cutoff_id)
+            if selected_attempt.to_bytes() != checked.to_bytes():
+                raise F12Error("Attempt differs from the exact selected acquisition.")
+            return selected_attempt
+        self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
+        if self.research.is_corrected(cutoff.policy_digest):
+            boundary = datetime.fromisoformat(cutoff.cutoff_at_utc)
+            if any(
+                datetime.fromisoformat(time) > boundary
+                for time in (checked.acquired_at_utc, checked.retrieved_at_utc)
+                if time is not None
+            ):
+                raise F12Error("Attempt acquisition or retrieval is after the common cutoff.")
+
+        def require_first_attempt() -> None:
+            for metadata in self.store.artifact_catalog():
+                if metadata.media_type == F12_ATTEMPT_MEDIA_TYPE:
+                    prior = ContextualResearchAttempt.from_bytes(
+                        self.artifacts.read_artifact(metadata.digest)
+                    )
+                    if (
+                        prior.cutoff_id == checked.cutoff_id
+                        and prior.to_bytes() != checked.to_bytes()
+                    ):
+                        raise F12Error("A frozen attempt already exists for this exact cutoff.")
+
+        artifacts = self.research.candidate_artifacts(
+            cutoff.freeze_id, cutoff.policy_digest, check_state=require_first_attempt
+        )
+        if self.research.is_corrected(cutoff.policy_digest):
+            require_first_attempt()
         existing = self._get_optional(checked.attempt_id)
         if existing is not None:
             if existing.to_bytes() != checked.to_bytes():
@@ -297,13 +358,24 @@ class ContextualAttemptRepository:
         ):
             raise F12Error("A failed attempt cannot be marked usable.")
         self._validate_response(checked)
-        self.artifacts.publish_artifact(checked.to_bytes(), F12_ATTEMPT_MEDIA_TYPE)
+        artifacts.publish_artifact(checked.to_bytes(), F12_ATTEMPT_MEDIA_TYPE)
         return checked
 
-    def get(self, attempt_id: str) -> ContextualResearchAttempt:
-        attempt = self._get_optional(attempt_id)
+    def get(self, attempt_id: str, *, cutoff_id: str | None = None) -> ContextualResearchAttempt:
+        scope = self.store._artifact_catalog_scope
+        if scope is None and cutoff_id is not None:
+            from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
+
+            cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(cutoff_id)
+            if cutoff is None:
+                raise F12Error("Exact F07 cutoff is missing.")
+            scope = self.research.indexed_replay_catalog(cutoff.freeze_id, cutoff.policy_digest)
+        with self.store._scope_artifact_catalog(scope):
+            attempt = self._get_optional(attempt_id)
         if attempt is None:
             raise F12Error("Exact contextual research attempt is missing.")
+        if cutoff_id is not None and attempt.cutoff_id != cutoff_id:
+            raise F12Error("Attempt differs from the exact requested cutoff.")
         return attempt
 
     def _get_optional(self, attempt_id: str) -> ContextualResearchAttempt | None:

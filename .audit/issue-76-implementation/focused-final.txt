@@ -1,0 +1,108 @@
+F
+=================================== FAILURES ===================================
+______ test_selected_f11_f13_f14_f16_replay_and_alternate_writers_refuse _______
+
+selected_store = <matchvet.store.Store object at 0x7ce863d1d0>
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-45/research-graph0'), f16='8d6bdaf3...892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-45/research-predecessors0'))
+qualified = Qualified(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-45/qualified-research0'), selec...abcf546d708a99d42dc62a32dc2a1f8a79d7a08a5', receipt='06a8cbda3e0ddc326be82affd181fa665c98d0cf3e238042ad9a7ba6e7316a33')
+
+    def test_selected_f11_f13_f14_f16_replay_and_alternate_writers_refuse(
+        selected_store: Store, graph: Graph, qualified: Qualified
+    ) -> None:
+        from matchvet.f11 import F11Error
+        from matchvet.f13 import ModelContractRepository
+        from matchvet.f14 import DecisionRepository
+        from matchvet.f16 import F16Error
+        from matchvet.runs import RunPhase, WorkContext
+        from matchvet.workload import WorkloadRules
+
+        manifest = F16MatchweekProcessor(selected_store).replay_manifest(graph.f16)
+        row = manifest.match_results[0]
+        bundle = _selected_bundle(selected_store, row.decision_digest)
+        alternate_profile = PreferenceProfileRepository(selected_store).build_profile(
+            ("match_winner_away",)
+        )
+        before = selected_store.artifact_catalog()
+        evidence = F11EvidenceRepository(
+            selected_store, clock=Clock(CUTOFF)
+        ).build_or_replay_for_freeze(graph.freeze, graph.policy)
+        assert evidence.digest == row.evidence_digest
+        with pytest.raises(F11Error, match="request"):
+            F11EvidenceRepository(selected_store).build(
+                graph.freeze, graph.policy, weather_client=None, rules=WorkloadRules(name="alternate")
+            )
+        from matchvet.weather import VenueLocation
+
+        fixture = MatchEvidenceCutoffRepository(selected_store).replay(row.cutoff_id).fixture_id
+        with pytest.raises(F11Error, match="request"):
+            F11EvidenceRepository(selected_store).build(
+                graph.freeze,
+                graph.policy,
+                weather_client=None,
+                locations={
+                    fixture: VenueLocation(
+                        "alternate",
+                        "Alternate",
+                        1.0,
+                        2.0,
+                        "venue",
+                        "https://venue.test",
+                        BEFORE.isoformat(),
+                    )
+                },
+            )
+        model = ModelContractRepository(
+            selected_store, clock=Clock(CUTOFF)
+        ).build_from_retained_history(row.evidence_digest, row.cutoff_id)
+        assert model.digest == row.model_digest
+        with pytest.raises(MatchweekResearchError, match="occupied"):
+            ModelContractRepository(selected_store).build(
+                row.evidence_digest, row.cutoff_id, history=()
+            )
+        assert (
+            DecisionRepository(selected_store, clock=Clock(CUTOFF))
+            .build_or_replay_decision(bundle)
+            .digest
+            == row.decision_digest
+        )
+        with pytest.raises(MatchweekResearchError, match="occupied"):
+            DecisionRepository(selected_store).build_decision(bundle)
+        context = WorkContext(
+            "synthetic",
+            "synthetic",
+            "2026-09-25",
+            RunPhase.PREFERENCE_VETTING,
+            1,
+            "RESEARCH_ONLY",
+            "0" * 64,
+            "0" * 64,
+            1,
+        )
+        from matchvet.runs import WorkResult
+
+        def invoke(policy: PolicyVersion, profile: str | None = None) -> WorkResult:
+            return F16MatchweekProcessor(selected_store, clock=Clock(CUTOFF)).process_phase(
+                context,
+                freeze_id=graph.freeze,
+                cutoff_policy_digest=graph.policy,
+                cutoff_ids=(row.cutoff_id,),
+                profile_digest=profile or manifest.to_dict()["profile_digest"],
+                policy=policy,
+            )
+
+        assert (
+            invoke(PolicyVersion.from_mapping(manifest.to_dict()["policy"])).result_digest == graph.f16
+        )
+        with pytest.raises(F16Error, match="policy"):
+            invoke(PolicyVersion(version="changed"))
+>       with pytest.raises(F16Error, match="profile"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'profile'
+E         Actual message: 'Profile or decision policy differs from the exact selection.'
+
+tests/test_issue76.py:136: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_selected_f11_f13_f14_f16_replay_and_alternate_writers_refuse
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 567.11s (0:09:27)

@@ -1,0 +1,15 @@
+# Issue 76 blast radius
+
+The independent source reviews are `blast-a.md`, `blast-b.md`, `spec-review.md` and `standards-review.md`. Review B rechecked all final publication and contract guards and closed its source findings. The optional suggestion to consolidate selected-reference traversal does not affect acceptance and was left outside this change.
+
+The safety fact is that corrected recommendation state cannot be acknowledged from a missing writer phase once the shared #75 gate closes. Every direct F11 acquisition/build, F12 attempt publication, F13 build/discovery, F14 build, F15 start/resume and F16 phase consults that authority. Publications check trusted time, the logical slot and candidate state before and after object synchronization, in the catalog transaction, and after commit returns. The final callback samples time after its identity scans too.
+
+Each operation captures its own publisher. Candidate identity includes partial F12 attempts and partial F15 runs. Run inputs and partial F14 bundles pin one profile and decision policy across the INCLUDED slate. Publication rechecks the pin, so callback reentry cannot silently switch an operation's authority.
+
+The reviewers executed direct F11 and direct F16 cutoff-equality tests through public methods, with no catalog changes. Their retained outputs are `blast-a-proof-output.txt` and `blast-b-proof-output.txt`. Root's final-code focused output passed all 25 cases, split between `focused-scope-final.txt` and `green-audit-catalog-final.txt`. These execute the direct writers, cutoff equality, interrupted publication, missing-phase resume, exact selected replay and restart paths. The safety fact reached step 4 through deterministic tests of public methods.
+
+Selected writer-or-replay paths resolve the indexed exact F16 graph and compare supplied identities. They perform no provider request, mutable history discovery, model recomputation or new decision publication. Selected F15 resume inspects existing run state. Ordinary named readers remain available for integrity inspection. Legacy F16 identities skip corrected-selection dispatch so historical F15 inspection still works for the same logical Matchweek.
+
+Historical engine, research adapter, schema and media-type identities did not change. The archived-source proof compares every retained artifact byte and checks zero catalog writes; the final rerun passed for all 30 artifacts. The live clock-confidence problem remains outside this issue. `_UnavailableClock` still refuses corrected prospective work, and the existing standalone weather audit clock is never promoted to trusted Matchweek authority.
+
+The late-audit public-seam red showed why timestamps alone cannot protect replay: a later F12 audit entry could conflict with a selected attempt identity. The final green proves that the transient catalog view uses only indexed frozen references during exact replay and idempotent sealing. No payload or schema changed. The post-fix #75 group passed 16 cases, and the archived-source proof still passed all 30 artifacts.

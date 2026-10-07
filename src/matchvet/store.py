@@ -4334,8 +4334,11 @@ class Store:
         self._closed = False
         self._research_owner: _ResearchOperation | None = None
         self._verified_artifacts: set[str] | None = None
+        self._artifact_catalog_scope: frozenset[str] | None = None
 
     def _ensure_write_allowed(self) -> None:
+        if self._artifact_catalog_scope is not None:
+            raise RuntimeError("Exact selected catalog replay cannot write.")
         if self._closed:
             raise RuntimeError("The MatchVet store is closed.")
         if os.getpid() != self._pid:
@@ -4390,6 +4393,19 @@ class Store:
         finally:
             operation._phase = "revoked"
             self._research_owner = None
+
+    @contextmanager
+    def _scope_artifact_catalog(self, digests: frozenset[str] | None) -> Iterator[None]:
+        """Limit selected catalog discovery without changing stored artifact bytes."""
+        self._ensure_connection_owner()
+        previous = self._artifact_catalog_scope
+        if previous is not None and digests is not None and digests != previous:
+            raise RuntimeError("Exact selected catalog scope cannot change during replay.")
+        self._artifact_catalog_scope = previous if previous is not None else digests
+        try:
+            yield
+        finally:
+            self._artifact_catalog_scope = previous
 
     @contextmanager
     def _capture_verified_artifacts(self) -> Iterator[set[str]]:
@@ -4485,14 +4501,16 @@ class Store:
         self._ensure_connection_owner()
         if self._connection is None:
             raise sqlite3.DatabaseError("The MatchVet database is unreadable.")
-        rows = self._connection.execute(
-            """
+        query = """
             SELECT artifact_id, digest, media_type, byte_length, relative_path,
                    created_at_utc, retention_class
             FROM artifacts
-            ORDER BY digest
-            """
-        ).fetchall()
+        """
+        parameters: tuple[str, ...] = ()
+        if self._artifact_catalog_scope is not None:
+            query += " WHERE digest IN (SELECT value FROM json_each(?))"
+            parameters = (json.dumps(sorted(self._artifact_catalog_scope)),)
+        rows = self._connection.execute(query + " ORDER BY digest", parameters).fetchall()
         return tuple(
             ArtifactMetadata(
                 artifact_id=CanonicalIdentifier(kind="artifact", value=str(row[0])),

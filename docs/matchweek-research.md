@@ -13,7 +13,11 @@ F06/F07/F11/F13/F14/F16 identity.
 | `seal_completed(f16_manifest_digest)` | Admit the complete exact graph, assign a fresh selection slot, acknowledge its commit, publish one completion receipt, and return `FrozenMatchweekResearch`. An existing identical qualified selection replays. A different proposal refuses. |
 | `replay(selection_digest)` | Verify the indexed selection, indexed receipt, supported role contracts and exact dependency graph. It neither writes nor samples the qualification clock. |
 | `replay_for_matchweek(season=..., matchweek_friday=...)` | Resolve the deterministic logical slot and replay its exact selection. |
-| `require_preselection_open(freeze_id, policy_digest)` | Verify the corrected whole-freeze F07 boundary, refuse an occupied logical slot, and require a trusted upper bound strictly before T. It performs no publication. #76 will integrate this gate into downstream writers. |
+| `require_preselection_open(freeze_id, policy_digest)` | Verify the corrected whole-freeze F07 boundary and first candidate identity, refuse an occupied logical slot, and return a trusted UTC upper-bound timestamp strictly before T. It performs no publication. |
+| `require_candidate_write(freeze_id, policy_digest)` | Call the preselection gate for corrected writers. Explicit legacy research remains separate and cannot write into an occupied logical Matchweek. |
+| `selected_for_boundary(freeze_id, policy_digest)` | Replay the indexed logical winner and require its exact freeze and policy. An unreceipted or corrupt occupied slot refuses. With no selection, return `None`. |
+| `require_candidate_contract(freeze_id, policy_digest, profile_digest, decision_policy_digest)` | Check the shared prospective gate and pin the profile and decision policy from the first F15 run or F14 input across the whole slate. |
+| `candidate_artifacts(freeze_id, policy_digest, check_state=..., contract=...)` | Create an ArtifactStore whose corrected publications recheck time, logical selection and candidate identities before object publication, before catalog commit and after commit return. Module checks also pin exact request, model, attempt or decision state. |
 
 `FrozenMatchweekResearch` identifies the selection digest, logical season and Friday,
 F06 freeze, F07 policy and T, F16 manifest, and completion receipt. It contains no
@@ -88,6 +92,55 @@ private Python and privileged filesystem manipulation remain trusted escape hatc
 The application guard is not cryptographic proof against such operators.
 
 Prospective production qualification remains unavailable until an operational trusted
-UTC provider establishes this contract. No live clock proof, live-store operation,
-fixture acquisition, timestamp request or downstream #76 writer enforcement is part
-of #75's implementation.
+UTC provider establishes this contract. Deterministic tests establish code behavior;
+they do not establish live UTC confidence.
+
+## F11 through F16 writers
+
+F11, F12, F13, F14, F15 and F16 accept an optional `TrustedUTCClock` at their
+Matchweek writer constructors. Orchestration passes that configured provider to
+each repository. An absent provider continues to refuse corrected prospective work.
+Every direct writer calls the shared owner before acquisition, mutable input
+discovery or recommendation writes. Publication checks include the catalog
+transaction and its successful return. A sync or commit that crosses T refuses
+the operation. Physical orphan bytes or an ambiguously late catalog entry cannot
+qualify: prospective retries remain closed and #75 cannot seal them after T.
+
+The first corrected F11 request fixes the logical Matchweek's exact F06 freeze,
+F07 policy, common T, workload rules, context and weather locations. Its eligible
+history retains only pre-T provenance. Weather needs a known issue time no later
+than retrieval, with retrieval no later than T. Acquisition checks the gate before
+fetch and again on return or failure. F12 pins the first exact attempt for each
+cutoff. Changed requests and later failure metadata cannot replace retained refs.
+
+F13 checks the gate before consuming history or enumerating retained sources.
+The first result pins history, calibration cases, baselines, candidate inputs,
+availability and the existing research/model identities. F14 pins the exact first
+decision bundle and one profile and decision policy across all INCLUDED members,
+including partially retained decision inputs. Their replay methods verify retained
+bytes through the historical engines; they do not publish refreshed state.
+
+F15 start and resume require the corrected rule and exact candidate contract before
+calling the run coordinator. Partial F15 runs pin their boundary, profile and
+decision policy before evidence acquisition.
+F16 checks each phase directly, including missing phases of interrupted runs.
+With a qualified selection, writer-or-replay methods resolve only its F11, F13,
+F14 and F16 references. F15 selected resume becomes read-only inspection. Changed
+freeze, policy or profile identities refuse even if their timestamps agree.
+
+`legacy_research=True` on F15 or F16 explicitly allows the existing separate
+per-match research path. It cannot qualify a Matchweek selection, and it cannot
+disable corrected-policy gates. Legacy exact replay and inspection require no
+such option. Existing policy, artifact schemas, media types and engine identities
+remain unchanged.
+
+Standalone upstream history retention and provider health observations are audit
+inputs without selection authority. They may remain available independently.
+Selected model and evidence readers resolve frozen references, so later catalog
+sources or observations cannot enter the recommendation lineage. F12 exact lookup
+uses the selected artifact reference set, including for direct F11/F13/F14 replay.
+The transient catalog view refuses writes and restores on exit. Initial #75 sealing
+keeps its existing reference closure; selected replay neither discovers later audit
+attempts nor promotes incidental audit references to F11 attempts. Stored payloads
+remain unchanged. Ordinary retained artifact readers remain available for historical integrity
+inspection.

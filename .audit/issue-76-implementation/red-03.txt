@@ -1,0 +1,29 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______ test_direct_f13_discovery_and_f14_creation_refuse_closed_boundary _______
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-25/test_direct_f13_discovery_and_0')
+
+    def test_direct_f13_discovery_and_f14_creation_refuse_closed_boundary(tmp_path: Path) -> None:
+        from matchvet.f13 import ModelContractRepository
+        from matchvet.f14 import DecisionInputBundle, DecisionRepository, PreferenceProfileRepository
+        from matchvet.t15 import PolicyVersion
+
+        with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+            freeze = _freeze(store, tmp_path)
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(CutoffPolicy("issue76", "1", 21600, rule=CORRECTED_RULE))
+            cutoff = cutoffs.persist_for_freeze(freeze, policy)[0]
+            evidence = F11EvidenceRepository(store, clock=Clock()).build(freeze, policy, weather_client=None)
+            before = store.artifact_catalog()
+            with pytest.raises(MatchweekResearchError, match="cutoff"):
+>               ModelContractRepository(store, clock=Clock(CUTOFF)).build_from_retained_history(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    evidence.digest, cutoff.cutoff_id
+                )
+E               TypeError: ModelContractRepository.__init__() got an unexpected keyword argument 'clock'
+
+tests/test_issue76.py:75: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_direct_f13_discovery_and_f14_creation_refuse_closed_boundary
+1 failed in 55.22s

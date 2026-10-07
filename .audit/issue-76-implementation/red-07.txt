@@ -1,0 +1,91 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__ test_multimatch_boundary_and_partial_decisions_pin_one_profile_and_policy ___
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-40/test_multimatch_boundary_and_p0')
+
+    def test_multimatch_boundary_and_partial_decisions_pin_one_profile_and_policy(
+        tmp_path: Path,
+    ) -> None:
+        from matchvet.f13 import ModelContractRepository
+        from matchvet.f14 import DecisionRepository, F14Error
+        from matchvet.f15 import AnalyzeMatchweekError
+
+        with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+            assessment = _persistable_schedule_assessment(
+                store,
+                tmp_path,
+                (
+                    ("2026-09-25", "20:00", "Friday United", "Friday City"),
+                    ("2026-09-28", "20:00", "Monday United", "Monday City"),
+                ),
+            )
+            FixtureCoverageRepository(store).persist(assessment)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+            freeze = MatchweekMembershipRepository(store, clock=lambda: BEFORE).freeze_exact(
+                "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+            )
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(CutoffPolicy("issue76", "1", 21600, rule=CORRECTED_RULE))
+            boundaries = cutoffs.persist_for_freeze(freeze.freeze_id, policy)
+            assert len(boundaries) == 2
+            assert len({row.cutoff_at_utc for row in boundaries}) == 1
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",))
+            alternate = PreferenceProfileRepository(store).build_profile(("match_winner_away",))
+            selection_policy = PolicyVersion(version="issue76")
+            request = AnalyzeMatchweekRequest(
+                "2026-09-25",
+                freeze.freeze_id,
+                policy,
+                tuple(sorted(row.cutoff_id for row in boundaries)),
+                V2_REQUIREMENT_CATALOG.digest,
+                engine_version_identity(),
+                profile.digest,
+                selection_policy,
+            )
+            # Equal common T does not make distinct policy identities interchangeable.
+            other_policy = cutoffs.persist_policy(
+                CutoffPolicy("other", "1", 21600, rule=CORRECTED_RULE)
+            )
+            other = cutoffs.persist_for_freeze(freeze.freeze_id, other_policy)
+            mixed = replace(
+                request, cutoff_ids=tuple(sorted((boundaries[0].cutoff_id, other[1].cutoff_id)))
+            )
+            with pytest.raises(AnalyzeMatchweekError, match="policy"):
+                AnalyzeMatchweek(store, clock=Clock()).start(mixed)
+            incomplete = replace(request, cutoff_ids=(boundaries[0].cutoff_id,))
+            with pytest.raises(AnalyzeMatchweekError, match="every INCLUDED"):
+                AnalyzeMatchweek(store, clock=Clock()).start(incomplete)
+            MatchweekResearchRepository(store, clock=Clock()).require_preselection_open(
+                freeze.freeze_id, policy
+            )
+            evidence = F11EvidenceRepository(store, clock=Clock()).build(
+                freeze.freeze_id, policy, weather_client=None
+            )
+            models = tuple(
+                ModelContractRepository(store, clock=Clock()).build(
+                    evidence.digest, row.cutoff_id, history=()
+                )
+                for row in boundaries
+            )
+            bundle = DecisionInputBundle(
+                profile.digest,
+                evidence.digest,
+                boundaries[0].cutoff_id,
+                models[0].digest,
+                {**selection_policy.to_dict(), "policy_digest": selection_policy.digest},
+                {},
+            )
+            DecisionRepository(store, clock=Clock()).build_decision(bundle)
+            second = replace(
+                bundle, cutoff_id=boundaries[1].cutoff_id, model_result_digest=models[1].digest
+            )
+            before = store.artifact_catalog()
+>           with pytest.raises(F14Error, match="profile|policy"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: DID NOT RAISE F14Error
+
+tests/test_issue76.py:752: Failed
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_multimatch_boundary_and_partial_decisions_pin_one_profile_and_policy
+1 failed in 228.84s (0:03:48)

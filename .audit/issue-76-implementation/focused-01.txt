@@ -1,0 +1,46 @@
+F
+=================================== FAILURES ===================================
+______ test_selected_f11_f13_f14_f16_replay_and_alternate_writers_refuse _______
+
+selected_store = <matchvet.store.Store object at 0x6effb8d1d0>
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-38/research-graph0'), f16='8d6bdaf3...892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-38/research-predecessors0'))
+qualified = Qualified(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-38/qualified-research0'), selec...e512fc8ce5eb8dd2ef723dd7e0708c2dc5837c44c', receipt='6303a66b3b3ed8919b6ac304d16c8b8bbd4ff8fee4a5b30e12b90bbcdb9bf580')
+
+    def test_selected_f11_f13_f14_f16_replay_and_alternate_writers_refuse(
+        selected_store: Store, graph: Graph, qualified: Qualified
+    ) -> None:
+        from matchvet.f11 import F11Error
+        from matchvet.f13 import ModelContractRepository
+        from matchvet.f14 import DecisionRepository
+        from matchvet.f16 import F16Error
+        from matchvet.runs import RunPhase, WorkContext
+        from matchvet.workload import WorkloadRules
+
+        manifest = F16MatchweekProcessor(selected_store).replay_manifest(graph.f16)
+        row = manifest.match_results[0]
+>       bundle = _selected_bundle(selected_store, row.decision_digest)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_issue76.py:58:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+store = <matchvet.store.Store object at 0x6effb8d1d0>
+digest = '7b4aa03cad0e1214c6b0b397359ee138143cb87af9219a228c9776bfb14950bc'
+
+    def _selected_bundle(store: Store, digest: str) -> DecisionInputBundle:
+        import json
+
+        from matchvet.artifacts import ArtifactStore
+        from matchvet.f14 import DecisionInputBundle, DecisionRepository
+
+        decision = DecisionRepository(store).replay(digest)
+        raw = json.loads(ArtifactStore(store).read_artifact(decision.to_dict()["input_bundle_digest"]))
+>       return DecisionInputBundle(**raw)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: DecisionInputBundle.__init__() got an unexpected keyword argument 'schema_version'
+
+tests/test_issue76.py:43: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_selected_f11_f13_f14_f16_replay_and_alternate_writers_refuse
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 186.00s (0:03:05)

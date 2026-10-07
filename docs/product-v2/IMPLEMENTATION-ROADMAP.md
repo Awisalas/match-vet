@@ -502,7 +502,7 @@ It supplements the historical roadmap entries above.
 | --- | --- | --- |
 | #74 | Corrected whole-freeze F07 boundary delivered | Complete |
 | #75 | Complete F16 selection, protected completion receipt, exact replay and shared preselection gate delivered; see [repository contract](../matchweek-research.md) | Complete |
-| #76 | Downstream writer enforcement | Ready; #75 closed and native blocker count is zero; not started |
+| #76 | F11–F16 direct writers and resume call the shared gate; exact selected replay and legacy bytes preserved | Implemented; 25 focused cases and affected checks passed; issue closure follows push |
 | #77 | Bind CB01 and evaluation to corrected lineage | Open; retain native dependencies |
 | #78 | Prove one corrected information state end to end | Open; retain native dependencies |
 

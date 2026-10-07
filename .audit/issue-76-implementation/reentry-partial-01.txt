@@ -1,0 +1,33 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+_______ test_f15_partial_resume_cannot_execute_a_missing_writer_after_t ________
+
+candidate = Case(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-37/issue76-candidate0'), request=Ana...dence={}, catalog_version='1.0.0', catalog_digest='8566a6cd9862d35e883c1c389283e7913d62e2279f4c3c083d64cc4814865392')))
+candidate_store = <matchvet.store.Store object at 0x7591752d50>
+
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",))
+            request = AnalyzeMatchweekRequest(
+                "2026-09-25",
+                freeze,
+                policy,
+                tuple(sorted(row.cutoff_id for row in boundaries)),
+                V2_REQUIREMENT_CATALOG.digest,
+                engine_version_identity(),
+                profile.digest,
+                PolicyVersion(version="issue76"),
+            )
+        return Case(root, request)
+
+
+    @pytest.fixture
+    def candidate_store(candidate: Case, tmp_path: Path) -> Generator[Store]:
+>       shutil.copytree(candidate.root / "objects", tmp_path / "objects")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert <RunPhase.PREFLIGHT: 'preflight'> is <RunPhase.EVIDENCE_ACQUISITION: 'evidence_acquisition_and_cutoff_classification'>
+E        +  where <RunPhase.PREFLIGHT: 'preflight'> = AnalysisProgress(run_id='01a11203-c93f-7274-8fc3-77692775687a', run_state=<RunState.INCOMPLETE: 'INCOMPLETE'>, phase=<..._digest='7565cf9cc8678d23701f2321144869e0faf0c044829fec837b1253b28dae2690', output_digest=None, artifact_digests=())))).phase
+E        +  and   <RunPhase.EVIDENCE_ACQUISITION: 'evidence_acquisition_and_cutoff_classification'> = <enum 'RunPhase'>.EVIDENCE_ACQUISITION
+
+tests/test_issue76.py:137: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_f15_partial_resume_cannot_execute_a_missing_writer_after_t
+1 failed, 1 passed in 111.15s (0:01:51)

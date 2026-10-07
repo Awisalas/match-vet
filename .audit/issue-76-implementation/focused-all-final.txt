@@ -1,0 +1,240 @@
+.......F.............F...                                                [100%]
+=================================== FAILURES ===================================
+____ test_late_unknown_attempt_cannot_replace_selected_weather_or_decision _____
+
+self = <test_issue76.test_late_unknown_attempt_cannot_replace_selected_weather_or_decision.<locals>.UnavailableClient object at 0x746ddd7230>
+request = WeatherRequest(fixture_id='561c9453-e145-54dd-b51b-5aa619d8ca30', target_time_utc='2026-09-25T19:00:00.000000+00:00', ...('temperature_2m', 'relative_humidity_2m', 'precipitation', 'weather_code', 'wind_speed_10m'), target_interval_hours=1)
+refresh = False
+
+    def fetch(self, request: WeatherRequest, *, refresh: bool = False) -> WeatherHTTPResponse:
+>       raise WeatherUnavailable("separate later audit failure")
+E       matchvet.weather.WeatherUnavailable: separate later audit failure
+
+tests/test_issue76.py:363: WeatherUnavailable
+
+During handling of the above exception, another exception occurred:
+
+candidate = Case(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-48/issue76-candidate0'), request=Ana...dence={}, catalog_version='1.0.0', catalog_digest='8566a6cd9862d35e883c1c389283e7913d62e2279f4c3c083d64cc4814865392')))
+candidate_store = <matchvet.store.Store object at 0x746dd06990>
+
+    def test_late_unknown_attempt_cannot_replace_selected_weather_or_decision(
+        candidate: Case, candidate_store: Store
+    ) -> None:
+        from matchvet.f12 import ContextualAttemptRepository, ContextualResearchAttempt, F12Error
+        from matchvet.f14 import DecisionRepository
+        from matchvet.runs import RunPhase, WorkContext
+        from matchvet.weather import (
+            StaticWeatherClient,
+            VenueLocation,
+            WeatherHTTPResponse,
+            WeatherRequest,
+            WeatherUnavailable,
+            build_weather_evidence,
+        )
+        from matchvet.weather_provider_health import OpenMeteoHealthRecorder
+
+        request = candidate.request
+        cutoff = MatchEvidenceCutoffRepository(candidate_store).replay(request.cutoff_ids[0])
+        location = VenueLocation(
+            "stadium", "Stadium", 6.5, 3.4, "venue", "https://venue.test", BEFORE.isoformat()
+        )
+        weather_request = WeatherRequest(
+            cutoff.fixture_id, "2026-09-25T19:00:00Z", cutoff.cutoff_at_utc, location
+        )
+        client = StaticWeatherClient(
+            {
+                weather_request.url: {
+                    "latitude": 6.5,
+                    "longitude": 3.4,
+                    "forecast_issue_time": "2026-09-25T11:00:00Z",
+                    "hourly": {"time": [weather_request.interval_start_utc], "temperature_2m": [27]},
+                }
+            },
+            retrieved_at_utc=BEFORE.isoformat(),
+        )
+        evidence = F11EvidenceRepository(candidate_store, clock=Clock()).build(
+            request.freeze_id,
+            request.cutoff_policy_digest,
+            weather_client=client,
+            locations={cutoff.fixture_id: location},
+        )
+        ref = evidence.to_dict()["matches"][0]["contextual_attempt"]
+        attempt = ContextualAttemptRepository(candidate_store).get(ref["attempt_id"])
+        before = candidate_store.artifact_catalog()
+        with pytest.raises(MatchweekResearchError, match="cutoff"):
+            ContextualAttemptRepository(candidate_store, clock=Clock(CUTOFF)).publish(attempt)
+        assert candidate_store.artifact_catalog() == before
+        context = WorkContext(
+            "synthetic",
+            "synthetic",
+            "2026-09-25",
+            RunPhase.PREFERENCE_VETTING,
+            1,
+            "RESEARCH_ONLY",
+            "0" * 64,
+            "0" * 64,
+            1,
+        )
+        result = F16MatchweekProcessor(candidate_store, clock=Clock()).process_phase(
+            context,
+            freeze_id=request.freeze_id,
+            cutoff_policy_digest=request.cutoff_policy_digest,
+            cutoff_ids=request.cutoff_ids,
+            profile_digest=request.preference_profile_digest,
+            policy=request.policy,
+        )
+        selected = MatchweekResearchRepository(candidate_store, clock=Clock()).seal_completed(
+            result.result_digest
+        )
+        row = (
+            F16MatchweekProcessor(candidate_store)
+            .replay_manifest(selected.f16_manifest_digest)
+            .match_results[0]
+        )
+        decision = DecisionRepository(candidate_store).replay(row.decision_digest)
+        assert (
+            ContextualAttemptRepository(candidate_store).publish(attempt).to_bytes()
+            == attempt.to_bytes()
+        )
+
+        class UnavailableClient:
+            def fetch(self, request: WeatherRequest, *, refresh: bool = False) -> WeatherHTTPResponse:
+                raise WeatherUnavailable("separate later audit failure")
+
+        # Standalone F09 auditing has no recommendation authority.
+        recorder = OpenMeteoHealthRecorder(
+            ProviderHealthRepository(candidate_store), clock=lambda: CUTOFF.isoformat()
+        )
+>       unknown = build_weather_evidence(
+            fixture_id=cutoff.fixture_id,
+            target_time_utc=weather_request.target_time_utc,
+            cutoff_utc=cutoff.cutoff_at_utc,
+            location=location,
+            client=UnavailableClient(),
+            health_recorder=recorder,
+        )
+
+tests/test_issue76.py:369:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matchvet/weather.py:621: in build_weather_evidence
+    health_recorder.record(request, error=error)
+src/matchvet/weather_provider_health.py:273: in record
+    record = ProviderHealthRecord(
+<string>:18: in __init__
+    ???
+src/matchvet/provider_health.py:1586: in __post_init__
+    _canonical_utc(self.checked_at_utc, "Provider health check time")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = '2026-09-25T13:00:00+00:00', label = 'Provider health check time'
+
+    def _canonical_utc(value: str, label: str = "Timestamp") -> str:
+        try:
+            parsed = datetime.fromisoformat(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"{label} must be a canonical UTC timestamp.") from error
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError(f"{label} must include a UTC offset.")
+        canonical = parsed.astimezone(UTC).isoformat(timespec="microseconds")
+        if canonical != value:
+>           raise ValueError(f"{label} must use canonical UTC with six fractional digits.")
+E           ValueError: Provider health check time must use canonical UTC with six fractional digits.
+
+src/matchvet/provider_health.py:50: ValueError
+_________ test_partial_weather_attempt_pins_boundary_before_final_f11 __________
+
+candidate = Case(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-48/issue76-candidate0'), request=Ana...dence={}, catalog_version='1.0.0', catalog_digest='8566a6cd9862d35e883c1c389283e7913d62e2279f4c3c083d64cc4814865392')))
+candidate_store = <matchvet.store.Store object at 0x7459fe5a30>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x746db86190>
+
+                )
+            changed = PolicyVersion(version="alternate")
+            with pytest.raises((F14Error, MatchweekResearchError), match=r"profile|policy"):
+                DecisionRepository(store, clock=Clock()).build_decision(
+                    replace(second, policy={**changed.to_dict(), "policy_digest": changed.digest})
+                )
+            assert store.artifact_catalog() == before
+            DecisionRepository(store, clock=Clock()).build_decision(second)
+
+
+    def test_partial_weather_attempt_pins_boundary_before_final_f11(
+        candidate: Case,
+        candidate_store: Store,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from matchvet.artifacts import ArtifactStore
+        from matchvet.f11 import EVIDENCE_MEDIA_TYPE
+        from matchvet.f12 import F12_ATTEMPT_MEDIA_TYPE
+        from matchvet.weather import StaticWeatherClient, VenueLocation, WeatherRequest
+
+        request = candidate.request
+        cutoffs = MatchEvidenceCutoffRepository(candidate_store)
+        cutoff = cutoffs.replay(request.cutoff_ids[0])
+        location = VenueLocation(
+            "stadium", "Stadium", 6.5, 3.4, "venue", "https://venue.test", BEFORE.isoformat()
+        )
+        weather_request = WeatherRequest(
+            cutoff.fixture_id, "2026-09-25T19:00:00Z", cutoff.cutoff_at_utc, location
+        )
+        client = StaticWeatherClient(
+            {
+                weather_request.url: {
+                    "latitude": 6.5,
+                    "longitude": 3.4,
+                    "forecast_issue_time": "2026-09-25T11:00:00Z",
+                    "hourly": {"time": [weather_request.interval_start_utc], "temperature_2m": [27]},
+                }
+            },
+            retrieved_at_utc=BEFORE.isoformat(),
+        )
+        original = ArtifactStore.publish_artifact
+
+        def fail_final(
+            self: ArtifactStore, content: bytes, media_type: str = "application/octet-stream"
+        ) -> object:
+            if media_type == EVIDENCE_MEDIA_TYPE:
+                raise RuntimeError("interrupt before final evidence retention")
+            return original(self, content, media_type)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(ArtifactStore, "publish_artifact", fail_final)
+            with pytest.raises(RuntimeError, match="interrupt"):
+                F11EvidenceRepository(candidate_store, clock=Clock()).build(
+                    request.freeze_id,
+                    request.cutoff_policy_digest,
+                    weather_client=client,
+                    locations={cutoff.fixture_id: location},
+                )
+        assert any(
+            row.media_type == F12_ATTEMPT_MEDIA_TYPE for row in candidate_store.artifact_catalog()
+        )
+        assert not any(
+            row.media_type == EVIDENCE_MEDIA_TYPE for row in candidate_store.artifact_catalog()
+        )
+        alternate_policy = cutoffs.persist_policy(
+>           CutoffPolicy("alternate", "1", 21600, rule=CORRECTED_RULE)
+        )
+
+tests/test_issue76.py:839:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matchvet/matchweek_membership_repository.py:117: in freeze_exact
+    policy = policy_snapshot(policy_id, policy_version)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy_id = 'matchvet:matchweek-membership', policy_version = 'alternate'
+
+    def policy_snapshot(policy_id: str, policy_version: str) -> PolicySnapshot:
+        if policy_id != F06_POLICY_ID or policy_version not in ("1", "2"):
+>           raise MatchweekMembershipError(
+                "MV-F06-POLICY-UNSUPPORTED",
+                "POLICY_UNSUPPORTED",
+                f"Unsupported F06 membership policy {policy_id!r} version {policy_version!r}.",
+            )
+E           matchvet.matchweek_membership.MatchweekMembershipError: Unsupported F06 membership policy 'matchvet:matchweek-membership' version 'alternate'.
+
+src/matchvet/matchweek_membership.py:183: MatchweekMembershipError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_late_unknown_attempt_cannot_replace_selected_weather_or_decision
+FAILED tests/test_issue76.py::test_partial_weather_attempt_pins_boundary_before_final_f11
+2 failed, 23 passed in 2894.83s (0:48:14)

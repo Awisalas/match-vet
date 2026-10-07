@@ -1,0 +1,1034 @@
+................EEEEE                                                    [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_valid_alternate_proposals_share_the_occupied_logical_slot[freeze] _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+>               transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+
+src/matchvet/artifacts.py:577:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.store.StoreTransaction object at 0x7996193ef0>
+artifact = ArtifactMetadata(artifact_id=CanonicalIdentifier(kind='artifact', value='588a049e-506d-501f-b1cb-ca847fe79c84'), diges...b9661e5b5b3da430cd464ecd5280e74fb0608', created_at_utc='2026-09-25T12:00:00.000000+00:00', retention_class='PROTECTED')
+
+    def record_artifact(self, artifact: ArtifactMetadata) -> None:
+        self._ensure_active()
+        existing = self._connection.execute(
+            """
+            SELECT artifact_id, media_type, byte_length, relative_path, retention_class
+            FROM artifacts
+            WHERE digest = ?
+            """,
+            (artifact.digest,),
+        ).fetchone()
+        if existing is not None:
+            if tuple(existing[1:]) != (
+                artifact.media_type,
+                artifact.byte_length,
+                artifact.relative_path,
+                artifact.retention_class,
+            ):
+>               raise sqlite3.IntegrityError("artifact catalog metadata does not match its digest")
+E               sqlite3.IntegrityError: artifact catalog metadata does not match its digest
+
+src/matchvet/store.py:4849: IntegrityError
+
+The above exception was the direct cause of the following exception:
+
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-graph0'), f16='8d6bdaf3...892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-predecessors0'))
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x79b5c149d0>, _basetemp=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def proposals(graph: Graph, tmp_path_factory: pytest.TempPathFactory) -> Proposals:
+        # Each proposal was independently complete before being imported as audit
+        # evidence. Current corrected writers must not create alternate local states.
+        root = tmp_path_factory.mktemp("competing-proposals")
+        shutil.copytree(graph.inputs_root / "objects", root / "objects")
+        shutil.copyfile(graph.inputs_root / "store.sqlite3", root / "store.sqlite3")
+        with open_store(root / "store.sqlite3", private_root=root) as store:
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",)).digest
+            alternate_profile = (
+                PreferenceProfileRepository(store)
+                .build_profile(("match_winner_home",), profile_version="alternate-profile")
+                .digest
+            )
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            alternate_policy = cutoffs.persist_policy(
+                CutoffPolicy(
+                    "test-common", "2", 7200, rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME"
+                )
+            )
+            legacy_policy = cutoffs.persist_policy(CutoffPolicy("legacy", "1", 21600))
+            assessment = _persistable_schedule_assessment(
+                store, root, (("2026-09-25", "20:00", "Alternate United", "Alternate City"),)
+            )
+            FixtureCoverageRepository(store).persist(assessment)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+            freeze = MatchweekMembershipRepository(
+                store, clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC)
+            ).freeze_exact(
+                "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+            )
+            variants = {
+                "profile": (graph.freeze, graph.policy, alternate_profile),
+                "policy": (graph.freeze, alternate_policy, profile),
+                "legacy": (graph.freeze, legacy_policy, profile),
+                "freeze": (freeze.freeze_id, graph.policy, profile),
+            }
+            for boundary, policy, _ in variants.values():
+                cutoffs.persist_for_freeze(boundary, policy)
+            clean = tmp_path_factory.mktemp("proposal-predecessors")
+            _copy_inputs(store, clean)
+            digests = {}
+            for name, inputs in variants.items():
+                branch = tmp_path_factory.mktemp("proposal-" + name)
+                shutil.copytree(clean / "objects", branch / "objects")
+                shutil.copyfile(clean / "store.sqlite3", branch / "store.sqlite3")
+                with open_store(branch / "store.sqlite3", private_root=branch) as branch_store:
+                    digests[name] = _build_proposal(branch_store, *inputs)
+                    source = ArtifactStore(branch_store)
+                    for metadata in branch_store.artifact_catalog():
+>                       ArtifactStore(store).publish_artifact(
+                            source.read_artifact(metadata.digest), metadata.media_type
+                        )
+
+tests/test_matchweek_research.py:855:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+                transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+                if self._write_guard is not None:
+                    self._write_guard()
+        except (sqlite3.DatabaseError, RuntimeError, ValueError) as error:
+>           raise ArtifactError(
+                "MV-ARTIFACT-DB_PUBLICATION_FAILED",
+                "Artifact catalog publication failed; the object remains unreferenced.",
+            ) from error
+E           matchvet.artifacts.ArtifactError: Artifact catalog publication failed; the object remains unreferenced.
+
+src/matchvet/artifacts.py:591: ArtifactError
+_ ERROR at setup of test_valid_alternate_proposals_share_the_occupied_logical_slot[policy] _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+>               transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+
+src/matchvet/artifacts.py:577:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.store.StoreTransaction object at 0x7996193ef0>
+artifact = ArtifactMetadata(artifact_id=CanonicalIdentifier(kind='artifact', value='588a049e-506d-501f-b1cb-ca847fe79c84'), diges...b9661e5b5b3da430cd464ecd5280e74fb0608', created_at_utc='2026-09-25T12:00:00.000000+00:00', retention_class='PROTECTED')
+
+    def record_artifact(self, artifact: ArtifactMetadata) -> None:
+        self._ensure_active()
+        existing = self._connection.execute(
+            """
+            SELECT artifact_id, media_type, byte_length, relative_path, retention_class
+            FROM artifacts
+            WHERE digest = ?
+            """,
+            (artifact.digest,),
+        ).fetchone()
+        if existing is not None:
+            if tuple(existing[1:]) != (
+                artifact.media_type,
+                artifact.byte_length,
+                artifact.relative_path,
+                artifact.retention_class,
+            ):
+>               raise sqlite3.IntegrityError("artifact catalog metadata does not match its digest")
+E               sqlite3.IntegrityError: artifact catalog metadata does not match its digest
+
+src/matchvet/store.py:4849: IntegrityError
+
+The above exception was the direct cause of the following exception:
+
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-graph0'), f16='8d6bdaf3...892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-predecessors0'))
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x79b5c149d0>, _basetemp=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def proposals(graph: Graph, tmp_path_factory: pytest.TempPathFactory) -> Proposals:
+        # Each proposal was independently complete before being imported as audit
+        # evidence. Current corrected writers must not create alternate local states.
+        root = tmp_path_factory.mktemp("competing-proposals")
+        shutil.copytree(graph.inputs_root / "objects", root / "objects")
+        shutil.copyfile(graph.inputs_root / "store.sqlite3", root / "store.sqlite3")
+        with open_store(root / "store.sqlite3", private_root=root) as store:
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",)).digest
+            alternate_profile = (
+                PreferenceProfileRepository(store)
+                .build_profile(("match_winner_home",), profile_version="alternate-profile")
+                .digest
+            )
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            alternate_policy = cutoffs.persist_policy(
+                CutoffPolicy(
+                    "test-common", "2", 7200, rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME"
+                )
+            )
+            legacy_policy = cutoffs.persist_policy(CutoffPolicy("legacy", "1", 21600))
+            assessment = _persistable_schedule_assessment(
+                store, root, (("2026-09-25", "20:00", "Alternate United", "Alternate City"),)
+            )
+            FixtureCoverageRepository(store).persist(assessment)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+            freeze = MatchweekMembershipRepository(
+                store, clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC)
+            ).freeze_exact(
+                "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+            )
+            variants = {
+                "profile": (graph.freeze, graph.policy, alternate_profile),
+                "policy": (graph.freeze, alternate_policy, profile),
+                "legacy": (graph.freeze, legacy_policy, profile),
+                "freeze": (freeze.freeze_id, graph.policy, profile),
+            }
+            for boundary, policy, _ in variants.values():
+                cutoffs.persist_for_freeze(boundary, policy)
+            clean = tmp_path_factory.mktemp("proposal-predecessors")
+            _copy_inputs(store, clean)
+            digests = {}
+            for name, inputs in variants.items():
+                branch = tmp_path_factory.mktemp("proposal-" + name)
+                shutil.copytree(clean / "objects", branch / "objects")
+                shutil.copyfile(clean / "store.sqlite3", branch / "store.sqlite3")
+                with open_store(branch / "store.sqlite3", private_root=branch) as branch_store:
+                    digests[name] = _build_proposal(branch_store, *inputs)
+                    source = ArtifactStore(branch_store)
+                    for metadata in branch_store.artifact_catalog():
+>                       ArtifactStore(store).publish_artifact(
+                            source.read_artifact(metadata.digest), metadata.media_type
+                        )
+
+tests/test_matchweek_research.py:855:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+                transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+                if self._write_guard is not None:
+                    self._write_guard()
+        except (sqlite3.DatabaseError, RuntimeError, ValueError) as error:
+>           raise ArtifactError(
+                "MV-ARTIFACT-DB_PUBLICATION_FAILED",
+                "Artifact catalog publication failed; the object remains unreferenced.",
+            ) from error
+E           matchvet.artifacts.ArtifactError: Artifact catalog publication failed; the object remains unreferenced.
+
+src/matchvet/artifacts.py:591: ArtifactError
+_ ERROR at setup of test_valid_alternate_proposals_share_the_occupied_logical_slot[profile] _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+>               transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+
+src/matchvet/artifacts.py:577:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.store.StoreTransaction object at 0x7996193ef0>
+artifact = ArtifactMetadata(artifact_id=CanonicalIdentifier(kind='artifact', value='588a049e-506d-501f-b1cb-ca847fe79c84'), diges...b9661e5b5b3da430cd464ecd5280e74fb0608', created_at_utc='2026-09-25T12:00:00.000000+00:00', retention_class='PROTECTED')
+
+    def record_artifact(self, artifact: ArtifactMetadata) -> None:
+        self._ensure_active()
+        existing = self._connection.execute(
+            """
+            SELECT artifact_id, media_type, byte_length, relative_path, retention_class
+            FROM artifacts
+            WHERE digest = ?
+            """,
+            (artifact.digest,),
+        ).fetchone()
+        if existing is not None:
+            if tuple(existing[1:]) != (
+                artifact.media_type,
+                artifact.byte_length,
+                artifact.relative_path,
+                artifact.retention_class,
+            ):
+>               raise sqlite3.IntegrityError("artifact catalog metadata does not match its digest")
+E               sqlite3.IntegrityError: artifact catalog metadata does not match its digest
+
+src/matchvet/store.py:4849: IntegrityError
+
+The above exception was the direct cause of the following exception:
+
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-graph0'), f16='8d6bdaf3...892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-predecessors0'))
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x79b5c149d0>, _basetemp=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def proposals(graph: Graph, tmp_path_factory: pytest.TempPathFactory) -> Proposals:
+        # Each proposal was independently complete before being imported as audit
+        # evidence. Current corrected writers must not create alternate local states.
+        root = tmp_path_factory.mktemp("competing-proposals")
+        shutil.copytree(graph.inputs_root / "objects", root / "objects")
+        shutil.copyfile(graph.inputs_root / "store.sqlite3", root / "store.sqlite3")
+        with open_store(root / "store.sqlite3", private_root=root) as store:
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",)).digest
+            alternate_profile = (
+                PreferenceProfileRepository(store)
+                .build_profile(("match_winner_home",), profile_version="alternate-profile")
+                .digest
+            )
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            alternate_policy = cutoffs.persist_policy(
+                CutoffPolicy(
+                    "test-common", "2", 7200, rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME"
+                )
+            )
+            legacy_policy = cutoffs.persist_policy(CutoffPolicy("legacy", "1", 21600))
+            assessment = _persistable_schedule_assessment(
+                store, root, (("2026-09-25", "20:00", "Alternate United", "Alternate City"),)
+            )
+            FixtureCoverageRepository(store).persist(assessment)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+            freeze = MatchweekMembershipRepository(
+                store, clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC)
+            ).freeze_exact(
+                "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+            )
+            variants = {
+                "profile": (graph.freeze, graph.policy, alternate_profile),
+                "policy": (graph.freeze, alternate_policy, profile),
+                "legacy": (graph.freeze, legacy_policy, profile),
+                "freeze": (freeze.freeze_id, graph.policy, profile),
+            }
+            for boundary, policy, _ in variants.values():
+                cutoffs.persist_for_freeze(boundary, policy)
+            clean = tmp_path_factory.mktemp("proposal-predecessors")
+            _copy_inputs(store, clean)
+            digests = {}
+            for name, inputs in variants.items():
+                branch = tmp_path_factory.mktemp("proposal-" + name)
+                shutil.copytree(clean / "objects", branch / "objects")
+                shutil.copyfile(clean / "store.sqlite3", branch / "store.sqlite3")
+                with open_store(branch / "store.sqlite3", private_root=branch) as branch_store:
+                    digests[name] = _build_proposal(branch_store, *inputs)
+                    source = ArtifactStore(branch_store)
+                    for metadata in branch_store.artifact_catalog():
+>                       ArtifactStore(store).publish_artifact(
+                            source.read_artifact(metadata.digest), metadata.media_type
+                        )
+
+tests/test_matchweek_research.py:855:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+                transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+                if self._write_guard is not None:
+                    self._write_guard()
+        except (sqlite3.DatabaseError, RuntimeError, ValueError) as error:
+>           raise ArtifactError(
+                "MV-ARTIFACT-DB_PUBLICATION_FAILED",
+                "Artifact catalog publication failed; the object remains unreferenced.",
+            ) from error
+E           matchvet.artifacts.ArtifactError: Artifact catalog publication failed; the object remains unreferenced.
+
+src/matchvet/artifacts.py:591: ArtifactError
+_ ERROR at setup of test_legacy_f07_still_replays_but_cannot_qualify_a_new_selection _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+>               transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+
+src/matchvet/artifacts.py:577:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.store.StoreTransaction object at 0x7996193ef0>
+artifact = ArtifactMetadata(artifact_id=CanonicalIdentifier(kind='artifact', value='588a049e-506d-501f-b1cb-ca847fe79c84'), diges...b9661e5b5b3da430cd464ecd5280e74fb0608', created_at_utc='2026-09-25T12:00:00.000000+00:00', retention_class='PROTECTED')
+
+    def record_artifact(self, artifact: ArtifactMetadata) -> None:
+        self._ensure_active()
+        existing = self._connection.execute(
+            """
+            SELECT artifact_id, media_type, byte_length, relative_path, retention_class
+            FROM artifacts
+            WHERE digest = ?
+            """,
+            (artifact.digest,),
+        ).fetchone()
+        if existing is not None:
+            if tuple(existing[1:]) != (
+                artifact.media_type,
+                artifact.byte_length,
+                artifact.relative_path,
+                artifact.retention_class,
+            ):
+>               raise sqlite3.IntegrityError("artifact catalog metadata does not match its digest")
+E               sqlite3.IntegrityError: artifact catalog metadata does not match its digest
+
+src/matchvet/store.py:4849: IntegrityError
+
+The above exception was the direct cause of the following exception:
+
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-graph0'), f16='8d6bdaf3...892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-predecessors0'))
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x79b5c149d0>, _basetemp=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def proposals(graph: Graph, tmp_path_factory: pytest.TempPathFactory) -> Proposals:
+        # Each proposal was independently complete before being imported as audit
+        # evidence. Current corrected writers must not create alternate local states.
+        root = tmp_path_factory.mktemp("competing-proposals")
+        shutil.copytree(graph.inputs_root / "objects", root / "objects")
+        shutil.copyfile(graph.inputs_root / "store.sqlite3", root / "store.sqlite3")
+        with open_store(root / "store.sqlite3", private_root=root) as store:
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",)).digest
+            alternate_profile = (
+                PreferenceProfileRepository(store)
+                .build_profile(("match_winner_home",), profile_version="alternate-profile")
+                .digest
+            )
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            alternate_policy = cutoffs.persist_policy(
+                CutoffPolicy(
+                    "test-common", "2", 7200, rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME"
+                )
+            )
+            legacy_policy = cutoffs.persist_policy(CutoffPolicy("legacy", "1", 21600))
+            assessment = _persistable_schedule_assessment(
+                store, root, (("2026-09-25", "20:00", "Alternate United", "Alternate City"),)
+            )
+            FixtureCoverageRepository(store).persist(assessment)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+            freeze = MatchweekMembershipRepository(
+                store, clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC)
+            ).freeze_exact(
+                "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+            )
+            variants = {
+                "profile": (graph.freeze, graph.policy, alternate_profile),
+                "policy": (graph.freeze, alternate_policy, profile),
+                "legacy": (graph.freeze, legacy_policy, profile),
+                "freeze": (freeze.freeze_id, graph.policy, profile),
+            }
+            for boundary, policy, _ in variants.values():
+                cutoffs.persist_for_freeze(boundary, policy)
+            clean = tmp_path_factory.mktemp("proposal-predecessors")
+            _copy_inputs(store, clean)
+            digests = {}
+            for name, inputs in variants.items():
+                branch = tmp_path_factory.mktemp("proposal-" + name)
+                shutil.copytree(clean / "objects", branch / "objects")
+                shutil.copyfile(clean / "store.sqlite3", branch / "store.sqlite3")
+                with open_store(branch / "store.sqlite3", private_root=branch) as branch_store:
+                    digests[name] = _build_proposal(branch_store, *inputs)
+                    source = ArtifactStore(branch_store)
+                    for metadata in branch_store.artifact_catalog():
+>                       ArtifactStore(store).publish_artifact(
+                            source.read_artifact(metadata.digest), metadata.media_type
+                        )
+
+tests/test_matchweek_research.py:855:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+                transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+                if self._write_guard is not None:
+                    self._write_guard()
+        except (sqlite3.DatabaseError, RuntimeError, ValueError) as error:
+>           raise ArtifactError(
+                "MV-ARTIFACT-DB_PUBLICATION_FAILED",
+                "Artifact catalog publication failed; the object remains unreferenced.",
+            ) from error
+E           matchvet.artifacts.ArtifactError: Artifact catalog publication failed; the object remains unreferenced.
+
+src/matchvet/artifacts.py:591: ArtifactError
+_ ERROR at setup of test_concurrent_competing_manifests_cannot_produce_a_second_winner _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+>               transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+
+src/matchvet/artifacts.py:577:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.store.StoreTransaction object at 0x7996193ef0>
+artifact = ArtifactMetadata(artifact_id=CanonicalIdentifier(kind='artifact', value='588a049e-506d-501f-b1cb-ca847fe79c84'), diges...b9661e5b5b3da430cd464ecd5280e74fb0608', created_at_utc='2026-09-25T12:00:00.000000+00:00', retention_class='PROTECTED')
+
+    def record_artifact(self, artifact: ArtifactMetadata) -> None:
+        self._ensure_active()
+        existing = self._connection.execute(
+            """
+            SELECT artifact_id, media_type, byte_length, relative_path, retention_class
+            FROM artifacts
+            WHERE digest = ?
+            """,
+            (artifact.digest,),
+        ).fetchone()
+        if existing is not None:
+            if tuple(existing[1:]) != (
+                artifact.media_type,
+                artifact.byte_length,
+                artifact.relative_path,
+                artifact.retention_class,
+            ):
+>               raise sqlite3.IntegrityError("artifact catalog metadata does not match its digest")
+E               sqlite3.IntegrityError: artifact catalog metadata does not match its digest
+
+src/matchvet/store.py:4849: IntegrityError
+
+The above exception was the direct cause of the following exception:
+
+graph = Graph(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-graph0'), f16='8d6bdaf3...892f', inputs_root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43/research-predecessors0'))
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x79b5c149d0>, _basetemp=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-43'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def proposals(graph: Graph, tmp_path_factory: pytest.TempPathFactory) -> Proposals:
+        # Each proposal was independently complete before being imported as audit
+        # evidence. Current corrected writers must not create alternate local states.
+        root = tmp_path_factory.mktemp("competing-proposals")
+        shutil.copytree(graph.inputs_root / "objects", root / "objects")
+        shutil.copyfile(graph.inputs_root / "store.sqlite3", root / "store.sqlite3")
+        with open_store(root / "store.sqlite3", private_root=root) as store:
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",)).digest
+            alternate_profile = (
+                PreferenceProfileRepository(store)
+                .build_profile(("match_winner_home",), profile_version="alternate-profile")
+                .digest
+            )
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            alternate_policy = cutoffs.persist_policy(
+                CutoffPolicy(
+                    "test-common", "2", 7200, rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME"
+                )
+            )
+            legacy_policy = cutoffs.persist_policy(CutoffPolicy("legacy", "1", 21600))
+            assessment = _persistable_schedule_assessment(
+                store, root, (("2026-09-25", "20:00", "Alternate United", "Alternate City"),)
+            )
+            FixtureCoverageRepository(store).persist(assessment)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
+            freeze = MatchweekMembershipRepository(
+                store, clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC)
+            ).freeze_exact(
+                "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
+            )
+            variants = {
+                "profile": (graph.freeze, graph.policy, alternate_profile),
+                "policy": (graph.freeze, alternate_policy, profile),
+                "legacy": (graph.freeze, legacy_policy, profile),
+                "freeze": (freeze.freeze_id, graph.policy, profile),
+            }
+            for boundary, policy, _ in variants.values():
+                cutoffs.persist_for_freeze(boundary, policy)
+            clean = tmp_path_factory.mktemp("proposal-predecessors")
+            _copy_inputs(store, clean)
+            digests = {}
+            for name, inputs in variants.items():
+                branch = tmp_path_factory.mktemp("proposal-" + name)
+                shutil.copytree(clean / "objects", branch / "objects")
+                shutil.copyfile(clean / "store.sqlite3", branch / "store.sqlite3")
+                with open_store(branch / "store.sqlite3", private_root=branch) as branch_store:
+                    digests[name] = _build_proposal(branch_store, *inputs)
+                    source = ArtifactStore(branch_store)
+                    for metadata in branch_store.artifact_catalog():
+>                       ArtifactStore(store).publish_artifact(
+                            source.read_artifact(metadata.digest), metadata.media_type
+                        )
+
+tests/test_matchweek_research.py:855:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.artifacts.ArtifactStore object at 0x79ad9bc830>
+content = b'{"matches":[{"date":"2026-09-25","time":"20:00","team1":"Friday United","team2":"Friday City","score":{}}]}'
+media_type = 'application/json', expected_digest = None
+retention_class = 'PROTECTED'
+
+    def publish_artifact(
+        self,
+        content: bytes,
+        media_type: str = ARTIFACT_MEDIA_TYPE,
+        *,
+        expected_digest: str | None = None,
+        retention_class: str = "PROTECTED",
+    ) -> ArtifactRecord:
+        self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
+        if not isinstance(content, bytes):
+            raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
+        digest = _sha256(content)
+        if expected_digest is not None and digest != _require_digest(
+            expected_digest, "expected digest"
+        ):
+            raise ArtifactError(
+                "MV-ARTIFACT-DIGEST_MISMATCH",
+                "Artifact content does not match the expected digest.",
+            )
+        record = ArtifactRecord(
+            artifact_id=_artifact_identifier(digest),
+            digest=digest,
+            media_type=media_type,
+            byte_length=len(content),
+            relative_path=self._relative_path(digest),
+            created_at_utc=_utc_now(),
+            retention_class=retention_class,
+        )
+        self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
+        try:
+            with self.store.transaction() as transaction:
+                transaction.record_artifact(
+                    ArtifactMetadata(
+                        digest=record.digest,
+                        artifact_id=record.artifact_id,
+                        media_type=record.media_type,
+                        byte_length=record.byte_length,
+                        relative_path=record.relative_path,
+                        created_at_utc=record.created_at_utc,
+                        retention_class=record.retention_class,
+                    )
+                )
+                if self._write_guard is not None:
+                    self._write_guard()
+        except (sqlite3.DatabaseError, RuntimeError, ValueError) as error:
+>           raise ArtifactError(
+                "MV-ARTIFACT-DB_PUBLICATION_FAILED",
+                "Artifact catalog publication failed; the object remains unreferenced.",
+            ) from error
+E           matchvet.artifacts.ArtifactError: Artifact catalog publication failed; the object remains unreferenced.
+
+src/matchvet/artifacts.py:591: ArtifactError
+=========================== short test summary info ============================
+ERROR tests/test_matchweek_research.py::test_valid_alternate_proposals_share_the_occupied_logical_slot[freeze]
+ERROR tests/test_matchweek_research.py::test_valid_alternate_proposals_share_the_occupied_logical_slot[policy]
+ERROR tests/test_matchweek_research.py::test_valid_alternate_proposals_share_the_occupied_logical_slot[profile]
+ERROR tests/test_matchweek_research.py::test_legacy_f07_still_replays_but_cannot_qualify_a_new_selection
+ERROR tests/test_matchweek_research.py::test_concurrent_competing_manifests_cannot_produce_a_second_winner
+16 passed, 41 deselected, 5 errors in 867.99s (0:14:27)

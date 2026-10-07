@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -878,7 +878,9 @@ class WeatherEvidenceBuilder:
         client: WeatherClient | None,
         *,
         provider_health_repository: ProviderHealthRepository | None = None,
+        health_clock: Callable[[], str] | None = None,
     ) -> None:
+        self.health_clock = health_clock
         self.client = client
         self.provider_health_repository = provider_health_repository
 
@@ -891,7 +893,7 @@ class WeatherEvidenceBuilder:
         from matchvet.weather_provider_health import OpenMeteoHealthRecorder
 
         recorder = (
-            OpenMeteoHealthRecorder(self.provider_health_repository)
+            OpenMeteoHealthRecorder(self.provider_health_repository, clock=self.health_clock)
             if self.provider_health_repository is not None
             else None
         )

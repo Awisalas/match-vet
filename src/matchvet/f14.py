@@ -13,7 +13,9 @@ from matchvet.artifacts import ArtifactStore
 from matchvet.f10 import V2_REQUIREMENT_CATALOG
 from matchvet.f12 import ContextualAttemptRepository
 from matchvet.f13 import INPUT_MEDIA_TYPE, F13Error, ModelContractRepository
+from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
 from matchvet.matchweek_membership import canonical_json
+from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
 from matchvet.store import Store
 from matchvet.t09 import (
     EvidenceResearcher,
@@ -341,23 +343,99 @@ class DecisionResult:
 class DecisionRepository:
     """Build, protect, and exactly replay one-match F14 decisions."""
 
-    def __init__(self, store: Store) -> None:
+    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
         self.store = store
         self.artifacts = ArtifactStore(store)
+        self.research = MatchweekResearchRepository(store, clock=clock)
         self.profiles = PreferenceProfileRepository(store)
 
     def build_decision(self, bundle: DecisionInputBundle) -> DecisionResult:
         if not isinstance(bundle, DecisionInputBundle):
             raise F14Error("F14 requires an exact DecisionInputBundle.")
+        cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(bundle.cutoff_id)
+        if cutoff is None:
+            raise F14Error("Exact F07 cutoff is missing.")
+        self.research.require_candidate_contract(
+            cutoff.freeze_id,
+            cutoff.policy_digest,
+            bundle.profile_digest,
+            str(bundle.policy.get("policy_digest", "")),
+        )
         input_bytes = _bytes(bundle.to_dict())
-        input_record = self.artifacts.publish_artifact(input_bytes, DECISION_INPUT_MEDIA_TYPE)
+        input_digest = hashlib.sha256(input_bytes).hexdigest()
+
+        def require_first_decision() -> str | None:
+            for metadata in self.store.artifact_catalog():
+                if metadata.media_type != DECISION_INPUT_MEDIA_TYPE:
+                    continue
+                raw = self._read(metadata.digest, DECISION_INPUT_MEDIA_TYPE)
+                prior_cutoff = MatchEvidenceCutoffRepository(self.store).replay(raw["cutoff_id"])
+                if (prior_cutoff.freeze_id, prior_cutoff.policy_digest) != (
+                    cutoff.freeze_id,
+                    cutoff.policy_digest,
+                ):
+                    continue
+                if (raw["profile_digest"], raw["policy"]) != (
+                    bundle.profile_digest,
+                    bundle.to_dict()["policy"],
+                ):
+                    raise F14Error(
+                        "The frozen Matchweek profile and decision policy cannot change."
+                    )
+                if raw["cutoff_id"] == bundle.cutoff_id and metadata.digest != input_digest:
+                    raise F14Error("The frozen decision input cannot change.")
+            for metadata in self.store.artifact_catalog():
+                if metadata.media_type != DECISION_MEDIA_TYPE:
+                    continue
+                prior = self._read(metadata.digest, DECISION_MEDIA_TYPE)
+                raw = self._read(prior["input_bundle_digest"], DECISION_INPUT_MEDIA_TYPE)
+                if (raw["evidence_digest"], raw["cutoff_id"]) == (
+                    bundle.evidence_digest,
+                    bundle.cutoff_id,
+                ):
+                    if prior["input_bundle_digest"] != input_digest:
+                        raise F14Error("The frozen decision input cannot change.")
+                    return metadata.digest
+            return None
+
+        if self.research.is_corrected(cutoff.policy_digest):
+            existing = require_first_decision()
+            if existing is not None:
+                result = self.replay(existing)
+                self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
+                return result
+        artifacts = self.research.candidate_artifacts(
+            cutoff.freeze_id,
+            cutoff.policy_digest,
+            check_state=require_first_decision,
+            contract=(bundle.profile_digest, str(bundle.policy.get("policy_digest", ""))),
+        )
+        input_record = artifacts.publish_artifact(input_bytes, DECISION_INPUT_MEDIA_TYPE)
         result = self._evaluate(bundle, input_record.digest)
-        self.artifacts.publish_artifact(result.to_bytes(), DECISION_MEDIA_TYPE)
+        artifacts.publish_artifact(result.to_bytes(), DECISION_MEDIA_TYPE)
         return result
 
     def build_or_replay_decision(self, bundle: DecisionInputBundle) -> DecisionResult:
         """Build or replay the sole decision for this exact immutable input bundle."""
         input_digest = hashlib.sha256(_bytes(bundle.to_dict())).hexdigest()
+        cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(bundle.cutoff_id)
+        if cutoff is None:
+            raise F14Error("Exact F07 cutoff is missing.")
+        selected = self.research.selected_for_boundary(cutoff.freeze_id, cutoff.policy_digest)
+        if selected is not None:
+            from matchvet.f16 import F16MatchweekProcessor
+
+            manifest = F16MatchweekProcessor(self.store).replay_manifest(
+                selected.f16_manifest_digest
+            )
+            rows = [row for row in manifest.match_results if row.cutoff_id == bundle.cutoff_id]
+            if len(rows) != 1:
+                raise F14Error("Decision cutoff differs from the exact selection.")
+            decision = self.replay(rows[0].decision_digest)
+            if decision.to_dict()["input_bundle_digest"] != input_digest:
+                raise F14Error("Decision inputs differ from the exact selection.")
+            return decision
+        self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
         matches: set[str] = set()
         for metadata in self.store.artifact_catalog():
             if metadata.media_type != DECISION_MEDIA_TYPE:
@@ -368,7 +446,9 @@ class DecisionRepository:
         if len(matches) > 1:
             raise F14Error("Conflicting decisions name the same exact decision input.")
         if matches:
-            return self.replay(next(iter(matches)))
+            result = self.replay(next(iter(matches)))
+            self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
+            return result
         return self.build_decision(bundle)
 
     def replay(self, digest: str) -> DecisionResult:
@@ -431,7 +511,9 @@ class DecisionRepository:
         attempts: tuple[ResearchAttempt, ...] = ()
         attempt_ref = context.get("contextual_attempt")
         if attempt_ref is not None:
-            attempt = ContextualAttemptRepository(self.store).get(attempt_ref["attempt_id"])
+            attempt = ContextualAttemptRepository(self.store).get(
+                attempt_ref["attempt_id"], cutoff_id=inputs["cutoff_id"]
+            )
             attempts = (
                 ResearchAttempt(
                     requirement_id="M-WEATHER",

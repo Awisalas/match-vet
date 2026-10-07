@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import sqlite3
 from collections.abc import Generator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -42,6 +43,13 @@ class Graph:
     f16: str
     freeze: str
     policy: str
+    inputs_root: Path
+
+
+def _copy_inputs(store: Store, root: Path) -> None:
+    shutil.copytree(store.path.parent / "objects", root / "objects")
+    with sqlite3.connect(root / "store.sqlite3") as connection:
+        store._connection_for_repository().backup(connection)
 
 
 @pytest.fixture(scope="module")
@@ -74,6 +82,8 @@ def graph(tmp_path_factory: pytest.TempPathFactory) -> Graph:
             CUTOFF.isoformat(timespec="microseconds")
         }
         profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",))
+        inputs_root = tmp_path_factory.mktemp("research-predecessors")
+        _copy_inputs(store, inputs_root)
         context = WorkContext(
             "synthetic",
             "synthetic",
@@ -85,7 +95,7 @@ def graph(tmp_path_factory: pytest.TempPathFactory) -> Graph:
             "0" * 64,
             1,
         )
-        result = F16MatchweekProcessor(store).process_phase(
+        result = F16MatchweekProcessor(store, clock=Clock()).process_phase(
             context,
             freeze_id=freeze.freeze_id,
             cutoff_policy_digest=policy,
@@ -94,7 +104,7 @@ def graph(tmp_path_factory: pytest.TempPathFactory) -> Graph:
             policy=PolicyVersion(version="research-policy-v1"),
         )
         digest = result.result_digest
-    return Graph(root, digest, freeze.freeze_id, policy)
+    return Graph(root, digest, freeze.freeze_id, policy, inputs_root)
 
 
 @pytest.fixture
@@ -779,7 +789,7 @@ def _build_proposal(store: Store, freeze: str, policy: str, profile: str) -> str
         1,
     )
     return (
-        F16MatchweekProcessor(store)
+        F16MatchweekProcessor(store, clock=Clock(), legacy_research=True)
         .process_phase(
             context,
             freeze_id=freeze,
@@ -794,47 +804,66 @@ def _build_proposal(store: Store, freeze: str, policy: str, profile: str) -> str
 
 @pytest.fixture(scope="module")
 def proposals(graph: Graph, tmp_path_factory: pytest.TempPathFactory) -> Proposals:
-    import json
-
+    # Each proposal was independently complete before being imported as audit
+    # evidence. Current corrected writers must not create alternate local states.
     root = tmp_path_factory.mktemp("competing-proposals")
-    shutil.copytree(graph.root / "objects", root / "objects")
-    shutil.copyfile(graph.root / "store.sqlite3", root / "store.sqlite3")
+    shutil.copytree(graph.inputs_root / "objects", root / "objects")
+    shutil.copyfile(graph.inputs_root / "store.sqlite3", root / "store.sqlite3")
     with open_store(root / "store.sqlite3", private_root=root) as store:
-        value = json.loads(ArtifactStore(store).read_artifact(graph.f16))
-        profile = value["profile_digest"]
-        alternate_profile = PreferenceProfileRepository(store).build_profile(
-            ("match_winner_home",),
-            profile_version="alternate-profile",
+        profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",)).digest
+        alternate_profile = (
+            PreferenceProfileRepository(store)
+            .build_profile(("match_winner_home",), profile_version="alternate-profile")
+            .digest
         )
-        digests = {
-            "profile": _build_proposal(store, graph.freeze, graph.policy, alternate_profile.digest)
-        }
         cutoffs = MatchEvidenceCutoffRepository(store)
         alternate_policy = cutoffs.persist_policy(
             CutoffPolicy(
-                "test-common",
-                "2",
-                7200,
-                rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+                "test-common", "2", 7200, rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME"
             )
         )
-        digests["policy"] = _build_proposal(store, graph.freeze, alternate_policy, profile)
         legacy_policy = cutoffs.persist_policy(CutoffPolicy("legacy", "1", 21600))
-        digests["legacy"] = _build_proposal(store, graph.freeze, legacy_policy, profile)
         assessment = _persistable_schedule_assessment(
-            store,
-            root,
-            (("2026-09-25", "20:00", "Alternate United", "Alternate City"),),
+            store, root, (("2026-09-25", "20:00", "Alternate United", "Alternate City"),)
         )
         FixtureCoverageRepository(store).persist(assessment)
         ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
         freeze = MatchweekMembershipRepository(
-            store,
-            clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC),
+            store, clock=lambda: datetime(2026, 9, 16, 14, tzinfo=UTC)
         ).freeze_exact(
             "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
         )
-        digests["freeze"] = _build_proposal(store, freeze.freeze_id, graph.policy, profile)
+        variants = {
+            "profile": (graph.freeze, graph.policy, alternate_profile),
+            "policy": (graph.freeze, alternate_policy, profile),
+            "legacy": (graph.freeze, legacy_policy, profile),
+            "freeze": (freeze.freeze_id, graph.policy, profile),
+        }
+        for boundary, policy, _ in variants.values():
+            cutoffs.persist_for_freeze(boundary, policy)
+        clean = tmp_path_factory.mktemp("proposal-predecessors")
+        _copy_inputs(store, clean)
+        digests = {}
+        for name, inputs in variants.items():
+            branch = tmp_path_factory.mktemp("proposal-" + name)
+            shutil.copytree(clean / "objects", branch / "objects")
+            shutil.copyfile(clean / "store.sqlite3", branch / "store.sqlite3")
+            with open_store(branch / "store.sqlite3", private_root=branch) as branch_store:
+                digests[name] = _build_proposal(branch_store, *inputs)
+                source = ArtifactStore(branch_store)
+                for metadata in branch_store.artifact_catalog():
+                    ArtifactStore(store).publish_artifact(
+                        source.read_artifact(metadata.digest),
+                        metadata.media_type,
+                        retention_class=metadata.retention_class,
+                    )
+        with open_store(graph.root / "store.sqlite3", private_root=graph.root) as original:
+            for metadata in original.artifact_catalog():
+                ArtifactStore(store).publish_artifact(
+                    ArtifactStore(original).read_artifact(metadata.digest),
+                    metadata.media_type,
+                    retention_class=metadata.retention_class,
+                )
     return Proposals(root, digests)
 
 

@@ -17,6 +17,7 @@ from matchvet.f11 import HISTORY_MEDIA_TYPE, F11EvidenceRepository
 from matchvet.f12 import ContextualAttemptRepository
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
 from matchvet.matchweek_membership import canonical_json
+from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
 from matchvet.store import Store
 from matchvet.t09 import (
     EvidenceResearcher,
@@ -152,9 +153,11 @@ class CalibrationCase:
 class ModelContractRepository:
     """Build and replay exact contracts; no latest lookups or caller model facts."""
 
-    def __init__(self, store: Store) -> None:
+    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
         self.store = store
         self.artifacts = ArtifactStore(store)
+        self.research = MatchweekResearchRepository(store, clock=clock)
+        self._clock = clock
 
     def _read(self, digest: str, media_type: str) -> dict[str, Any]:
         metadata = self.store.artifact_metadata(digest)
@@ -295,6 +298,25 @@ class ModelContractRepository:
         history: Iterable[HistoricalMatch],
         calibration_cases: Iterable[CalibrationCase] = (),
     ) -> ModelContract:
+        cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(cutoff_id)
+        if cutoff is None:
+            raise F13Error("Exact F07 cutoff is missing.")
+        self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
+        if (
+            self.research.is_corrected(cutoff.policy_digest)
+            and self.retained_result_digest(evidence_digest, cutoff_id) is not None
+        ):
+            raise F13Error("A frozen model already exists; replay its exact inputs.")
+        expected_result: str | None = None
+
+        def require_first_model() -> None:
+            prior = self.retained_result_digest(evidence_digest, cutoff_id)
+            if prior is not None and prior != expected_result:
+                raise F13Error("A frozen model already exists; replay its exact inputs.")
+
+        artifacts = self.research.candidate_artifacts(
+            cutoff.freeze_id, cutoff.policy_digest, check_state=require_first_model
+        )
         inputs = self._binding(evidence_digest, cutoff_id)
         boundary = datetime.fromisoformat(inputs["target"]["cutoff_utc"])
         retained = []
@@ -317,13 +339,14 @@ class ModelContractRepository:
         if len({m["fixture_id"] for m in retained}) != len(retained):
             raise F13Error("Conflicting or duplicate historical fixture inputs.")
         snapshot = {"schema_version": SCHEMA_VERSION, "history": retained}
-        inputs["history_snapshot_digest"] = self.artifacts.publish_artifact(
+        inputs["history_snapshot_digest"] = artifacts.publish_artifact(
             _bytes(snapshot), INPUT_MEDIA_TYPE
         ).digest
         inputs["excluded_history"] = sorted(excluded, key=_bytes)
         inputs["calibration_cases"] = sorted((asdict(c) for c in calibration_cases), key=_bytes)
-        result = self._evaluate(inputs, snapshot, publish=True)
-        self.artifacts.publish_artifact(result.to_bytes(), RESULT_MEDIA_TYPE)
+        result = self._evaluate(inputs, snapshot, artifacts=artifacts)
+        expected_result = result.digest
+        artifacts.publish_artifact(result.to_bytes(), RESULT_MEDIA_TYPE)
         return result
 
     def build_from_retained_history(self, evidence_digest: str, cutoff_id: str) -> ModelContract:
@@ -333,6 +356,21 @@ class ModelContractRepository:
         enumerated, so a retry cannot change its input by observing later artifacts.
         Conflicting retained source rows fail closed; there is no latest-source rule.
         """
+        cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(cutoff_id)
+        if cutoff is None:
+            raise F13Error("Exact F07 cutoff is missing.")
+        selected = self.research.selected_for_boundary(cutoff.freeze_id, cutoff.policy_digest)
+        if selected is not None:
+            from matchvet.f16 import F16MatchweekProcessor
+
+            manifest = F16MatchweekProcessor(self.store).replay_manifest(
+                selected.f16_manifest_digest
+            )
+            rows = [row for row in manifest.match_results if row.cutoff_id == cutoff_id]
+            if len(rows) != 1 or rows[0].evidence_digest != evidence_digest:
+                raise F13Error("Model inputs differ from the exact selection.")
+            return self.replay(rows[0].model_digest, evidence_digest, cutoff_id)
+        self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
         existing: set[str] = set()
         for metadata in self.store.artifact_catalog():
             if metadata.media_type != RESULT_MEDIA_TYPE:
@@ -348,7 +386,9 @@ class ModelContractRepository:
             raise F13Error("Conflicting retained model results name the same evidence and cutoff.")
         if existing:
             digest = next(iter(existing))
-            return self.replay(digest, evidence_digest, cutoff_id)
+            result = self.replay(digest, evidence_digest, cutoff_id)
+            self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
+            return result
 
         retained: dict[str, HistoricalMatch] = {}
         for metadata in self.store.artifact_catalog():
@@ -526,7 +566,7 @@ class ModelContractRepository:
         inputs: dict[str, Any],
         family: ModelFamily,
         *,
-        publish: bool,
+        artifacts: ArtifactStore | None,
     ) -> str:
         envelope = {
             "schema_version": SCHEMA_VERSION,
@@ -535,14 +575,18 @@ class ModelContractRepository:
             "payload": payload,
         }
         digest = _digest(envelope)
-        if publish:
-            self.artifacts.publish_artifact(_bytes(envelope), media_type)
+        if artifacts is not None:
+            artifacts.publish_artifact(_bytes(envelope), media_type)
         elif self._read(digest, media_type) != json.loads(_bytes(envelope)):
             raise F13Error("Wrong model artifact lineage.")
         return digest
 
     def _evaluate(
-        self, inputs: dict[str, Any], snapshot: dict[str, Any], *, publish: bool = False
+        self,
+        inputs: dict[str, Any],
+        snapshot: dict[str, Any],
+        *,
+        artifacts: ArtifactStore | None = None,
     ) -> ModelContract:
         expected_keys = {
             "schema_version",
@@ -621,7 +665,9 @@ class ModelContractRepository:
         attempts: tuple[ResearchAttempt, ...] = ()
         attempt_ref = inputs["context"]["contextual_attempt"]
         if attempt_ref is not None:
-            attempt = ContextualAttemptRepository(self.store).get(attempt_ref["attempt_id"])
+            attempt = ContextualAttemptRepository(self.store).get(
+                attempt_ref["attempt_id"], cutoff_id=inputs["cutoff_id"]
+            )
             attempts = (
                 ResearchAttempt(
                     requirement_id="M-WEATHER",
@@ -697,13 +743,17 @@ class ModelContractRepository:
                 "model_version": fit.model_version,
                 "model_fit_digest": fit.digest,
                 "model_artifact_digest": self._retain(
-                    fit_value, MODEL_MEDIA_TYPE, inputs, family, publish=publish
+                    fit_value, MODEL_MEDIA_TYPE, inputs, family, artifacts=artifacts
                 ),
                 "prediction_artifact_digest": self._retain(
-                    prediction_value, PREDICTION_MEDIA_TYPE, inputs, family, publish=publish
+                    prediction_value, PREDICTION_MEDIA_TYPE, inputs, family, artifacts=artifacts
                 ),
                 "calibration_artifact_digest": self._retain(
-                    calibration.to_dict(), CALIBRATION_MEDIA_TYPE, inputs, family, publish=publish
+                    calibration.to_dict(),
+                    CALIBRATION_MEDIA_TYPE,
+                    inputs,
+                    family,
+                    artifacts=artifacts,
                 ),
                 "fit": fit_value,
                 "prediction_digest": prediction.digest,

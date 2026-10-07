@@ -1,0 +1,49 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_direct_f11_acquisition_refuses_cutoff_equality ______________
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-18/test_direct_f11_acquisition_re0')
+
+    def test_direct_f11_acquisition_refuses_cutoff_equality(tmp_path: Path) -> None:
+        with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+            freeze = _freeze(store, tmp_path)
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(CutoffPolicy("issue76", "1", 21600, rule=CORRECTED_RULE))
+>           cutoffs.persist_for_freeze(freeze, policy)
+
+tests/test_issue76.py:18:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matchvet/match_evidence_cutoff.py:133: in persist_for_freeze
+    freeze, policy = self._inputs(freeze_id, policy_digest)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.match_evidence_cutoff.MatchEvidenceCutoffRepository object at 0x7ad18a7e00>
+freeze_id = 'sha256:4051c87676d2a17b026a721ce06fba5be4434c756b83bcafa33afc2a4d69f84c'
+policy_digest = '881ea1c2d1503058dd21aa286287b3b168da8e8e60c6595c4ac0d3c98f710f57'
+
+    def _inputs(
+        self, freeze_id: str, policy_digest: str
+    ) -> tuple[MatchweekMembershipFreeze, CutoffPolicy]:
+        try:
+            freeze = self._freezes.get_by_id(freeze_id)
+        except MatchweekMembershipError as error:
+            raise _refuse("REFERENCE-CORRUPT", "Exact F06 freeze cannot be verified.") from error
+        if freeze is None:
+            raise _refuse("FREEZE-MISSING", "Exact F06 freeze is required.")
+        policy = self.read_policy(policy_digest)
+        if policy.lead_time_seconds is None:
+            raise _refuse("POLICY-UNCONFIGURED", "F07 requires an explicitly configured lead time.")
+        if policy.rule == "MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME":
+            boundary = _matchweek_boundary(freeze, policy)
+            if _utc(freeze.created_at_utc) >= boundary:
+>               raise _refuse(
+                    "FREEZE-LATE",
+                    "Corrected F07 requires the exact F06 freeze before the common cutoff.",
+                )
+E               matchvet.match_evidence_cutoff.MatchEvidenceCutoffError: Corrected F07 requires the exact F06 freeze before the common cutoff.
+
+src/matchvet/match_evidence_cutoff.py:232: MatchEvidenceCutoffError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_direct_f11_acquisition_refuses_cutoff_equality
+1 failed in 11.99s

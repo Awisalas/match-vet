@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from urllib.error import HTTPError
@@ -82,8 +83,11 @@ class OpenMeteoHealthRecorder:
     acquisition observation retains UNKNOWN freshness.
     """
 
-    def __init__(self, repository: ProviderHealthRepository) -> None:
+    def __init__(
+        self, repository: ProviderHealthRepository, *, clock: Callable[[], str] | None = None
+    ) -> None:
         self.repository = repository
+        self._clock = clock
         self._records: list[ProviderHealthRecord] = []
 
     @property
@@ -129,7 +133,11 @@ class OpenMeteoHealthRecorder:
         ):
             raise ValueError("A weather health observation requires a response and parser result.")
         scope = open_meteo_requested_scope(request)
-        checked = datetime.now(UTC).isoformat(timespec="microseconds")
+        checked = (
+            self._clock()
+            if self._clock is not None
+            else datetime.now(UTC).isoformat(timespec="microseconds")
+        )
         content_digest = hashlib.sha256(response.content).hexdigest() if response else None
         if http_error is not None and http_error.url != request.url:
             raise ValueError("Weather HTTP error does not match the exact requested scope.")
@@ -302,6 +310,8 @@ class OpenMeteoHealthRecorder:
             failure=failure,
             provenance=provenance,
         )
+        if self._clock is not None:
+            self._clock()
         self.repository.persist_many((record,))
         self._records.append(record)
         return record

@@ -9,7 +9,9 @@ application evidence under honest WAL/FULL storage and one catalog history.
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -22,8 +24,6 @@ from matchvet.artifacts import (
     ManifestVersion,
     SnapshotManifest,
 )
-from matchvet.f16 import MANIFEST_MEDIA_TYPE as F16_MEDIA_TYPE
-from matchvet.f16 import F16Error, F16MatchweekProcessor
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoffError, MatchEvidenceCutoffRepository
 from matchvet.matchweek import MatchweekWindow
 from matchvet.matchweek_membership import MatchweekMembershipError
@@ -156,9 +156,27 @@ class MatchweekResearchRepository:
             raise MatchweekResearchError("The common Matchweek cutoff is closed.")
         return observed
 
-    def _admit(self, f16_digest: str) -> _Graph:
+    def _admit(
+        self, f16_digest: str, *, references: tuple[ManifestArtifact, ...] | None = None
+    ) -> _Graph:
+        from matchvet.f16 import F16Error, F16MatchweekProcessor
+
         try:
-            with self._store._capture_verified_artifacts() as digests:
+            if references is None:
+                value = json.loads(self._artifacts.read_artifact(f16_digest))
+                scope = (
+                    self.indexed_replay_catalog(value["freeze_id"], value["cutoff_policy_digest"])
+                    if isinstance(value, dict)
+                    and isinstance(value.get("freeze_id"), str)
+                    and isinstance(value.get("cutoff_policy_digest"), str)
+                    else None
+                )
+            else:
+                scope = frozenset(ref.digest for ref in references)
+            with (
+                self._store._scope_artifact_catalog(scope),
+                self._store._capture_verified_artifacts() as digests,
+            ):
                 manifest = F16MatchweekProcessor(self._store).replay_manifest(f16_digest)
                 value = manifest.to_dict()
                 freeze = MatchweekMembershipRepository(self._store).get_by_id(value["freeze_id"])
@@ -197,6 +215,7 @@ class MatchweekResearchRepository:
             F16Error,
             MatchEvidenceCutoffError,
             MatchweekMembershipError,
+            json.JSONDecodeError,
         ) as error:
             raise MatchweekResearchError(
                 "The complete selected graph failed exact replay."
@@ -290,7 +309,7 @@ class MatchweekResearchRepository:
                 "Selection was not acknowledged by the live operation."
             ) from error
 
-    def require_preselection_open(self, freeze_id: str, policy_digest: str) -> None:
+    def require_preselection_open(self, freeze_id: str, policy_digest: str) -> str:
         try:
             freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
             if freeze is None:
@@ -308,8 +327,215 @@ class MatchweekResearchRepository:
             if not cutoffs or len({item.cutoff_at_utc for item in cutoffs}) != 1:
                 raise MatchweekResearchError("A common cutoff is required.")
             self._require_before(cutoffs[0].cutoff_at_utc)
+            self._require_candidate_identity(logical, freeze_id, policy_digest)
+            return self._require_before(cutoffs[0].cutoff_at_utc)
         except (ArtifactError, MatchEvidenceCutoffError, MatchweekMembershipError) as error:
             raise MatchweekResearchError("Exact preselection lineage is invalid.") from error
+
+    def is_corrected(self, policy_digest: str) -> bool:
+        policy = MatchEvidenceCutoffRepository(self._store).read_policy(policy_digest)
+        return policy.rule == CORRECTED_RULE
+
+    def _require_candidate_identity(self, logical: str, freeze_id: str, policy_digest: str) -> None:
+        from matchvet.f11 import EVIDENCE_MEDIA_TYPE
+        from matchvet.f12 import F12_ATTEMPT_MEDIA_TYPE
+
+        cutoffs = MatchEvidenceCutoffRepository(self._store)
+        for other_freeze, other_policy, _, _ in self._candidate_runs():
+            if (other_freeze, other_policy) == (freeze_id, policy_digest) or not self.is_corrected(
+                other_policy
+            ):
+                continue
+            other = MatchweekMembershipRepository(self._store).get_by_id(other_freeze)
+            if other is None:
+                raise MatchweekResearchError("Candidate F15 freeze is missing.")
+            if _logical_identity(other.season, other.matchweek_friday) == logical:
+                raise MatchweekResearchError("A different exact candidate boundary already exists.")
+        for metadata in self._store.artifact_catalog():
+            if metadata.media_type not in {EVIDENCE_MEDIA_TYPE, F12_ATTEMPT_MEDIA_TYPE}:
+                continue
+            evidence = json.loads(self._artifacts.read_artifact(metadata.digest))
+            if metadata.media_type == F12_ATTEMPT_MEDIA_TYPE:
+                boundary = cutoffs.replay(evidence["cutoff_id"])
+                other_freeze, other_policy = boundary.freeze_id, boundary.policy_digest
+            else:
+                other_freeze, other_policy = evidence["freeze_id"], evidence["policy_digest"]
+            if (other_freeze, other_policy) == (freeze_id, policy_digest):
+                continue
+            if not self.is_corrected(other_policy):
+                continue
+            other = MatchweekMembershipRepository(self._store).get_by_id(other_freeze)
+            if other is None:
+                raise MatchweekResearchError("Candidate F06 freeze is missing.")
+            if _logical_identity(other.season, other.matchweek_friday) == logical and (
+                other.freeze_id,
+                other_policy,
+            ) != (freeze_id, policy_digest):
+                raise MatchweekResearchError("A different exact candidate boundary already exists.")
+
+    def _candidate_runs(self) -> tuple[tuple[str, str, str, str], ...]:
+        from matchvet.runs import RunInputContract
+
+        candidates = []
+        rows = (
+            self._store._connection_for_repository()
+            .execute("SELECT input_contract_json, input_digest FROM research_runs")
+            .fetchall()
+        )
+        for encoded, digest in rows:
+            inputs = RunInputContract.from_stored_json(str(encoded))
+            values = inputs.identity_values
+            if values["canonical_contract"] != "MATCHVET_V2_ANALYZE_MATCHWEEK_V1":
+                continue
+            if inputs.aggregate_digest != digest:
+                raise MatchweekResearchError("Retained F15 candidate identity is invalid.")
+            freeze_row = (
+                self._store._connection_for_repository()
+                .execute(
+                    "SELECT freeze_id FROM v2_matchweek_membership_freezes WHERE freeze_digest = ?",
+                    (values["source"].removeprefix("F06:"),),
+                )
+                .fetchone()
+            )
+            if freeze_row is None:
+                raise MatchweekResearchError("Retained F15 candidate freeze is missing.")
+            candidates.append(
+                (
+                    str(freeze_row[0]),
+                    values["cutoff"].split(":", 2)[1],
+                    values["preference_set"].removeprefix("F14:"),
+                    values["policy"].rsplit(":", 1)[1],
+                )
+            )
+        return tuple(candidates)
+
+    def require_candidate_contract(
+        self, freeze_id: str, policy_digest: str, profile_digest: str, decision_policy_digest: str
+    ) -> None:
+        """Pin the whole-slate contract before any new F15/F16 phase or F14 input."""
+        self.require_candidate_write(freeze_id, policy_digest)
+        if not self.is_corrected(policy_digest):
+            return
+        self._require_contract_identity(
+            freeze_id, policy_digest, profile_digest, decision_policy_digest
+        )
+        self.require_candidate_write(freeze_id, policy_digest)
+
+    def _require_contract_identity(
+        self, freeze_id: str, policy_digest: str, profile_digest: str, decision_policy_digest: str
+    ) -> None:
+        from matchvet.f14 import DECISION_INPUT_MEDIA_TYPE
+
+        for other_freeze, other_policy, profile, decision_policy in self._candidate_runs():
+            if (other_freeze, other_policy) == (freeze_id, policy_digest) and (
+                profile,
+                decision_policy,
+            ) != (profile_digest, decision_policy_digest):
+                raise MatchweekResearchError(
+                    "The frozen candidate profile or decision policy differs."
+                )
+        for metadata in self._store.artifact_catalog():
+            if metadata.media_type != DECISION_INPUT_MEDIA_TYPE:
+                continue
+            value = json.loads(self._artifacts.read_artifact(metadata.digest))
+            cutoff = MatchEvidenceCutoffRepository(self._store).replay(value["cutoff_id"])
+            if (cutoff.freeze_id, cutoff.policy_digest) == (freeze_id, policy_digest) and (
+                value["profile_digest"],
+                value["policy"].get("policy_digest"),
+            ) != (profile_digest, decision_policy_digest):
+                raise MatchweekResearchError(
+                    "The frozen candidate profile or decision policy differs."
+                )
+
+    def require_candidate_write(self, freeze_id: str, policy_digest: str) -> str | None:
+        """Dispatch legacy research separately; corrected writes share one authority."""
+        if self.is_corrected(policy_digest):
+            return self.require_preselection_open(freeze_id, policy_digest)
+        freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
+        if freeze is None:
+            raise MatchweekResearchError("Exact F06 freeze is missing.")
+        logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+        if self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical)) is not None:
+            raise MatchweekResearchError("The logical Matchweek selection slot is occupied.")
+        return None
+
+    def selected_for_boundary(
+        self, freeze_id: str, policy_digest: str
+    ) -> FrozenMatchweekResearch | None:
+        """Resolve only the indexed winner, never a catalog's latest candidate."""
+        freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
+        if freeze is None:
+            raise MatchweekResearchError("Exact F06 freeze is missing.")
+        logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+        digest = self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical))
+        if digest is None:
+            return None
+        selected = self.replay(digest)
+        if (selected.freeze_id, selected.policy_digest) != (freeze_id, policy_digest):
+            raise MatchweekResearchError("The selected exact freeze and policy differ.")
+        return selected
+
+    def indexed_replay_catalog(self, freeze_id: str, policy_digest: str) -> frozenset[str] | None:
+        """Read the frozen catalog view; this does not qualify a selection or a writer."""
+        from matchvet.f16 import MANIFEST_MEDIA_TYPE as F16_MEDIA_TYPE
+
+        if self._store._artifact_catalog_scope is not None:
+            return self._store._artifact_catalog_scope
+        if self._store._verified_artifacts is not None:
+            return None
+        if not self.is_corrected(policy_digest):
+            return None
+        freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
+        if freeze is None:
+            raise MatchweekResearchError("Exact F06 freeze is missing.")
+        logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+        digest = self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical))
+        if digest is None:
+            return None
+        selection = self._artifacts.verify_manifest(digest)
+        f16 = tuple(ref.digest for ref in selection.artifacts if ref.media_type == F16_MEDIA_TYPE)
+        if len(f16) != 1:
+            raise MatchweekResearchError("Selection must identify exactly one complete F16.")
+        value = json.loads(self._artifacts.read_artifact(f16[0]))
+        if (value["freeze_id"], value["cutoff_policy_digest"]) != (freeze_id, policy_digest):
+            return None
+        return frozenset(ref.digest for ref in selection.artifacts)
+
+    def candidate_artifacts(
+        self,
+        freeze_id: str,
+        policy_digest: str,
+        *,
+        check_state: Callable[[], object] | None = None,
+        contract: tuple[str, str] | None = None,
+    ) -> ArtifactStore:
+        if not self.is_corrected(policy_digest):
+            return ArtifactStore(self._store)
+        self.require_preselection_open(freeze_id, policy_digest)
+        freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
+        assert freeze is not None
+        logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+        cutoff = (
+            MatchEvidenceCutoffRepository(self._store)
+            .replay_for_freeze(freeze_id, policy_digest)[0]
+            .cutoff_at_utc
+        )
+
+        def require_open() -> None:
+            if (
+                self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical))
+                is not None
+            ):
+                raise MatchweekResearchError("The logical Matchweek selection slot is occupied.")
+            self._require_before(cutoff)
+            self._require_candidate_identity(logical, freeze_id, policy_digest)
+            if contract is not None:
+                self._require_contract_identity(freeze_id, policy_digest, *contract)
+            if check_state is not None:
+                check_state()
+            self._require_before(cutoff)
+
+        return ArtifactStore(self._store, write_guard=require_open)
 
     def replay_for_matchweek(
         self, *, season: str, matchweek_friday: str
@@ -324,6 +550,9 @@ class MatchweekResearchRepository:
         return selected
 
     def replay(self, selection_digest: str) -> FrozenMatchweekResearch:
+        from matchvet.f16 import MANIFEST_MEDIA_TYPE as F16_MEDIA_TYPE
+        from matchvet.f16 import F16Error
+
         try:
             selection = self._artifacts.verify_manifest(selection_digest)
             f16 = tuple(
@@ -331,7 +560,7 @@ class MatchweekResearchRepository:
             )
             if len(f16) != 1:
                 raise MatchweekResearchError("Selection must identify exactly one complete F16.")
-            graph = self._admit(f16[0])
+            graph = self._admit(f16[0], references=selection.artifacts)
             expected = self._manifest(graph, role="selection", created=selection.created_at_utc)
             self._validate_manifest(selection, expected)
             if (

@@ -1,0 +1,24 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_direct_f11_acquisition_refuses_cutoff_equality ______________
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-20/test_direct_f11_acquisition_re0')
+
+    def test_direct_f11_acquisition_refuses_cutoff_equality(tmp_path: Path) -> None:
+        with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+            freeze = _freeze(store, tmp_path)
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(CutoffPolicy("issue76", "1", 21600, rule=CORRECTED_RULE))
+            cutoffs.persist_for_freeze(freeze, policy)
+            before = store.artifact_catalog()
+            with pytest.raises(MatchweekResearchError, match="cutoff"):
+>               F11EvidenceRepository(store, clock=Clock(CUTOFF)).build(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    freeze, policy, weather_client=None
+                )
+E               TypeError: F11EvidenceRepository.__init__() got an unexpected keyword argument 'clock'
+
+tests/test_issue76.py:38: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_direct_f11_acquisition_refuses_cutoff_equality
+1 failed in 12.07s

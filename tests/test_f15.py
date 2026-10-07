@@ -51,7 +51,7 @@ def f15_fixture(tmp_path_factory: pytest.TempPathFactory) -> F15Fixture:
             preference_profile_digest=profile.digest,
             policy=PolicyVersion(version="research-policy-v1"),
         )
-        completed = AnalyzeMatchweek(store).start(request)
+        completed = AnalyzeMatchweek(store, legacy_research=True).start(request)
         assert completed.phase.value == "audit_verification"
     return F15Fixture(database, root, request)
 
@@ -70,7 +70,7 @@ def f15_store(f15_fixture: F15Fixture, tmp_path: Path) -> Generator[Store]:
 def test_start_produces_durable_t04_progress_without_claiming_matchweek_complete(
     f15_store: Store, f15_fixture: F15Fixture
 ) -> None:
-    progress = AnalyzeMatchweek(f15_store).start(f15_fixture.request)
+    progress = AnalyzeMatchweek(f15_store, legacy_research=True).start(f15_fixture.request)
     assert progress.run_id
     assert progress.run_state is RunState.INCOMPLETE
     assert progress.phase.value == "audit_verification"
@@ -104,7 +104,7 @@ def test_start_produces_durable_t04_progress_without_claiming_matchweek_complete
 def test_f16_manifest_covers_each_included_membership_and_all_preferences(
     f15_store: Store, f15_fixture: F15Fixture
 ) -> None:
-    progress = AnalyzeMatchweek(f15_store).start(f15_fixture.request)
+    progress = AnalyzeMatchweek(f15_store, legacy_research=True).start(f15_fixture.request)
     identity = next(
         item for item in progress.durable_result_identities if item.startswith("F16_MANIFEST:")
     )
@@ -154,7 +154,7 @@ def test_f16_manifest_covers_each_included_membership_and_all_preferences(
 def test_f16_completion_rejects_manifest_missing_included_match(
     f15_store: Store, f15_fixture: F15Fixture
 ) -> None:
-    progress = AnalyzeMatchweek(f15_store).start(f15_fixture.request)
+    progress = AnalyzeMatchweek(f15_store, legacy_research=True).start(f15_fixture.request)
     manifest_digest = next(
         item.rsplit(":sha256:", 1)[1]
         for item in progress.durable_result_identities
@@ -181,7 +181,7 @@ def test_f16_completion_rejects_manifest_missing_included_match(
 def test_compatible_unfinished_run_is_resumed_by_exact_run_id(
     f15_store: Store, f15_fixture: F15Fixture
 ) -> None:
-    service = AnalyzeMatchweek(f15_store)
+    service = AnalyzeMatchweek(f15_store, legacy_research=True)
     first = service.start(f15_fixture.request)
     before = tuple(item.digest for item in f15_store.artifact_catalog())
     resumed = service.resume(first.run_id, f15_fixture.request)
@@ -199,7 +199,7 @@ def test_compatible_unfinished_run_is_resumed_by_exact_run_id(
 def test_changed_predecessor_input_refuses_resume(
     f15_store: Store, f15_fixture: F15Fixture
 ) -> None:
-    service = AnalyzeMatchweek(f15_store)
+    service = AnalyzeMatchweek(f15_store, legacy_research=True)
     first = service.start(f15_fixture.request)
     changed = replace(
         f15_fixture.request,
@@ -211,7 +211,7 @@ def test_changed_predecessor_input_refuses_resume(
 
 
 def test_changed_policy_refuses_resume(f15_store: Store, f15_fixture: F15Fixture) -> None:
-    service = AnalyzeMatchweek(f15_store)
+    service = AnalyzeMatchweek(f15_store, legacy_research=True)
     first = service.start(f15_fixture.request)
     changed = replace(
         f15_fixture.request,
@@ -233,14 +233,14 @@ def test_promoted_policy_is_rejected(f15_store: Store, f15_fixture: F15Fixture) 
     )
 
     with pytest.raises(AnalyzeMatchweekError):
-        AnalyzeMatchweek(f15_store).start(request)
+        AnalyzeMatchweek(f15_store, legacy_research=True).start(request)
 
 
 def test_malformed_policy_is_rejected(f15_store: Store, f15_fixture: F15Fixture) -> None:
     request = replace(f15_fixture.request, policy={"version": "broken"})  # type: ignore[arg-type]
 
     with pytest.raises(AnalyzeMatchweekError):
-        AnalyzeMatchweek(f15_store).start(request)
+        AnalyzeMatchweek(f15_store, legacy_research=True).start(request)
 
 
 def test_missing_predecessor_artifact_fails_closed(
@@ -252,4 +252,4 @@ def test_missing_predecessor_artifact_fails_closed(
     artifact_path.write_bytes(b"corrupt")
 
     with pytest.raises(AnalyzeMatchweekError):
-        AnalyzeMatchweek(f15_store).start(f15_fixture.request)
+        AnalyzeMatchweek(f15_store, legacy_research=True).start(f15_fixture.request)

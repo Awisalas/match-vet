@@ -1,0 +1,30 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_direct_f11_acquisition_refuses_cutoff_equality ______________
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-17/test_direct_f11_acquisition_re0')
+
+    def test_direct_f11_acquisition_refuses_cutoff_equality(tmp_path: Path) -> None:
+        with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+            freeze = _freeze(store, tmp_path)
+            cutoffs = MatchEvidenceCutoffRepository(store)
+>           policy = cutoffs.persist_policy(CutoffPolicy("issue76", "1", 21600, CORRECTED_RULE))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_issue76.py:17:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<string>:8: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = CutoffPolicy(policy_id='issue76', policy_version='1', lead_time_seconds=21600, schema_version='MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME', rule='KICKOFF_MINUS_LEAD_TIME')
+
+    def __post_init__(self) -> None:
+        if type(self.schema_version) is not int or self.schema_version != 1:
+>           raise _refuse("VERSION-UNSUPPORTED", "Unsupported F07 policy schema.")
+E           matchvet.match_evidence_cutoff.MatchEvidenceCutoffError: Unsupported F07 policy schema.
+
+src/matchvet/match_evidence_cutoff.py:47: MatchEvidenceCutoffError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_direct_f11_acquisition_refuses_cutoff_equality
+1 failed in 10.68s

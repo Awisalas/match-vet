@@ -1,0 +1,68 @@
+..........F..............................                                [100%]
+=================================== FAILURES ===================================
+_______ test_f11_weather_attempt_is_typed_and_retry_does_not_fetch_again _______
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-33/test_f11_weather_attempt_is_ty0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x755bc9da70>
+
+    def test_f11_weather_attempt_is_typed_and_retry_does_not_fetch_again(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from matchvet.artifacts import ArtifactRecord, ArtifactStore
+        from matchvet.f11 import EVIDENCE_MEDIA_TYPE, F11Error
+        from matchvet.f12 import ContextualAttemptRepository
+        from matchvet.provider_health_repository import ProviderHealthRepository
+        from matchvet.weather import StaticWeatherClient, VenueLocation, WeatherRequest
+        from matchvet.workload import load_canonical_fixture_history
+
+        with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
+            freeze_id = _freeze(store, tmp_path)
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(CutoffPolicy("test", "1", 3600))
+            cutoff = cutoffs.persist_for_freeze(freeze_id, policy)[0]
+            target = load_canonical_fixture_history(store)[0]
+            location = VenueLocation(
+                "stadium", "Stadium", 6.5, 3.4, "venue", "https://venue.test", "2026-09-01T10:00:00Z"
+            )
+            request = WeatherRequest(
+                target.fixture_id, target.kickoff_utc or "", cutoff.cutoff_at_utc, location
+            )
+            client = StaticWeatherClient(
+                {
+                    request.url: {
+                        "latitude": 6.5,
+                        "longitude": 3.4,
+                        "forecast_issue_time": "2026-09-25T10:00:00Z",
+                        "hourly": {"time": [request.interval_start_utc], "temperature_2m": [27]},
+                    }
+                },
+                retrieved_at_utc="2026-09-25T12:00:00Z",
+            )
+            repo = F11EvidenceRepository(store)
+            publish = repo.artifacts.publish_artifact
+
+            def interrupt_evidence_publication(
+                content: bytes,
+                media_type: str,
+                *,
+                expected_digest: str | None = None,
+                retention_class: str = "PROTECTED",
+            ) -> ArtifactRecord:
+                if media_type == EVIDENCE_MEDIA_TYPE:
+                    raise RuntimeError("simulated interruption before evidence publication")
+                return publish(
+                    content,
+                    media_type,
+                    expected_digest=expected_digest,
+                    retention_class=retention_class,
+                )
+
+            monkeypatch.setattr(repo.artifacts, "publish_artifact", interrupt_evidence_publication)
+>           with pytest.raises(RuntimeError, match="simulated interruption"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: DID NOT RAISE RuntimeError
+
+tests/test_f11.py:675: Failed
+=========================== short test summary info ============================
+FAILED tests/test_f11.py::test_f11_weather_attempt_is_typed_and_retry_does_not_fetch_again
+1 failed, 40 passed in 2192.76s (0:36:32)

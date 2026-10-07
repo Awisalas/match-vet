@@ -1,0 +1,29 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+_______ test_corrected_f11_request_cannot_change_its_first_frozen_state ________
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-22/test_corrected_f11_request_can0')
+
+    def test_corrected_f11_request_cannot_change_its_first_frozen_state(tmp_path: Path) -> None:
+        from matchvet.f11 import F11Error
+        from matchvet.workload import WorkloadRules
+
+        with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+            freeze = _freeze(store, tmp_path)
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(CutoffPolicy("issue76", "1", 21600, rule=CORRECTED_RULE))
+            cutoffs.persist_for_freeze(freeze, policy)
+            repository = F11EvidenceRepository(store, clock=Clock())
+            first = repository.build(freeze, policy, weather_client=None)
+            assert repository.build(freeze, policy, weather_client=None) == first
+            with pytest.raises(F11Error, match="request"):
+                repository.build(
+>                   freeze, policy, weather_client=None, rules=WorkloadRules(name="changed")
+                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                )
+E               TypeError: WorkloadRules.__init__() got an unexpected keyword argument 'rule_version'
+
+tests/test_issue76.py:58: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_corrected_f11_request_cannot_change_its_first_frozen_state
+1 failed, 1 passed in 57.87s

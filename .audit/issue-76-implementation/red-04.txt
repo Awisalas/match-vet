@@ -1,0 +1,31 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______________ test_direct_f16_missing_phase_refuses_after_cutoff ______________
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-27/test_direct_f16_missing_phase_0')
+
+    def test_direct_f16_missing_phase_refuses_after_cutoff(tmp_path: Path) -> None:
+        from matchvet.f14 import PreferenceProfileRepository
+        from matchvet.f16 import F16MatchweekProcessor
+        from matchvet.runs import RunPhase, WorkContext
+        from matchvet.t15 import PolicyVersion
+
+        with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+            freeze = _freeze(store, tmp_path)
+            cutoffs = MatchEvidenceCutoffRepository(store)
+            policy = cutoffs.persist_policy(CutoffPolicy("issue76", "1", 21600, rule=CORRECTED_RULE))
+            boundaries = cutoffs.persist_for_freeze(freeze, policy)
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",))
+            context = WorkContext("synthetic", "synthetic", "2026-09-25", RunPhase.PREFERENCE_VETTING,
+                                  1, "RESEARCH_ONLY", "0" * 64, "0" * 64, 1)
+            before = store.artifact_catalog()
+>           with pytest.raises(MatchweekResearchError, match="cutoff"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AssertionError: Regex pattern did not match.
+E             Expected regex: 'cutoff'
+E             Actual message: 'Trusted UTC upper-bound confidence is unavailable.'
+
+tests/test_issue76.py:59: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_direct_f16_missing_phase_refuses_after_cutoff
+1 failed in 22.74s

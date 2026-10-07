@@ -28,6 +28,7 @@ from matchvet.matchweek_membership_repository import (
     MatchweekMembershipIntegrityError,
     MatchweekMembershipRepository,
 )
+from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
 from matchvet.runs import RunPhase, WorkContext, WorkInterrupted, WorkResult
 from matchvet.store import Store
 from matchvet.t15 import PolicyStatus, PolicyVersion
@@ -100,9 +101,14 @@ class F16Manifest:
 class F16MatchweekProcessor:
     """Coordinate exact per-match F11/F13/F14 artifacts and their F16 manifest."""
 
-    def __init__(self, store: Store) -> None:
+    def __init__(
+        self, store: Store, *, clock: TrustedUTCClock | None = None, legacy_research: bool = False
+    ) -> None:
         self.store = store
         self.artifacts = ArtifactStore(store)
+        self.research = MatchweekResearchRepository(store, clock=clock)
+        self._clock = clock
+        self._legacy_research = legacy_research
 
     def process_phase(
         self,
@@ -129,29 +135,70 @@ class F16MatchweekProcessor:
         ):
             raise F16Error("F16 requires the exact RESEARCH_ONLY policy version.")
 
-        if context.phase is RunPhase.EVIDENCE_ACQUISITION:
-            evidence = F11EvidenceRepository(self.store).build_or_replay_for_freeze(
-                freeze_id, cutoff_policy_digest
+        selected = self.research.selected_for_boundary(freeze_id, cutoff_policy_digest)
+        if selected is not None:
+            manifest = self.replay_manifest(selected.f16_manifest_digest)
+            value = manifest.to_dict()
+            if (value["profile_digest"], value["policy_digest"]) != (profile_digest, policy.digest):
+                raise F16Error("Profile or decision policy differs from the exact selection.")
+            rows = manifest.match_results
+            if context.phase is RunPhase.EVIDENCE_ACQUISITION:
+                return WorkResult(rows[0].evidence_digest, (rows[0].evidence_digest,))
+            if context.phase is RunPhase.FROZEN_EVIDENCE_STATE:
+                models = tuple(sorted({row.model_digest for row in rows}))
+                return WorkResult(_digest(_bytes(models)), models)
+            if context.phase is RunPhase.AUDIT_VERIFICATION:
+                raise WorkInterrupted("F16 is selected; exact replay is available.")
+            return WorkResult(
+                manifest.digest,
+                tuple(
+                    sorted(
+                        {
+                            manifest.digest,
+                            *(row.evidence_digest for row in rows),
+                            *(row.model_digest for row in rows),
+                            *(row.decision_digest for row in rows),
+                            *(row.match_result_digest for row in rows),
+                        }
+                    )
+                ),
             )
+
+        if not self._legacy_research and not self.research.is_corrected(cutoff_policy_digest):
+            raise F16Error("Prospective F16 requires the corrected F07 rule.")
+        self.research.require_candidate_contract(
+            freeze_id, cutoff_policy_digest, profile_digest, exact_policy.digest
+        )
+        artifacts = self.research.candidate_artifacts(
+            freeze_id,
+            cutoff_policy_digest,
+            contract=(profile_digest, exact_policy.digest),
+        )
+
+        if context.phase is RunPhase.EVIDENCE_ACQUISITION:
+            evidence = F11EvidenceRepository(
+                self.store, clock=self._clock
+            ).build_or_replay_for_freeze(freeze_id, cutoff_policy_digest)
             return WorkResult(evidence.digest, (evidence.digest,))
 
         if context.phase is RunPhase.FROZEN_EVIDENCE_STATE:
-            evidence = F11EvidenceRepository(self.store).build_or_replay_for_freeze(
-                freeze_id, cutoff_policy_digest
-            )
+            evidence = F11EvidenceRepository(
+                self.store, clock=self._clock
+            ).build_or_replay_for_freeze(freeze_id, cutoff_policy_digest)
             model_digests = self._build_models(evidence.digest, cutoffs)
             return WorkResult(_digest(_bytes(model_digests)), model_digests)
 
         if context.phase is RunPhase.PREFERENCE_VETTING:
-            evidence = F11EvidenceRepository(self.store).build_or_replay_for_freeze(
-                freeze_id, cutoff_policy_digest
-            )
+            evidence = F11EvidenceRepository(
+                self.store, clock=self._clock
+            ).build_or_replay_for_freeze(freeze_id, cutoff_policy_digest)
             manifest = self._build_decisions(
                 freeze=freeze,
                 cutoffs=cutoffs,
                 evidence_digest=evidence.digest,
                 profile_digest=profile_digest,
                 policy=exact_policy,
+                artifacts=artifacts,
             )
             value = manifest.to_dict()
             digests = {
@@ -194,6 +241,16 @@ class F16MatchweekProcessor:
         freeze = MatchweekMembershipRepository(self.store).get_by_id(freeze_id)
         if freeze is None:
             return ()
+        selected = (
+            self.research.selected_for_boundary(freeze_id, cutoff_policy_digest)
+            if self.research.is_corrected(cutoff_policy_digest)
+            else None
+        )
+        if selected is not None:
+            manifest = self.replay_manifest(selected.f16_manifest_digest)
+            value = manifest.to_dict()
+            if (value["profile_digest"], value["policy_digest"]) != (profile_digest, policy.digest):
+                raise F16Error("Profile or decision policy differs from the exact selection.")
         identities: set[str] = set()
         manifest_digests: list[str] = []
         for metadata in self.store.artifact_catalog():
@@ -214,6 +271,8 @@ class F16MatchweekProcessor:
                     profile_digest,
                     policy.digest,
                 ):
+                    if selected is not None and metadata.digest != selected.f16_manifest_digest:
+                        continue
                     manifest_digests.append(metadata.digest)
                     identities.add(
                         f"F16_MANIFEST:{metadata.artifact_id.value}:sha256:{metadata.digest}"
@@ -366,7 +425,7 @@ class F16MatchweekProcessor:
     def _build_models(
         self, evidence_digest: str, cutoffs: tuple[MatchEvidenceCutoff, ...]
     ) -> tuple[str, ...]:
-        repository = ModelContractRepository(self.store)
+        repository = ModelContractRepository(self.store, clock=self._clock)
         models = [
             repository.build_from_retained_history(evidence_digest, cutoff.cutoff_id)
             for cutoff in sorted(cutoffs, key=lambda item: item.membership_id)
@@ -381,10 +440,17 @@ class F16MatchweekProcessor:
         evidence_digest: str,
         profile_digest: str,
         policy: PolicyVersion,
+        artifacts: ArtifactStore,
     ) -> F16Manifest:
+        existing = self._find_manifest(
+            freeze.freeze_digest, cutoffs[0].policy_digest, profile_digest, policy
+        )
+        if existing is not None:
+            self.research.require_candidate_write(freeze.freeze_id, cutoffs[0].policy_digest)
+            return existing
         memberships = {m.membership_id: m for m in freeze.memberships}
-        model_repository = ModelContractRepository(self.store)
-        decision_repository = DecisionRepository(self.store)
+        model_repository = ModelContractRepository(self.store, clock=self._clock)
+        decision_repository = DecisionRepository(self.store, clock=self._clock)
         rows = []
         for cutoff in sorted(cutoffs, key=lambda item: item.membership_id):
             model_digest = self._find_model_result(evidence_digest, cutoff.cutoff_id)
@@ -420,7 +486,7 @@ class F16MatchweekProcessor:
                 "decision_digest": decision.digest,
                 "outcome": decision.to_dict()["outcome"],
             }
-            record = self.artifacts.publish_artifact(_bytes(child), MATCH_RESULT_MEDIA_TYPE)
+            record = artifacts.publish_artifact(_bytes(child), MATCH_RESULT_MEDIA_TYPE)
             rows.append(
                 F16MatchResult(
                     membership_id=member.membership_id,
@@ -445,7 +511,7 @@ class F16MatchweekProcessor:
             "matches": rows,
         }
         content = _bytes(payload)
-        record = self.artifacts.publish_artifact(content, MANIFEST_MEDIA_TYPE)
+        record = artifacts.publish_artifact(content, MANIFEST_MEDIA_TYPE)
         return F16Manifest(content)
 
     def _find_manifest(

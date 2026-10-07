@@ -1,0 +1,83 @@
+{
+  "artifact_count": 30,
+  "artifact_digests": [
+    "0038dd39b1f213154317c74408b49678ec0b203a21272b44ffe4d45cf14e1e0d",
+    "0181f7d0da0f5c47c50f6e9a6bfacea598f0eeecb321563d27749a475703765c",
+    "0e34b6f8e56ab0083229caae73ad9a340a9e10d9ba3aaa50f175c7d4d7302fb9",
+    "144b702ab979b9732b87de9e12cd0b280d45cf9f6b81396c481ca30964b4b4b1",
+    "3634a023d44f17b5d525cd09ad3dfa859e1145f82dfa68564fd69c3908c53938",
+    "3f7b064853728748824be431e78e17e46f8a2bfb208f2df1a33f06ec153034b7",
+    "42fbb7f026b5dd2c0eee05f131a09008447912d227a245a5f6abf1b54a93ad50",
+    "5143f8960196fa0b95d73c448b3962b9a6b32c592774ef33fdfa8e87f3dcb9fd",
+    "57c64823f81fd6e5c0b270d74af5f5ddd58f4b5f4a786853f1b2d854b133d175",
+    "592a6004248c4d16b75dcb482416b04a84a28b2cee7542e3e0a07af064f05b7d",
+    "59ff00b56364df6a35c6ebbab77c7d8bd13e4889a1506182b8a3589f0b6b3a1d",
+    "5c20bcb75b65eb0e515f3cc773da2d8d16d8637ebd8aeb62b74134636d35e0de",
+    "76c22c9e05c30f8a230a65a3323f53dc371e1a297e66c0ad94db21f6f26463ea",
+    "7ebc0454fd5ddd1434fba3342f4ad4fd26d53a367980b4db4ada7470548dacf8",
+    "891dd4f3bbe02232358cbca06172039159344a024b5288ded4c4d1203878d359",
+    "8c3cdb26871d42bab934c8abe68bd343fde0bd4c1cd0ec01408cf39295987045",
+    "9237a1af24f1e7dcf919b0723c138f47056a7928d2c0a1ccd5ceeff415370418",
+    "968faf4ea585213a67f947dd5ccf1f3c7b4e137d4587dc8a9d12505a0e0c6b97",
+    "9cec8c0b095be8d9572690d739cd5f39542cf9d2d8f70369b991bb80321dc8a3",
+    "a20d6ba82629ab0c14ca196234702b338ac5b76038b55c5e6b54313d035ead80",
+    "bab7b8fc754a7b8586f9738bcfd573a2349642de5a0eda389b78279570dd3ddb",
+    "be15fa1eecae5f6de89a99d77d1eb5b50d4a21343cf79a51a44de6094ab7148d",
+    "c35cd9892103005b792d5726febaa9628fbe30c0314d70517beaf3eb2d68d354",
+    "d1db366a85b20f4c517c7276dc79571a207c8bd1d5bd619cc80040cfea89eec9",
+    "df8a7889a15985d12dda01247914b4c3e52cea9dcde76b22690393061fcde874",
+    "e3c71c58d6f5e05aca095fbc76b5b9ebd31433daf9392650b529c86aa910659a",
+    "e6d227d88c1f9b72ad98e4e1fb4482a66bb66de0144a541766ede19f07755ab0",
+    "f72f3056d9e92d318db30d5ca63de797b836039785aee6f3dfb1472a83ae2580",
+    "f81f2f418d3d934c892eb3f4590ad36c3be000d3cf2c7699bab9e7e0e38bf791",
+    "fc45968fda67688f46c71f1a807085c5172cf33f71f382c7f23b0c2361066f7f"
+  ],
+  "catalog_changes": 0,
+  "cutoff_digest_literal": "sha256:5143f8960196fa0b95d73c448b3962b9a6b32c592774ef33fdfa8e87f3dcb9fd",
+  "decision_digest_literal": "57c64823f81fd6e5c0b270d74af5f5ddd58f4b5f4a786853f1b2d854b133d175",
+  "engine_contract_literal": {
+    "CALIBRATION_UNCERTAINTY": {
+      "algorithm_version": "affine-mean-exponential-tilt-laplace-sensitivity-v1",
+      "calibration_version": "t14-affine-distribution-calibration-v1",
+      "config_digest": "0c3a3998b6501147092ad3cf93d9bb1be0294205d14e4132af53adf7ebd96e14",
+      "feature_version": "t14-frozen-t09-uncertainty-v1",
+      "model_version": "t14-calibration-uncertainty-v1"
+    },
+    "CORNERS": {
+      "algorithm_version": "hierarchical-shared-pace-gamma-poisson-map-v1",
+      "config_digest": "20e1880bb4bbf076cec810b6a20ab4c64e45a539b6fe5b37355f2804200dec99",
+      "feature_version": "t13-frozen-t09-features-v1",
+      "model_version": "t13-joint-corners-v1"
+    },
+    "FIRST_HALF_GOALS": {
+      "algorithm_version": "hierarchical-phase-poisson-map-v2",
+      "config_digest": "6d95fef2f2dcbc260df8003b9f73a06f25bd8b4365810f8fcde944814f895ce1",
+      "feature_version": "t12-frozen-t09-features-v2",
+      "model_version": "t12-first-half-goals-v2"
+    },
+    "FULL_TIME_GOALS": {
+      "algorithm_version": "hierarchical-recency-dixon-coles-map-v1",
+      "config_digest": "17a2a872a89adbe779426dcc49a4c953f511f22d502db37d30353a82bfb5b406",
+      "feature_version": "t11-frozen-t09-features-v1",
+      "model_version": "t11-full-time-goals-v1"
+    },
+    "RESEARCH_ADAPTER": {
+      "feature_rules_digest": "ef22920f2cfe42dc1ede97d471ab1950b6d81264cd597b4f4790101f252e9687",
+      "research_rules_digest": "05a3269b740fa7126650351afcda8ce4bdabf6a9c345a4a9d08f8ab56aa8a2b3",
+      "version": "f13-t09-history-context-v2"
+    },
+    "SECOND_HALF_GOALS": {
+      "algorithm_version": "hierarchical-phase-poisson-map-v2",
+      "config_digest": "6d95fef2f2dcbc260df8003b9f73a06f25bd8b4365810f8fcde944814f895ce1",
+      "feature_version": "t12-frozen-t09-features-v2",
+      "model_version": "t12-second-half-goals-v2"
+    }
+  },
+  "engine_identity_literal": "d625705c1ffa298aec34dc23fd6909e61121b454b6ff6fcb5f50d1ed5838c620",
+  "evidence_digest_literal": "5c20bcb75b65eb0e515f3cc773da2d8d16d8637ebd8aeb62b74134636d35e0de",
+  "manifest_digest_literal": "9cec8c0b095be8d9572690d739cd5f39542cf9d2d8f70369b991bb80321dc8a3",
+  "model_digest_literal": "3634a023d44f17b5d525cd09ad3dfa859e1145f82dfa68564fd69c3908c53938",
+  "research_adapter_literal": "f13-t09-history-context-v2",
+  "source_commit": "6470abf2d1f8df4ebe01d2b9f110c5ad01e2e483",
+  "status": "PASS"
+}

@@ -14,6 +14,7 @@ from matchvet.matchweek_membership_repository import (
     MatchweekMembershipIntegrityError,
     MatchweekMembershipRepository,
 )
+from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
 from matchvet.runs import (
     ResourceObservation,
     RunCoordinator,
@@ -83,8 +84,14 @@ class AnalysisProgress:
 class _AnalyzeExecutor:
     """Run F16 inside the existing T04 phase boundaries."""
 
-    def __init__(self, store: Store, request: AnalyzeMatchweekRequest) -> None:
-        self._processor = F16MatchweekProcessor(store)
+    def __init__(
+        self,
+        store: Store,
+        request: AnalyzeMatchweekRequest,
+        clock: TrustedUTCClock | None,
+        legacy_research: bool,
+    ) -> None:
+        self._processor = F16MatchweekProcessor(store, clock=clock, legacy_research=legacy_research)
         self._request = request
 
     def __call__(self, context: WorkContext) -> WorkResult:
@@ -101,19 +108,51 @@ class _AnalyzeExecutor:
 class AnalyzeMatchweek:
     """Validate exact V2 predecessors and coordinate one T04-backed run."""
 
-    def __init__(self, store: Store) -> None:
+    def __init__(
+        self, store: Store, *, clock: TrustedUTCClock | None = None, legacy_research: bool = False
+    ) -> None:
         self._store = store
+        self._clock = clock
+        self._legacy_research = legacy_research
+        self.research = MatchweekResearchRepository(store, clock=clock)
         self._coordinator = RunCoordinator(store)
 
     def start(self, request: AnalyzeMatchweekRequest) -> AnalysisProgress:
         inputs, verified_ids = self._inputs(request)
+        selected = self.research.selected_for_boundary(
+            request.freeze_id, request.cutoff_policy_digest
+        )
+        if selected is not None:
+            rows = (
+                self._store._connection_for_repository()
+                .execute(
+                    "SELECT run_id FROM research_runs WHERE matchweek = ? AND input_digest = ?",
+                    (request.matchweek, inputs.aggregate_digest),
+                )
+                .fetchall()
+            )
+            if len(rows) != 1:
+                raise AnalyzeMatchweekError(
+                    "Exact selected F16 replay requires an existing run ID."
+                )
+            return self.inspect(str(rows[0][0]), request)
+        if not self._legacy_research and not self.research.is_corrected(
+            request.cutoff_policy_digest
+        ):
+            raise AnalyzeMatchweekError("Prospective F15 requires the corrected F07 rule.")
+        self.research.require_candidate_contract(
+            request.freeze_id,
+            request.cutoff_policy_digest,
+            request.preference_profile_digest,
+            request.policy.digest,
+        )
         try:
             status = self._coordinator.start(
                 matchweek=request.matchweek,
                 inputs=inputs,
                 estimate=default_resource_estimate(),
                 observation=_observation(self._store),
-                executor=_AnalyzeExecutor(self._store, request),
+                executor=_AnalyzeExecutor(self._store, request, self._clock, self._legacy_research),
             )
         except RunLifecycleError as error:
             if error.error.code == "MV-RUN-RESUME_REQUIRED":
@@ -137,13 +176,28 @@ class AnalyzeMatchweek:
         if not run_id:
             raise ValueError("An exact T04 run ID is required.")
         inputs, verified_ids = self._inputs(request)
+        if (
+            self.research.selected_for_boundary(request.freeze_id, request.cutoff_policy_digest)
+            is not None
+        ):
+            return self.inspect(run_id, request)
+        if not self._legacy_research and not self.research.is_corrected(
+            request.cutoff_policy_digest
+        ):
+            raise AnalyzeMatchweekError("Prospective F15 requires the corrected F07 rule.")
+        self.research.require_candidate_contract(
+            request.freeze_id,
+            request.cutoff_policy_digest,
+            request.preference_profile_digest,
+            request.policy.digest,
+        )
         try:
             status = self._coordinator.resume(
                 run_id,
                 inputs=inputs,
                 estimate=default_resource_estimate(),
                 observation=_observation(self._store),
-                executor=_AnalyzeExecutor(self._store, request),
+                executor=_AnalyzeExecutor(self._store, request, self._clock, self._legacy_research),
             )
         except RunLifecycleError as error:
             if error.error.code != "MV-RUN-INTERRUPTED":
@@ -176,7 +230,10 @@ class AnalyzeMatchweek:
                 for member in freeze.memberships
                 if member.decision.value == "INCLUDED"
             }
-            if {cutoff.membership_id for cutoff in cutoffs} != included_ids:
+            if (
+                len(cutoffs) != len(included_ids)
+                or {cutoff.membership_id for cutoff in cutoffs} != included_ids
+            ):
                 raise AnalyzeMatchweekError(
                     "Exactly one supplied F07 cutoff is required for every INCLUDED F06 membership."
                 )

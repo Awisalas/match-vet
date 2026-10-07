@@ -1,0 +1,62 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+__ test_f11_early_publication_never_authorizes_invalid_retrieval[retrieved0] ___
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-29/test_f11_early_publication_nev0')
+retrieved = datetime.datetime(2026, 9, 25, 13, 0, 1, tzinfo=datetime.timezone.utc)
+
+                evidence.digest, cutoff.cutoff_id, history=()
+            )
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",))
+            selection_policy = PolicyVersion(version="issue76")
+            bundle = DecisionInputBundle(profile.digest, evidence.digest, cutoff.cutoff_id, model.digest,
+                                        {**selection_policy.to_dict(), "policy_digest": selection_policy.digest}, {})
+            before = store.artifact_catalog()
+            with pytest.raises(MatchweekResearchError, match="cutoff"):
+                DecisionRepository(store, clock=Clock(CUTOFF)).build_decision(bundle)
+            assert store.artifact_catalog() == before
+
+
+    @pytest.mark.parametrize("retrieved", [CUTOFF + timedelta(seconds=1), BEFORE - timedelta(hours=2)])
+    def test_f11_early_publication_never_authorizes_invalid_retrieval(tmp_path: Path, retrieved: object) -> None:
+        from datetime import datetime
+        from matchvet.f11 import F11Error
+        from matchvet.weather import StaticWeatherClient, VenueLocation, WeatherRequest
+
+>       assert isinstance(retrieved, datetime)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE F11Error
+
+tests/test_issue76.py:124: Failed
+__ test_f11_early_publication_never_authorizes_invalid_retrieval[retrieved1] ___
+
+tmp_path = PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-29/test_f11_early_publication_nev1')
+retrieved = datetime.datetime(2026, 9, 25, 10, 0, tzinfo=datetime.timezone.utc)
+
+                evidence.digest, cutoff.cutoff_id, history=()
+            )
+            profile = PreferenceProfileRepository(store).build_profile(("match_winner_home",))
+            selection_policy = PolicyVersion(version="issue76")
+            bundle = DecisionInputBundle(profile.digest, evidence.digest, cutoff.cutoff_id, model.digest,
+                                        {**selection_policy.to_dict(), "policy_digest": selection_policy.digest}, {})
+            before = store.artifact_catalog()
+            with pytest.raises(MatchweekResearchError, match="cutoff"):
+                DecisionRepository(store, clock=Clock(CUTOFF)).build_decision(bundle)
+            assert store.artifact_catalog() == before
+
+
+    @pytest.mark.parametrize("retrieved", [CUTOFF + timedelta(seconds=1), BEFORE - timedelta(hours=2)])
+    def test_f11_early_publication_never_authorizes_invalid_retrieval(tmp_path: Path, retrieved: object) -> None:
+        from datetime import datetime
+        from matchvet.f11 import F11Error
+        from matchvet.weather import StaticWeatherClient, VenueLocation, WeatherRequest
+
+>       assert isinstance(retrieved, datetime)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE F11Error
+
+tests/test_issue76.py:124: Failed
+=========================== short test summary info ============================
+FAILED tests/test_issue76.py::test_f11_early_publication_never_authorizes_invalid_retrieval[retrieved0]
+FAILED tests/test_issue76.py::test_f11_early_publication_never_authorizes_invalid_retrieval[retrieved1]
+2 failed in 71.10s (0:01:11)

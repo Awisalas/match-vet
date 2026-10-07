@@ -9,7 +9,7 @@ import re
 import sqlite3
 import stat
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -515,8 +515,9 @@ def _inspect_catalog(
 
 
 class ArtifactStore:
-    def __init__(self, store: Store) -> None:
+    def __init__(self, store: Store, *, write_guard: Callable[[], object] | None = None) -> None:
         self.store = store
+        self._write_guard = write_guard
         self.object_root = store.path.parent / ARTIFACT_RELATIVE_ROOT
         self.staging_root = store.path.parent / ARTIFACT_STAGING_RELATIVE_ROOT
 
@@ -547,6 +548,8 @@ class ArtifactStore:
         retention_class: str = "PROTECTED",
     ) -> ArtifactRecord:
         self._ensure_writeable()
+        if self._write_guard is not None:
+            self._write_guard()
         if not isinstance(content, bytes):
             raise ArtifactError("MV-ARTIFACT-CONTENT_INVALID", "Artifact content must be bytes.")
         digest = _sha256(content)
@@ -567,6 +570,8 @@ class ArtifactStore:
             retention_class=retention_class,
         )
         self._publish_object(content, record)
+        if self._write_guard is not None:
+            self._write_guard()
         try:
             with self.store.transaction() as transaction:
                 transaction.record_artifact(
@@ -580,11 +585,15 @@ class ArtifactStore:
                         retention_class=record.retention_class,
                     )
                 )
+                if self._write_guard is not None:
+                    self._write_guard()
         except (sqlite3.DatabaseError, RuntimeError, ValueError) as error:
             raise ArtifactError(
                 "MV-ARTIFACT-DB_PUBLICATION_FAILED",
                 "Artifact catalog publication failed; the object remains unreferenced.",
             ) from error
+        if self._write_guard is not None:
+            self._write_guard()
         return self._record_or_raise(digest)
 
     def publish_manifest(

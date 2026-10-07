@@ -78,8 +78,10 @@ def test_matchweek_rule_uses_earliest_exact_included_kickoff_for_every_member(
         assessment = _persistable_schedule_assessment(
             store,
             tmp_path,
-            (("2026-09-25", "20:00", "Friday United", "Friday City"),
-             ("2026-09-28", "20:00", "Monday United", "Monday City")),
+            (
+                ("2026-09-25", "20:00", "Friday United", "Friday City"),
+                ("2026-09-28", "20:00", "Monday United", "Monday City"),
+            ),
             rows_by_league={
                 "premier_league": (("2026-09-28", "20:00", "Monday United", "Monday City"),),
                 "serie_a": (("2026-09-25", "20:00", "Friday United", "Friday City"),),
@@ -93,15 +95,20 @@ def test_matchweek_rule_uses_earliest_exact_included_kickoff_for_every_member(
             "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
         )
         repo = MatchEvidenceCutoffRepository(store)
-        policy = repo.persist_policy(CutoffPolicy(
-            "matchweek-cutoff", "1", 21600,
-            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
-        ))
+        policy = repo.persist_policy(
+            CutoffPolicy(
+                "matchweek-cutoff",
+                "1",
+                21600,
+                rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+            )
+        )
         inclusions = [m for m in freeze.memberships if m.decision.value == "INCLUDED"]
         monday = next(
             m
             for m in inclusions
-            if m.controlling_revision.kickoff_utc.startswith("2026-09-28")
+            if m.controlling_revision.kickoff_utc is not None
+            and m.controlling_revision.kickoff_utc.startswith("2026-09-28")
         )
         single = repo.persist_exact(freeze.freeze_id, monday.membership_id, policy)
         all_cutoffs = repo.persist_for_freeze(freeze.freeze_id, policy)
@@ -109,10 +116,14 @@ def test_matchweek_rule_uses_earliest_exact_included_kickoff_for_every_member(
         assert single.cutoff_at_utc == "2026-09-25T12:00:00.000000+00:00"
         assert {item.cutoff_at_utc for item in all_cutoffs} == {single.cutoff_at_utc}
         assert repo.replay(single.cutoff_id) == single
-        changed_policy = repo.persist_policy(CutoffPolicy(
-            "matchweek-cutoff", "2", 3600,
-            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
-        ))
+        changed_policy = repo.persist_policy(
+            CutoffPolicy(
+                "matchweek-cutoff",
+                "2",
+                3600,
+                rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+            )
+        )
         changed = repo.persist_exact(freeze.freeze_id, monday.membership_id, changed_policy)
         assert changed.cutoff_id != single.cutoff_id
         assert changed.cutoff_at_utc == "2026-09-25T17:00:00.000000+00:00"
@@ -133,10 +144,14 @@ def test_corrected_policy_accepts_friday_morning_freeze_before_friday_kickoff_cu
             "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
         )
         repo = MatchEvidenceCutoffRepository(store)
-        policy = repo.persist_policy(CutoffPolicy(
-            "matchweek-cutoff", "1", 21600,
-            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
-        ))
+        policy = repo.persist_policy(
+            CutoffPolicy(
+                "matchweek-cutoff",
+                "1",
+                21600,
+                rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+            )
+        )
         cutoffs = repo.persist_for_freeze(freeze.freeze_id, policy)
         assert len(cutoffs) == 1
         assert cutoffs[0].cutoff_at_utc == "2026-09-25T13:00:00.000000+00:00"
@@ -177,10 +192,14 @@ def test_corrected_policy_refuses_cold_freeze_with_completed_friday_candidate(
             "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
         )
         repo = MatchEvidenceCutoffRepository(store)
-        policy = repo.persist_policy(CutoffPolicy(
-            "matchweek-cutoff", "1", 21600,
-            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
-        ))
+        policy = repo.persist_policy(
+            CutoffPolicy(
+                "matchweek-cutoff",
+                "1",
+                21600,
+                rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+            )
+        )
         with pytest.raises(MatchEvidenceCutoffError) as error:
             repo.persist_for_freeze(freeze.freeze_id, policy)
         assert error.value.code == "MV-F07-ORIGINAL-SLATE-UNRESOLVED"
@@ -199,10 +218,14 @@ def test_corrected_policy_allows_saturday_freeze_before_monday_cutoff(tmp_path: 
             "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
         )
         repo = MatchEvidenceCutoffRepository(store)
-        policy = repo.persist_policy(CutoffPolicy(
-            "matchweek-cutoff", "1", 21600,
-            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
-        ))
+        policy = repo.persist_policy(
+            CutoffPolicy(
+                "matchweek-cutoff",
+                "1",
+                21600,
+                rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+            )
+        )
         cutoffs = repo.persist_for_freeze(freeze.freeze_id, policy)
         assert len(cutoffs) == 1
 
@@ -231,10 +254,14 @@ def test_corrected_policy_refuses_empty_included_set(tmp_path: Path) -> None:
             "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "1"
         )
         repo = MatchEvidenceCutoffRepository(store)
-        policy = repo.persist_policy(CutoffPolicy(
-            "matchweek-cutoff", "1", 21600,
-            rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
-        ))
+        policy = repo.persist_policy(
+            CutoffPolicy(
+                "matchweek-cutoff",
+                "1",
+                21600,
+                rule="MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME",
+            )
+        )
         with pytest.raises(MatchEvidenceCutoffError, match="INCLUDED"):
             repo.persist_for_freeze(freeze.freeze_id, policy)
 

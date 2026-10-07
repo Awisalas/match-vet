@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from typing import Any
@@ -31,6 +31,7 @@ from matchvet.matchweek_membership import (
     canonical_json,
 )
 from matchvet.matchweek_membership_repository import MatchweekMembershipRepository
+from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
 from matchvet.provider_health import (
     CapabilityCoverageEvidenceReference,
     OtherVersionedEvidenceReference,
@@ -115,10 +116,13 @@ class _RetainedWeatherClient:
 @dataclass
 class _AcquisitionClient:
     client: WeatherClient
+    guard: Callable[[], object] | None = None
     error_type: str | None = None
     response_status: int | None = None
 
     def fetch(self, request: WeatherRequest, *, refresh: bool = False) -> WeatherHTTPResponse:
+        if self.guard is not None:
+            self.guard()
         try:
             response = self.client.fetch(request, refresh=refresh)
         except Exception as error:
@@ -127,6 +131,14 @@ class _AcquisitionClient:
             if isinstance(http_error, HTTPError):
                 self.response_status = http_error.code
             raise
+        finally:
+            if self.guard is not None:
+                self.guard()
+        if self.guard is not None and (
+            datetime.fromisoformat(response.retrieved_at_utc)
+            > datetime.fromisoformat(request.cutoff_utc)
+        ):
+            raise F11Error("Weather retrieval is after the common cutoff.")
         self.response_status = response.response_status
         return response
 
@@ -165,9 +177,11 @@ def _parse_error_type(content: bytes, request: WeatherRequest, retrieved: str) -
 class F11EvidenceRepository:
     """Own exact joins, acquisition retention and verified evidence-set replay."""
 
-    def __init__(self, store: Store) -> None:
+    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
         self.store = store
         self.artifacts = ArtifactStore(store)
+        self.research = MatchweekResearchRepository(store, clock=clock)
+        self._clock = clock
 
     def build_or_replay_for_freeze(self, freeze_id: str, policy_digest: str) -> F11EvidenceSet:
         """Reuse the sole retained evidence request for these exact F06/F07 inputs.
@@ -177,6 +191,19 @@ class F11EvidenceRepository:
         a latest or fixture-only variant. With no retained set, acquire without
         weather because no exact venue mapping is available at this boundary.
         """
+        selected = self.research.selected_for_boundary(freeze_id, policy_digest)
+        if selected is not None:
+            from matchvet.f16 import F16MatchweekProcessor
+
+            manifest = F16MatchweekProcessor(self.store).replay_manifest(
+                selected.f16_manifest_digest
+            )
+            return self.replay(
+                manifest.match_results[0].evidence_digest,
+                freeze_id=freeze_id,
+                policy_digest=policy_digest,
+            )
+        self.research.require_candidate_write(freeze_id, policy_digest)
         retained: set[str] = set()
         for metadata in self.store.artifact_catalog():
             if metadata.media_type != EVIDENCE_MEDIA_TYPE:
@@ -191,9 +218,11 @@ class F11EvidenceRepository:
         if len(retained) > 1:
             raise F11Error("Conflicting F11 evidence sets name the same exact F06/F07 inputs.")
         if retained:
-            return self.replay(
+            evidence = self.replay(
                 next(iter(retained)), freeze_id=freeze_id, policy_digest=policy_digest
             )
+            self.research.require_candidate_write(freeze_id, policy_digest)
+            return evidence
         return self.build(freeze_id, policy_digest, weather_client=None)
 
     def _inputs(
@@ -256,11 +285,35 @@ class F11EvidenceRepository:
             "locations": {key: value.to_dict() for key, value in sorted(venues.items())},
         }
         request_digest = _digest(_bytes(request))
+        selected = self.research.selected_for_boundary(freeze_id, policy_digest)
+        if selected is not None:
+            from matchvet.f16 import F16MatchweekProcessor
+
+            manifest = F16MatchweekProcessor(self.store).replay_manifest(
+                selected.f16_manifest_digest
+            )
+            evidence = self.replay(
+                manifest.match_results[0].evidence_digest,
+                freeze_id=freeze_id,
+                policy_digest=policy_digest,
+            )
+            if evidence.to_dict()["request_digest"] != request_digest:
+                raise F11Error("The selected frozen F11 request cannot change.")
+            return evidence
+        self.research.require_candidate_write(freeze_id, policy_digest)
+        corrected = self.research.is_corrected(policy_digest)
         existing: list[F11EvidenceSet] = []
         for metadata in self.store.artifact_catalog():
             if metadata.media_type == EVIDENCE_MEDIA_TYPE:
                 value = self._read(metadata.digest, EVIDENCE_MEDIA_TYPE)
                 candidate = json.loads(value)
+                if (
+                    corrected
+                    and (candidate["freeze_id"], candidate["policy_digest"])
+                    == (freeze_id, policy_digest)
+                    and candidate["request_digest"] != request_digest
+                ):
+                    raise F11Error("The frozen F11 request cannot change.")
                 if candidate["request_digest"] == request_digest:
                     existing.append(
                         self.replay(
@@ -270,15 +323,55 @@ class F11EvidenceRepository:
         if len(existing) > 1:
             raise F11Error("Conflicting evidence sets name the same exact request.")
         if existing:
+            self.research.require_candidate_write(freeze_id, policy_digest)
             return existing[0]
+        expected_evidence_digest: str | None = None
+
+        def require_exact_request() -> None:
+            for metadata in self.store.artifact_catalog():
+                if metadata.media_type != EVIDENCE_MEDIA_TYPE:
+                    continue
+                prior = json.loads(self._read(metadata.digest, EVIDENCE_MEDIA_TYPE))
+                if (prior["freeze_id"], prior["policy_digest"]) == (freeze_id, policy_digest) and (
+                    prior["request_digest"] != request_digest
+                    or (
+                        expected_evidence_digest is not None
+                        and metadata.digest != expected_evidence_digest
+                    )
+                ):
+                    raise F11Error("The frozen F11 request or evidence cannot change.")
+
+        artifacts = self.artifacts
+        if corrected:
+            artifacts = self.research.candidate_artifacts(
+                freeze_id, policy_digest, check_state=require_exact_request
+            )
         history = load_canonical_fixture_history(
             self.store, season=freeze.season, context_fixtures=context
         )
+        if corrected:
+            boundary = datetime.fromisoformat(cutoffs[0].cutoff_at_utc)
+            frozen_history = []
+            for fixture in history:
+                provenance = tuple(
+                    item
+                    for item in fixture.provenance
+                    if datetime.fromisoformat(item.observed_at_utc) <= boundary
+                    and (
+                        item.published_at_utc is None
+                        or datetime.fromisoformat(item.published_at_utc)
+                        <= datetime.fromisoformat(item.observed_at_utc)
+                    )
+                )
+                if provenance:
+                    frozen_history.append(replace(fixture, provenance=provenance))
+            history = tuple(frozen_history)
         history_bytes = _bytes(sorted((f.to_dict() for f in history), key=_bytes))
-        history_digest = self.artifacts.publish_artifact(history_bytes, HISTORY_MEDIA_TYPE).digest
+        history_digest = artifacts.publish_artifact(history_bytes, HISTORY_MEDIA_TYPE).digest
         matches = []
-        contextual_attempts = ContextualAttemptRepository(self.store)
+        contextual_attempts = ContextualAttemptRepository(self.store, clock=self._clock)
         for cutoff in cutoffs:
+            self.research.require_candidate_write(freeze_id, policy_digest)
             per_match = tuple(_at_cutoff(f, cutoff.cutoff_at_utc) for f in history)
             target = self._target(per_match, cutoff)
             workload = WorkloadCalculator(
@@ -311,7 +404,12 @@ class F11EvidenceRepository:
                 else None
             )
             acquisition = (
-                _AcquisitionClient(weather_client)
+                _AcquisitionClient(
+                    weather_client,
+                    (lambda: self.research.require_preselection_open(freeze_id, policy_digest))
+                    if corrected
+                    else None,
+                )
                 if weather_client is not None and retained_attempt is None
                 else None
             )
@@ -332,6 +430,11 @@ class F11EvidenceRepository:
                 builder = WeatherEvidenceBuilder(
                     acquisition,
                     provider_health_repository=ProviderHealthRepository(self.store),
+                    health_clock=(
+                        lambda: self.research.require_preselection_open(freeze_id, policy_digest)
+                    )
+                    if corrected
+                    else None,
                 )
             batch = builder.build(
                 (
@@ -344,6 +447,20 @@ class F11EvidenceRepository:
                 )
             )
             weather = batch.evidence[0]
+            if corrected and weather.forecast_issue_time_source == "retrieval_time_bound":
+                raise F11Error(
+                    "Corrected weather requires a known publication time before retrieval."
+                )
+            if (
+                corrected
+                and weather.forecast_issue_time_utc is not None
+                and (
+                    weather.retrieved_at_utc is None
+                    or datetime.fromisoformat(weather.forecast_issue_time_utc)
+                    > datetime.fromisoformat(weather.retrieved_at_utc)
+                )
+            ):
+                raise F11Error("Weather publication is after its retrieval.")
             error_type = (
                 retained_attempt.error_type
                 if retained_attempt is not None
@@ -353,7 +470,7 @@ class F11EvidenceRepository:
             )
             response_digest = None
             if weather.response_bytes is not None:
-                response_digest = self.artifacts.publish_artifact(
+                response_digest = artifacts.publish_artifact(
                     _bytes(
                         {
                             "schema_version": 2,
@@ -434,9 +551,10 @@ class F11EvidenceRepository:
             "matches": matches,
         }
         evidence = F11EvidenceSet(_bytes(payload))
+        expected_evidence_digest = evidence.digest
         # Validate all references before publication, including caller context.
         self._validate(evidence, freeze_id, policy_digest)
-        self.artifacts.publish_artifact(evidence.to_bytes(), EVIDENCE_MEDIA_TYPE)
+        artifacts.publish_artifact(evidence.to_bytes(), EVIDENCE_MEDIA_TYPE)
         return self.replay(evidence.digest, freeze_id=freeze_id, policy_digest=policy_digest)
 
     def replay(self, digest: str, *, freeze_id: str, policy_digest: str) -> F11EvidenceSet:
@@ -662,7 +780,7 @@ class F11EvidenceRepository:
                     raise F11Error("F12 attempt reference is missing or malformed.")
                 try:
                     typed_attempt = ContextualAttemptRepository(self.store).get(
-                        attempt_ref["attempt_id"]
+                        attempt_ref["attempt_id"], cutoff_id=cutoff.cutoff_id
                     )
                 except F12Error as error:
                     raise F11Error("F12 attempt artifact is missing or corrupt.") from error
