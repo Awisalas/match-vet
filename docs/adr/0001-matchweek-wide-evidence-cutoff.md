@@ -2,7 +2,7 @@
 
 Date: 2026-10-05
 
-Status: accepted architecture decision; implementation pending in [#73](https://github.com/Awisalas/match-vet/issues/73).
+Status: accepted and implemented under [#73](https://github.com/Awisalas/match-vet/issues/73); isolated offline acceptance passed in [#78](https://github.com/Awisalas/match-vet/issues/78). Live authoritative validation remains pending.
 
 ## Context
 
@@ -14,7 +14,7 @@ Add an explicitly versioned F07 policy rule deriving one cutoff from the earlies
 
 Each INCLUDED match retains its existing exact F06/revision/policy-bound F07 reference, with the same common boundary. Complete and select the existing F16 whole-Matchweek manifest before that boundary. Reuse protected generic snapshot manifests for single assignment; after cutoff, allow exact replay and permitted audit/settlement only. Enforce closure through every corrected writer and downstream consumer.
 
-No SQLite migration or F07/downstream payload expansion is expected. Compatibility and single-assignment behavior require isolated proof during implementation. Old policies, artifacts, released methodology, and evidence retain their original meanings.
+No SQLite migration or F07/downstream payload expansion is required. Isolated compatibility and single-assignment proofs passed during implementation. Old policies, artifacts, released methodology, and evidence retain their original meanings.
 
 ### Completion protocol clarification, 2026-10-06
 
@@ -42,7 +42,7 @@ See the [protocol specification](../design/matchweek-selection-completion-protoc
 [primary-source research](../research/matchweek-selection-completion-protocol-2026-10-06.md),
 and [isolated protocol evidence](../../.audit/issue-75-completion-protocol/). The original
 failed [storage proofs](../../.audit/issue-75-storage-proof/) are retained unchanged.
-Production #75 and downstream #76 implementation remain pending.
+Repository implementations for #75 and #76 are complete. Production trusted-UTC validation and the live rebuild remain pending.
 
 ## Consequences
 

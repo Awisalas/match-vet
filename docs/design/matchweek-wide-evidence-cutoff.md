@@ -1,6 +1,6 @@
 # Matchweek-wide evidence cutoff correction
 
-Status: architecture decision; implementation and live rebuild are pending. Corrective implementation: [#73](https://github.com/Awisalas/match-vet/issues/73).
+Status: implementation and isolated offline acceptance are complete under [#73](https://github.com/Awisalas/match-vet/issues/73) and [#78](https://github.com/Awisalas/match-vet/issues/78). Live authoritative validation remains pending.
 
 ## Decision
 

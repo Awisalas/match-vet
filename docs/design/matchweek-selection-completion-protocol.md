@@ -4,7 +4,7 @@ Intent: prove that the exact immutable logical-Matchweek assignment and its comp
 dependency graph were durable before common T. A receipt may persist later and
 attest to that earlier event. It cannot select, replace, recompute, or repair state.
 
-Accepted design clarification for #75, 2026-10-06. Production implementation is still pending. The original storage counterexamples remain preserved under `.audit/issue-75-storage-proof/`.
+Accepted design clarification for #75, 2026-10-06. Repository implementation and isolated protocol proof are complete; production trusted-UTC validation and live rebuild remain pending. The original storage counterexamples remain preserved under `.audit/issue-75-storage-proof/`.
 
 ## Event and proof
 

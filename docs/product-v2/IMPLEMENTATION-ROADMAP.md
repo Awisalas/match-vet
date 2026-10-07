@@ -504,8 +504,9 @@ It supplements the historical roadmap entries above.
 | #75 | Complete F16 selection, protected completion receipt, exact replay and shared preselection gate delivered; see [repository contract](../matchweek-research.md) | Complete |
 | #76 | F11–F16 direct writers and resume call the shared gate; exact selected replay and legacy bytes preserved | Complete; pushed in `53bb02c`; #76 closed after focused and affected checks passed |
 | #77 | CB01/F19 bind exact selected lineage; complete corrected denominator and chronology 0.2.0 | Complete; closed after validated implementation `f528e31425d54df6ca6ee12d2480f7031838f604` was pushed to main |
-| #78 | Prove one corrected information state end to end | Open and ready-for-agent; zero open native blockers; retained dependency on #77; unassigned and not started |
+| #78 | Prove one corrected information state end to end | Complete; isolated offline acceptance passed and #78 closed |
 
-#73 remains open. Production prospective qualification still requires an operational
-trusted UTC upper-bound provider; the default clock refuses. This operational limit
-does not affect the delivered #76 gate integration and deterministic tests.
+#73 is complete and closed after the #78 acceptance proof. Live authoritative
+validation remains pending: production prospective qualification requires an
+operational trusted UTC upper-bound provider, and #70 numerical derivation profiles
+remain unresolved. The default clock refuses.
