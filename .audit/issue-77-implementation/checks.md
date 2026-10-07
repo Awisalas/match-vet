@@ -54,3 +54,16 @@ Run `tar -xzf .audit/issue-77-implementation/raw-evidence.tar.gz` from the repos
 root to restore these task-local evidence paths. Every archived member was compared
 byte-for-byte with its original capture before staging. Original local captures
 remain untouched; Python and documentation whitespace checks remain enabled.
+
+## Delivery tracking
+
+Implementation `f528e31425d54df6ca6ee12d2480f7031838f604` was pushed to main before
+issue 77 was closed. `issue-77-after.json` records all seven completed acceptance
+criteria and the CLOSED state. No project board item is attached to the issue.
+
+GitHub's retained native dependency unblocked issue 78 normally, with zero open
+blockers and one total historical blocker. `issue-78-after.json` records OPEN,
+unassigned and ready-for-agent. No issue 78 implementation was started. The
+repository roadmap reflects these states. Issue 73 remains OPEN; issue 70 remains
+OPEN with needs-info and its numerical gaps unresolved. The matching after-state
+snapshots are retained beside this report.
