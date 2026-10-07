@@ -1,0 +1,11 @@
+{
+  "android_api_level": "36",
+  "boottime_available": true,
+  "node": "/data/data/com.termux/files/usr/bin/node",
+  "openssl": "OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)",
+  "platform": "Android",
+  "prototype_source_sha256": "781d73e60e9486354a3066115cf9708da3716cba18ab134d748b68642ab8191a",
+  "python": "3.14.6",
+  "qualification": "NONE",
+  "retained_synthetic_signature_verified": true
+}

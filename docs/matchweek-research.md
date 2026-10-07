@@ -70,6 +70,11 @@ UTC error bound. Ordinary system UTC is never promoted to trusted completion evi
 Deterministic tests supply synthetic trusted providers. Those tests prove branch and
 ordering correctness; they do not establish a live host's UTC confidence.
 
+[ADR 0002](adr/0002-production-trusted-utc.md) records the production-clock
+research and isolated counterexamples. No evaluated source establishes the
+unchanged actual-at-return bound under unrestricted Android suspension. The
+default refusal remains in force; no production clock is approved.
+
 A gate observation occurs before publication and again after object synchronization,
 immediately before the selection transaction. These observations grant no authority.
 The qualifying observation follows a fresh successful selection commit return. Equality,

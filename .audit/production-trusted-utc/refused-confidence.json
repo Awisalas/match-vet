@@ -1,0 +1,144 @@
+{
+  "binding": {
+    "freshness": "NOT_ESTABLISHED",
+    "raw_request_response_artifacts": null,
+    "request_metadata": [
+      {
+        "method": "HEAD",
+        "url": "https://www.cloudflare.com/"
+      },
+      {
+        "method": "HEAD",
+        "url": "https://www.google.com/"
+      },
+      {
+        "method": "HEAD",
+        "url": "https://www.microsoft.com/"
+      }
+    ],
+    "request_response_wire_hashes": null,
+    "synthetic_signed_experiment_ref": null
+  },
+  "conservative_lower_bound_utc": null,
+  "conservative_upper_bound_utc": null,
+  "error_terms": {
+    "counter_read_0": null,
+    "counter_read_1": null,
+    "minimum_counter_rate": null,
+    "outward_rounding": null,
+    "return_delivery": null,
+    "source_accuracy": null
+  },
+  "estimate_reference": "UNTRUSTED_CLIENT_WALL_SAMPLE_AT_FIRST_REQUEST_START",
+  "estimate_utc": "2026-10-07T20:00:55.660982+00:00",
+  "failure_reasons": [
+    "NO_SOURCE_ACCURACY_GUARANTEE",
+    "NO_ELAPSED_RATE_GUARANTEE",
+    "NO_RETURN_DELIVERY_BOUND"
+  ],
+  "identity": {
+    "dependencies": {
+      "openssl": "OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)",
+      "python": "3.14.6"
+    },
+    "dependency_content_digests": null,
+    "protocol": "https-date-diagnostic-v1",
+    "qualification_profile_sha256": null,
+    "software_sha256": "781d73e60e9486354a3066115cf9708da3716cba18ab134d748b68642ab8191a",
+    "source_policy_sha256": null,
+    "trust_profile_sha256": null,
+    "verifier_content_sha256": null,
+    "verifier_identity": "stdlib TLS diagnostic; no UTC-bound verifier approved"
+  },
+  "observation_id": "a2d39470-d59c-4186-8382-1941c15248a7",
+  "observation_scope": "UTC_AT_OBSERVE_RETURN",
+  "observations": {
+    "actual_return_time": null,
+    "boot_identity": null,
+    "clock_id": "CLOCK_BOOTTIME",
+    "process_id": 8137,
+    "request_receipt_samples": [
+      {
+        "boottime_after_ns": 6168391049547,
+        "boottime_before_ns": 6158526382554,
+        "url": "https://www.cloudflare.com/",
+        "wall_estimate_at_start": "2026-10-07T20:00:55.660982+00:00"
+      },
+      {
+        "boottime_after_ns": 6166856756663,
+        "boottime_before_ns": 6158532912746,
+        "url": "https://www.google.com/",
+        "wall_estimate_at_start": "2026-10-07T20:00:55.667517+00:00"
+      },
+      {
+        "boottime_after_ns": 6168601048585,
+        "boottime_before_ns": 6158536332323,
+        "url": "https://www.microsoft.com/",
+        "wall_estimate_at_start": "2026-10-07T20:00:55.670929+00:00"
+      }
+    ],
+    "verification_final_sample": null
+  },
+  "prototype": true,
+  "record_kind": "utc_clock_confidence",
+  "retention": {
+    "completion_receipt_digest": null,
+    "operational_authority": false,
+    "selection_digest": null
+  },
+  "schema_version": 1,
+  "sources": [
+    {
+      "boottime_after_ns": 6168391049547,
+      "boottime_before_ns": 6158526382554,
+      "error": "HTTPError: HTTP Error 403: Forbidden",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "measured_elapsed_ns": 9864666993,
+      "trust_state": "REFUSED",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.cloudflare.com/",
+      "wall_estimate_at_start": "2026-10-07T20:00:55.660982+00:00"
+    },
+    {
+      "age": null,
+      "boottime_after_ns": 6166856756663,
+      "boottime_before_ns": 6158532912746,
+      "cache_control": "private",
+      "date": "Wed, 07 Oct 2026 20:01:03 GMT",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "final_url": "https://www.google.com/",
+      "measured_elapsed_ns": 8323843917,
+      "status": 200,
+      "tls_policy": "stdlib default certificate and hostname verification",
+      "trust_state": "ESTIMATE_ONLY",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.google.com/",
+      "via": null,
+      "wall_estimate_at_start": "2026-10-07T20:00:55.667517+00:00"
+    },
+    {
+      "age": null,
+      "boottime_after_ns": 6168601048585,
+      "boottime_before_ns": 6158536332323,
+      "cache_control": "max-age=0, no-cache, no-store",
+      "date": "Wed, 07 Oct 2026 20:01:05 GMT",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "final_url": "https://www.microsoft.com/",
+      "measured_elapsed_ns": 10064716262,
+      "status": 200,
+      "tls_policy": "stdlib default certificate and hostname verification",
+      "trust_state": "ESTIMATE_ONLY",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.microsoft.com/",
+      "via": null,
+      "wall_estimate_at_start": "2026-10-07T20:00:55.670929+00:00"
+    }
+  ],
+  "timescale": "UTC",
+  "trust_state": "REFUSED",
+  "uncertainty_kind": "UNKNOWN",
+  "uncertainty_seconds": null
+}

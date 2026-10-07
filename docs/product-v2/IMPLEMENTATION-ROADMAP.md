@@ -510,3 +510,8 @@ It supplements the historical roadmap entries above.
 validation remains pending: production prospective qualification requires an
 operational trusted UTC upper-bound provider, and #70 numerical derivation profiles
 remain unresolved. The default clock refuses.
+
+[Production UTC research and ADR 0002](../adr/0002-production-trusted-utc.md)
+preserve that refusal. No evaluated source satisfies the unchanged return-time
+contract on Termux/Android. A timing-boundary decision is required before a
+production implementation ticket can be ready. No live rebuild has started.
