@@ -302,7 +302,7 @@ def main() -> None:
             "request_metadata": [{"method": "HEAD", "url": probe["url"]} for probe in probes],
             "raw_request_response_artifacts": None,
             "request_response_wire_hashes": None,
-            "synthetic_signed_experiment_ref": "proof.authenticated_interval",
+            "synthetic_signed_experiment_ref": None,
         },
         "retention": {
             "operational_authority": False,

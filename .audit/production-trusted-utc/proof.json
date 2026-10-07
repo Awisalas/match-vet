@@ -19,7 +19,7 @@
         }
       ],
       "request_response_wire_hashes": null,
-      "synthetic_signed_experiment_ref": "proof.authenticated_interval"
+      "synthetic_signed_experiment_ref": null
     },
     "conservative_lower_bound_utc": null,
     "conservative_upper_bound_utc": null,
@@ -32,7 +32,7 @@
       "source_accuracy": null
     },
     "estimate_reference": "UNTRUSTED_CLIENT_WALL_SAMPLE_AT_FIRST_REQUEST_START",
-    "estimate_utc": "2026-10-07T19:16:46.198155+00:00",
+    "estimate_utc": "2026-10-07T20:00:55.660982+00:00",
     "failure_reasons": [
       "NO_SOURCE_ACCURACY_GUARANTEE",
       "NO_ELAPSED_RATE_GUARANTEE",
@@ -46,37 +46,37 @@
       "dependency_content_digests": null,
       "protocol": "https-date-diagnostic-v1",
       "qualification_profile_sha256": null,
-      "software_sha256": "20c83a29ae2e6fb23f1b463716695c6ab5133191a7ccf4d380f6164c88e2cffd",
+      "software_sha256": "781d73e60e9486354a3066115cf9708da3716cba18ab134d748b68642ab8191a",
       "source_policy_sha256": null,
       "trust_profile_sha256": null,
       "verifier_content_sha256": null,
       "verifier_identity": "stdlib TLS diagnostic; no UTC-bound verifier approved"
     },
-    "observation_id": "fa670fc1-0c5b-4658-ae8a-82b1a36dbc88",
+    "observation_id": "a2d39470-d59c-4186-8382-1941c15248a7",
     "observation_scope": "UTC_AT_OBSERVE_RETURN",
     "observations": {
       "actual_return_time": null,
       "boot_identity": null,
       "clock_id": "CLOCK_BOOTTIME",
-      "process_id": 29722,
+      "process_id": 8137,
       "request_receipt_samples": [
         {
-          "boottime_after_ns": 3529474390858,
-          "boottime_before_ns": 3509063555641,
+          "boottime_after_ns": 6168391049547,
+          "boottime_before_ns": 6158526382554,
           "url": "https://www.cloudflare.com/",
-          "wall_estimate_at_start": "2026-10-07T19:16:46.198155+00:00"
+          "wall_estimate_at_start": "2026-10-07T20:00:55.660982+00:00"
         },
         {
-          "boottime_after_ns": 3529005435743,
-          "boottime_before_ns": 3509068897526,
+          "boottime_after_ns": 6166856756663,
+          "boottime_before_ns": 6158532912746,
           "url": "https://www.google.com/",
-          "wall_estimate_at_start": "2026-10-07T19:16:46.203499+00:00"
+          "wall_estimate_at_start": "2026-10-07T20:00:55.667517+00:00"
         },
         {
-          "boottime_after_ns": 3525513419591,
-          "boottime_before_ns": 3509072690295,
+          "boottime_after_ns": 6168601048585,
+          "boottime_before_ns": 6158536332323,
           "url": "https://www.microsoft.com/",
-          "wall_estimate_at_start": "2026-10-07T19:16:46.207288+00:00"
+          "wall_estimate_at_start": "2026-10-07T20:00:55.670929+00:00"
         }
       ],
       "verification_final_sample": null
@@ -91,40 +91,52 @@
     "schema_version": 1,
     "sources": [
       {
-        "boottime_after_ns": 3529474390858,
-        "boottime_before_ns": 3509063555641,
-        "error": "TimeoutError: The read operation timed out",
+        "boottime_after_ns": 6168391049547,
+        "boottime_before_ns": 6158526382554,
+        "error": "HTTPError: HTTP Error 403: Forbidden",
         "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-        "measured_elapsed_ns": 20410835217,
+        "measured_elapsed_ns": 9864666993,
         "trust_state": "REFUSED",
         "uncertainty_seconds": null,
         "upper_bound_utc": null,
         "url": "https://www.cloudflare.com/",
-        "wall_estimate_at_start": "2026-10-07T19:16:46.198155+00:00"
+        "wall_estimate_at_start": "2026-10-07T20:00:55.660982+00:00"
       },
       {
-        "boottime_after_ns": 3529005435743,
-        "boottime_before_ns": 3509068897526,
-        "error": "RemoteDisconnected: Remote end closed connection without response",
+        "age": null,
+        "boottime_after_ns": 6166856756663,
+        "boottime_before_ns": 6158532912746,
+        "cache_control": "private",
+        "date": "Wed, 07 Oct 2026 20:01:03 GMT",
         "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-        "measured_elapsed_ns": 19936538217,
-        "trust_state": "REFUSED",
+        "final_url": "https://www.google.com/",
+        "measured_elapsed_ns": 8323843917,
+        "status": 200,
+        "tls_policy": "stdlib default certificate and hostname verification",
+        "trust_state": "ESTIMATE_ONLY",
         "uncertainty_seconds": null,
         "upper_bound_utc": null,
         "url": "https://www.google.com/",
-        "wall_estimate_at_start": "2026-10-07T19:16:46.203499+00:00"
+        "via": null,
+        "wall_estimate_at_start": "2026-10-07T20:00:55.667517+00:00"
       },
       {
-        "boottime_after_ns": 3525513419591,
-        "boottime_before_ns": 3509072690295,
-        "error": "URLError: <urlopen error _ssl.c:1064: The handshake operation timed out>",
+        "age": null,
+        "boottime_after_ns": 6168601048585,
+        "boottime_before_ns": 6158536332323,
+        "cache_control": "max-age=0, no-cache, no-store",
+        "date": "Wed, 07 Oct 2026 20:01:05 GMT",
         "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-        "measured_elapsed_ns": 16440729296,
-        "trust_state": "REFUSED",
+        "final_url": "https://www.microsoft.com/",
+        "measured_elapsed_ns": 10064716262,
+        "status": 200,
+        "tls_policy": "stdlib default certificate and hostname verification",
+        "trust_state": "ESTIMATE_ONLY",
         "uncertainty_seconds": null,
         "upper_bound_utc": null,
         "url": "https://www.microsoft.com/",
-        "wall_estimate_at_start": "2026-10-07T19:16:46.207288+00:00"
+        "via": null,
+        "wall_estimate_at_start": "2026-10-07T20:00:55.670929+00:00"
       }
     ],
     "timescale": "UTC",
@@ -134,40 +146,52 @@
   },
   "https_diagnostics": [
     {
-      "boottime_after_ns": 3529474390858,
-      "boottime_before_ns": 3509063555641,
-      "error": "TimeoutError: The read operation timed out",
+      "boottime_after_ns": 6168391049547,
+      "boottime_before_ns": 6158526382554,
+      "error": "HTTPError: HTTP Error 403: Forbidden",
       "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-      "measured_elapsed_ns": 20410835217,
+      "measured_elapsed_ns": 9864666993,
       "trust_state": "REFUSED",
       "uncertainty_seconds": null,
       "upper_bound_utc": null,
       "url": "https://www.cloudflare.com/",
-      "wall_estimate_at_start": "2026-10-07T19:16:46.198155+00:00"
+      "wall_estimate_at_start": "2026-10-07T20:00:55.660982+00:00"
     },
     {
-      "boottime_after_ns": 3529005435743,
-      "boottime_before_ns": 3509068897526,
-      "error": "RemoteDisconnected: Remote end closed connection without response",
+      "age": null,
+      "boottime_after_ns": 6166856756663,
+      "boottime_before_ns": 6158532912746,
+      "cache_control": "private",
+      "date": "Wed, 07 Oct 2026 20:01:03 GMT",
       "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-      "measured_elapsed_ns": 19936538217,
-      "trust_state": "REFUSED",
+      "final_url": "https://www.google.com/",
+      "measured_elapsed_ns": 8323843917,
+      "status": 200,
+      "tls_policy": "stdlib default certificate and hostname verification",
+      "trust_state": "ESTIMATE_ONLY",
       "uncertainty_seconds": null,
       "upper_bound_utc": null,
       "url": "https://www.google.com/",
-      "wall_estimate_at_start": "2026-10-07T19:16:46.203499+00:00"
+      "via": null,
+      "wall_estimate_at_start": "2026-10-07T20:00:55.667517+00:00"
     },
     {
-      "boottime_after_ns": 3525513419591,
-      "boottime_before_ns": 3509072690295,
-      "error": "URLError: <urlopen error _ssl.c:1064: The handshake operation timed out>",
+      "age": null,
+      "boottime_after_ns": 6168601048585,
+      "boottime_before_ns": 6158536332323,
+      "cache_control": "max-age=0, no-cache, no-store",
+      "date": "Wed, 07 Oct 2026 20:01:05 GMT",
       "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
-      "measured_elapsed_ns": 16440729296,
-      "trust_state": "REFUSED",
+      "final_url": "https://www.microsoft.com/",
+      "measured_elapsed_ns": 10064716262,
+      "status": 200,
+      "tls_policy": "stdlib default certificate and hostname verification",
+      "trust_state": "ESTIMATE_ONLY",
       "uncertainty_seconds": null,
       "upper_bound_utc": null,
       "url": "https://www.microsoft.com/",
-      "wall_estimate_at_start": "2026-10-07T19:16:46.207288+00:00"
+      "via": null,
+      "wall_estimate_at_start": "2026-10-07T20:00:55.670929+00:00"
     }
   ],
   "openssl": "OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)",
@@ -177,15 +201,15 @@
       "actual_client_return": 1005,
       "current_at_return_bound_valid": false,
       "fresh_request_accepted": true,
-      "message_sha256": "6af2e52b5b91bb0ff1caa9ccb797837fa0ba8d3575a2fb53cae35a32fa96c5a4",
-      "new_request_nonce": "0dbb12be0b5b2ab843e0fe528b136fb2c3dc97ad9da682571b4271473ad98059",
-      "payload_utf8": "{\"lower\":995,\"nonce\":\"1dbb12be0b5b2ab843e0fe528b136fb2c3dc97ad9da682571b4271473ad98059\",\"protocol\":\"synthetic-interval-v1\",\"upper\":996}",
+      "message_sha256": "41eee7cf452527ba16ff4abbe1e2aedbb0b36d254db0a13b6f226b1017a39111",
+      "new_request_nonce": "4bcaa75ffed471cc30e453db1ef5b6018173f1be25771cd5e96bd38a918fdd1d",
+      "payload_utf8": "{\"lower\":995,\"nonce\":\"5bcaa75ffed471cc30e453db1ef5b6018173f1be25771cd5e96bd38a918fdd1d\",\"protocol\":\"synthetic-interval-v1\",\"upper\":996}",
       "prior_commit_994_causal_bound_valid": true,
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEALMmfVL9S+3La+3TsC52xE38LM52efjcbEccDaVRTcFM=\n-----END PUBLIC KEY-----\n",
-      "public_key_sha256": "197feb9b5e2ca9fc01d8f73f8815cf3c4869c2e3c9a68f4feaef10cb085bc0fb",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAW9TAqgpJsgOobO9hdsTWY/xT3m1cjMmW46BFaE1SAOA=\n-----END PUBLIC KEY-----\n",
+      "public_key_sha256": "f08d89953609e5fa15047c1b9af8b81053d15878d1482d39deee0456bf928296",
       "replayed_response_rejected_for_new_request": true,
-      "request_nonce_sha256": "6f75538d90e9405e37e4a3a4dd43074b958bd35511a9e66e65e9be41607b8ac1",
-      "signature_base64": "F9QSzth0PXKrnN2e+HX/Kxf8g8H+dFjytWKNqvlw/K2S3IPtAwBAa5J0H0crl5T5RcZYjbwW+FNpyXqH7bhJCA==",
+      "request_nonce_sha256": "bff67fddc63d49f7a828879e946d4cbc356f0aa685fb6967af16da915c541bd1",
+      "signature_base64": "KSzQsTD0FZYgaXc8V5M0WLXXNp/V5/Nv5nN2EVahZtsAyW1s3tZIBsVTPYCCSMu/1vCpo+aRCwtL7vABwAvPCw==",
       "signature_verified": true,
       "source_event_upper": 996,
       "source_is_synthetic": true,
