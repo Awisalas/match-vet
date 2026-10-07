@@ -1,0 +1,72 @@
+{
+  "boot_identity": null,
+  "conservative_lower_bound_utc": null,
+  "conservative_upper_bound_utc": null,
+  "estimate_scope": "UNTRUSTED_CLIENT_WALL_SAMPLE",
+  "estimate_utc": "2026-10-07T18:43:46.266933+00:00",
+  "evidence_record_sha256": "002f37432310890ff93b48a3d6b5b8b868dcb7e4c931e29aa08e4e0fa96d7078",
+  "failure_reasons": [
+    "NO_SOURCE_ACCURACY_GUARANTEE",
+    "NO_ELAPSED_RATE_GUARANTEE",
+    "NO_RETURN_DELIVERY_BOUND"
+  ],
+  "observation_scope": "UTC_AT_OBSERVE_RETURN",
+  "operational_authority": false,
+  "protocol_identity": "https-date-diagnostic-v1",
+  "schema_version": 1,
+  "software_sha256": "6e9e2b1f0a5c468b7d43db3542288cb54a9ea87334aee8e5a64a2519bf925c48",
+  "sources": [
+    {
+      "boottime_after_ns": 1530368423787,
+      "boottime_before_ns": 1529131983865,
+      "error": "HTTPError: HTTP Error 403: Forbidden",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "measured_elapsed_ns": 1236439922,
+      "trust_state": "REFUSED",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.cloudflare.com/",
+      "wall_estimate_at_start": "2026-10-07T18:43:46.266933+00:00"
+    },
+    {
+      "age": null,
+      "boottime_after_ns": 1530727633787,
+      "boottime_before_ns": 1529138000058,
+      "cache_control": "private",
+      "date": "Wed, 07 Oct 2026 18:43:47 GMT",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "final_url": "https://www.google.com/",
+      "measured_elapsed_ns": 1589633729,
+      "status": 200,
+      "tls_policy": "stdlib default certificate and hostname verification",
+      "trust_state": "ESTIMATE_ONLY",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.google.com/",
+      "via": null,
+      "wall_estimate_at_start": "2026-10-07T18:43:46.272596+00:00"
+    },
+    {
+      "age": null,
+      "boottime_after_ns": 1581063720636,
+      "boottime_before_ns": 1529141384865,
+      "cache_control": "max-age=0, no-cache, no-store",
+      "date": "Wed, 07 Oct 2026 18:44:38 GMT",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "final_url": "https://www.microsoft.com/",
+      "measured_elapsed_ns": 51922335771,
+      "status": 200,
+      "tls_policy": "stdlib default certificate and hostname verification",
+      "trust_state": "ESTIMATE_ONLY",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.microsoft.com/",
+      "via": null,
+      "wall_estimate_at_start": "2026-10-07T18:43:46.275979+00:00"
+    }
+  ],
+  "trust_profile": null,
+  "trust_state": "REFUSED",
+  "uncertainty_kind": "UNKNOWN",
+  "uncertainty_seconds": null
+}

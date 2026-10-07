@@ -1,0 +1,53 @@
+{
+  "late_response": {
+    "actualUtc": 1005,
+    "cutoff": 1000,
+    "committed": true,
+    "serverUpper": 996,
+    "lastSample": null,
+    "returnedUpper": 996,
+    "scope": "RETURN_TIME",
+    "elapsedRateProven": false,
+    "returnDelayProven": false,
+    "online": true,
+    "boot": 1,
+    "anchorBoot": 1,
+    "trust": "REFUSED",
+    "reason": "Server bound reused at client return",
+    "wallEstimate": 994
+  },
+  "last_read_pause": {
+    "actualUtc": 1004,
+    "cutoff": 1000,
+    "committed": true,
+    "serverUpper": null,
+    "lastSample": 994,
+    "returnedUpper": 995,
+    "scope": "FINAL_SAMPLE",
+    "elapsedRateProven": true,
+    "returnDelayProven": false,
+    "online": true,
+    "boot": 1,
+    "anchorBoot": null,
+    "trust": "REFUSED",
+    "reason": "Suspension after last observation",
+    "wallEstimate": 994
+  },
+  "reboot_offline": {
+    "actualUtc": 995,
+    "cutoff": 1000,
+    "committed": false,
+    "serverUpper": 996,
+    "lastSample": null,
+    "returnedUpper": null,
+    "scope": "NONE",
+    "elapsedRateProven": false,
+    "returnDelayProven": false,
+    "online": false,
+    "boot": 2,
+    "anchorBoot": 1,
+    "trust": "REFUSED",
+    "reason": "Default provider refuses",
+    "wallEstimate": 994
+  }
+}

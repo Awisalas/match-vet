@@ -1,0 +1,169 @@
+{
+  "boottime_available": true,
+  "https_diagnostics": [
+    {
+      "boottime_after_ns": 1530368423787,
+      "boottime_before_ns": 1529131983865,
+      "error": "HTTPError: HTTP Error 403: Forbidden",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "measured_elapsed_ns": 1236439922,
+      "trust_state": "REFUSED",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.cloudflare.com/",
+      "wall_estimate_at_start": "2026-10-07T18:43:46.266933+00:00"
+    },
+    {
+      "age": null,
+      "boottime_after_ns": 1530727633787,
+      "boottime_before_ns": 1529138000058,
+      "cache_control": "private",
+      "date": "Wed, 07 Oct 2026 18:43:47 GMT",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "final_url": "https://www.google.com/",
+      "measured_elapsed_ns": 1589633729,
+      "status": 200,
+      "tls_policy": "stdlib default certificate and hostname verification",
+      "trust_state": "ESTIMATE_ONLY",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.google.com/",
+      "via": null,
+      "wall_estimate_at_start": "2026-10-07T18:43:46.272596+00:00"
+    },
+    {
+      "age": null,
+      "boottime_after_ns": 1581063720636,
+      "boottime_before_ns": 1529141384865,
+      "cache_control": "max-age=0, no-cache, no-store",
+      "date": "Wed, 07 Oct 2026 18:44:38 GMT",
+      "failure_reason": "NO_NORMATIVE_DATE_ACCURACY_BOUND",
+      "final_url": "https://www.microsoft.com/",
+      "measured_elapsed_ns": 51922335771,
+      "status": 200,
+      "tls_policy": "stdlib default certificate and hostname verification",
+      "trust_state": "ESTIMATE_ONLY",
+      "uncertainty_seconds": null,
+      "upper_bound_utc": null,
+      "url": "https://www.microsoft.com/",
+      "via": null,
+      "wall_estimate_at_start": "2026-10-07T18:43:46.275979+00:00"
+    }
+  ],
+  "openssl": "OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)",
+  "platform": "Android",
+  "proof": {
+    "authenticated_interval": {
+      "actual_client_return": 1005,
+      "current_at_return_bound_valid": false,
+      "message_sha256": "e5b23b6aed894d63dc5c5524260b876844acd2a2bae93e35cb4b01189d1c5533",
+      "payload_utf8": "{\"lower\":995,\"nonce\":\"be48c0d115de63b7022daf132906d0a05ef632b83d20e3ae4767e16d4024cfb5\",\"protocol\":\"synthetic-interval-v1\",\"upper\":996}",
+      "prior_commit_994_causal_bound_valid": true,
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAqIFpUdokjiWgVVPBl4KGWzvouc1OCPCBO5jtmbM84SQ=\n-----END PUBLIC KEY-----\n",
+      "public_key_sha256": "afa01885ae2f1303d8144e2d3ca63380dcbc12423af2f1f5399d982a10ddc117",
+      "replayed_nonce_matches_new_request": false,
+      "request_nonce_sha256": "f5c2fb861450950645aaaaed67e7436d97ad7e8a9821b428ea40c7450c70dbea",
+      "signature_base64": "SpAGyfOOv+vB5B7mX8aBQHjtzotLwf5T6KL7K4t5hEGxKDi+uXp8Gk6bjQY45por7En6wnMO8RzJRqQ7iJ5IDg==",
+      "signature_verified": true,
+      "source_event_upper": 996,
+      "source_is_synthetic": true,
+      "tamper_rejected": true,
+      "trust_profile": "Synthetic ephemeral Ed25519 key; no production authority"
+    },
+    "default_provider": "Trusted UTC upper-bound confidence is unavailable.",
+    "gate_cases": [
+      {
+        "asserted_upper": 900,
+        "gate_accepted_assertion": true,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": false,
+        "scenario": "wall_rollback",
+        "synthetic_actual_utc_at_return": 1005
+      },
+      {
+        "asserted_upper": 1010,
+        "gate_accepted_assertion": false,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": true,
+        "scenario": "wall_forward_jump",
+        "synthetic_actual_utc_at_return": 995
+      },
+      {
+        "asserted_upper": 995,
+        "gate_accepted_assertion": true,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": false,
+        "scenario": "three_https_sources_all_behind_max",
+        "synthetic_actual_utc_at_return": 1005
+      },
+      {
+        "asserted_upper": 996,
+        "gate_accepted_assertion": true,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": false,
+        "scenario": "signed_server_interval_received_late",
+        "synthetic_actual_utc_at_return": 1005
+      },
+      {
+        "asserted_upper": 997,
+        "gate_accepted_assertion": true,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": false,
+        "scenario": "monotonic_excludes_suspend",
+        "synthetic_actual_utc_at_return": 1005
+      },
+      {
+        "asserted_upper": 997,
+        "gate_accepted_assertion": true,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": false,
+        "scenario": "boottime_rate_assumed_without_evidence",
+        "synthetic_actual_utc_at_return": 1005
+      },
+      {
+        "asserted_upper": 998,
+        "gate_accepted_assertion": true,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": true,
+        "scenario": "synthetic_exact_elapsed_at_final_sample",
+        "synthetic_actual_utc_at_return": 998
+      },
+      {
+        "asserted_upper": 998,
+        "gate_accepted_assertion": true,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": false,
+        "scenario": "pause_after_final_boottime_sample",
+        "synthetic_actual_utc_at_return": 1005
+      },
+      {
+        "asserted_upper": 1000,
+        "gate_accepted_assertion": false,
+        "production_confidence": "REFUSED",
+        "provider_meets_contract": true,
+        "scenario": "cutoff_equality",
+        "synthetic_actual_utc_at_return": 1000
+      }
+    ],
+    "interpretation": "Gate trusts injected assertions. Unsafe cases violate the provider contract, not repository validation. Exact elapsed is a synthetic oracle, never an Android qualification.",
+    "synthetic_confidence_record": {
+      "error_bound_seconds": null,
+      "estimate_utc": null,
+      "evidence": "authenticated_interval; gate_cases",
+      "failure_reasons": [
+        "NO_ELAPSED_RATE_GUARANTEE",
+        "NO_RETURN_DELIVERY_BOUND"
+      ],
+      "operational_authority": false,
+      "schema_version": 1,
+      "scope": "RETURN_TIME",
+      "software_sha256": "6e9e2b1f0a5c468b7d43db3542288cb54a9ea87334aee8e5a64a2519bf925c48",
+      "source_protocol": "synthetic-interval-v1",
+      "trust_state": "REFUSED",
+      "upper_bound_utc": null
+    }
+  },
+  "prototype": true,
+  "python": "3.14.6",
+  "schema_version": 1
+}
