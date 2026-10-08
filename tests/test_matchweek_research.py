@@ -1013,3 +1013,9 @@ def test_close_during_live_operation_revokes_authority(
         with pytest.raises(MatchweekResearchError, match="permanently"):
             MatchweekResearchRepository(reopened, clock=Clock()).seal_completed(graph.f16)
         assert reopened.snapshot_manifest_digest_for_snapshot(RECEIPT) is None
+
+
+def test_v1_graph_cannot_be_adopted_as_causal(research_store: Store, graph: Graph) -> None:
+    with pytest.raises(MatchweekResearchError, match="successor"):
+        MatchweekResearchRepository(research_store).seal_completed_v2(graph.f16)
+    assert research_store.snapshot_manifest_digest_for_snapshot(SELECTION) is None

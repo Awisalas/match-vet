@@ -1,0 +1,3 @@
+PASS: 8 generic artifact/identity/CB01 files are byte-identical
+PASS: original v1 graph, identities, admission, canonical manifest and sealing are identical
+PASS: generic SQLite migrations/schema are identical; no migration

@@ -17,7 +17,11 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import IO, Any, Never, Self
+from typing import IO, TYPE_CHECKING, Any, Never, Self
+
+if TYPE_CHECKING:
+    from matchvet.causal_selection import _CausalGraph, _VerifiedSelectionEvent, _WitnessAttempt
+    from matchvet.causal_trust import _Approval, _TrustBundle
 
 from matchvet.research_identity import completion_slot, is_reserved_research_slot, selection_slot
 
@@ -4665,6 +4669,12 @@ class _ResearchOperation:
         self._inserted = False
         self._selection_digest: str | None = None
         self._upper_bound: str | None = None
+        self._causal_graph: _CausalGraph | None = None
+        self._causal_approval: _Approval | None = None
+        self._causal_bundle: _TrustBundle | None = None
+        self._attempt: _WitnessAttempt | None = None
+        self._receipt_refs: tuple[str, ...] | None = None
+        self._busy = False
 
     def __copy__(self) -> Self:
         raise TypeError("Selection authority cannot be copied.")
@@ -4687,6 +4697,8 @@ class _ResearchOperation:
 
     def _start(self, role: str) -> None:
         self._check()
+        if self._busy:
+            raise RuntimeError("Selection authority cannot be borrowed by a callback.")
         expected = "fresh" if role == "selection" else "acknowledged"
         if role not in ("selection", "receipt") or self._phase != expected:
             raise RuntimeError("Selection authority cannot be reused or borrowed.")
@@ -4717,11 +4729,22 @@ class _ResearchOperation:
                 receipt
                 and (
                     created_at_utc != self._upper_bound
-                    or artifact_digests != (self._selection_digest,)
+                    or artifact_digests
+                    != (
+                        self._receipt_refs
+                        if self._causal_graph is not None
+                        else (self._selection_digest,)
+                    )
                 )
             )
         ):
             raise RuntimeError("Private publication differs from its exact operation.")
+        if (
+            not receipt
+            and self._causal_graph is not None
+            and artifact_digests != tuple(ref.digest for ref in self._causal_graph.references)
+        ):
+            raise RuntimeError("Causal selection differs from its admitted complete graph.")
         self._expected_digest = digest
 
     def _before_commit(self) -> None:
@@ -4749,6 +4772,16 @@ class _ResearchOperation:
             raise RuntimeError("Private insertion authority is invalid or consumed.")
         self._inserted = True
         if (
+            not receipt
+            and self._causal_graph is not None
+            and connection.execute(
+                "SELECT 1 FROM snapshot_manifests WHERE snapshot_id = ?",
+                (completion_slot(self._matchweek_id),),
+            ).fetchone()
+            is not None
+        ):
+            raise RuntimeError("An occupied completion slot refuses causal selection.")
+        if (
             connection.execute(
                 "SELECT 1 FROM snapshot_manifests WHERE snapshot_id = ?", (metadata["snapshot_id"],)
             ).fetchone()
@@ -4770,12 +4803,99 @@ class _ResearchOperation:
 
     def _acknowledge(self, upper_bound: str, cutoff: str) -> None:
         self._check()
-        if self._phase != "selection_committed" or datetime.fromisoformat(
-            upper_bound
-        ) >= datetime.fromisoformat(cutoff):
+        if (
+            self._causal_graph is not None
+            or self._phase != "selection_committed"
+            or datetime.fromisoformat(upper_bound) >= datetime.fromisoformat(cutoff)
+        ):
             raise RuntimeError("Only a fresh pre-cutoff selection can be acknowledged.")
         self._upper_bound = upper_bound
         self._phase = "acknowledged"
+
+    def _configure_causal(
+        self, graph: _CausalGraph, approval: _Approval, bundle: _TrustBundle
+    ) -> None:
+        self._check()
+        if (
+            self._phase != "fresh"
+            or self._causal_graph is not None
+            or graph.logical_id != self._matchweek_id
+        ):
+            raise RuntimeError("Causal operation cannot be reconfigured.")
+        self._causal_graph, self._causal_approval, self._causal_bundle = graph, approval, bundle
+
+    def _begin_witness(
+        self, exact_graph: _CausalGraph, approved_profile: _Approval
+    ) -> _WitnessAttempt:
+        from matchvet.causal_selection import _WitnessAttempt
+
+        self._check()
+        if (
+            self._busy
+            or self._phase != "selection_committed"
+            or self._attempt is not None
+            or exact_graph is not self._causal_graph
+            or approved_profile is not self._causal_approval
+            or self._causal_bundle is None
+            or self._selection_digest is None
+            or self._store.snapshot_manifest_digest_for_snapshot(selection_slot(self._matchweek_id))
+            != self._selection_digest
+        ):
+            raise RuntimeError(
+                "Only the original confirmed fresh causal selection can begin a witness."
+            )
+        # Consume before entropy generation and construction. Constructor failures
+        # cannot restore selection_committed or permit another request.
+        self._phase = "witness_attempt"
+        self._busy = True
+        try:
+            attempt = _WitnessAttempt(self, exact_graph, approved_profile, self._causal_bundle)
+        finally:
+            self._busy = False
+        self._check()
+        self._attempt = attempt
+        return attempt
+
+    def _accept_witness(self, attempt: _WitnessAttempt, event: _VerifiedSelectionEvent) -> None:
+        from matchvet.causal_trust import _PROFILE_DIGEST, _utc
+        from matchvet.causal_witness import _digest
+
+        self._check()
+        if (
+            self._busy
+            or self._phase != "witness_attempt"
+            or self._attempt is not attempt
+            or not attempt._sent
+            or attempt._event is not event
+            or event.binding != attempt._binding
+            or event.request != attempt._request
+            or event.profile_digest != _PROFILE_DIGEST
+            or self._causal_graph is None
+            or attempt._graph is not self._causal_graph
+            or _utc(event.upper) >= _utc(self._causal_graph.cutoff)
+        ):
+            raise RuntimeError(
+                "Witness differs from the original exact attempt or is not strictly before T."
+            )
+        if _utc(event.lower) > _utc(event.upper):
+            raise RuntimeError("Witness interval is invalid.")
+        self._busy = True
+        try:
+            refs = tuple(
+                sorted({self._selection_digest or "", _digest(event.provenance()), *event.digests})
+            )
+            created = datetime.now(UTC).isoformat(timespec="microseconds")
+            self._check()
+            if self._phase != "witness_attempt":
+                raise RuntimeError("Witness acceptance cannot overwrite another transition.")
+            self._receipt_refs = refs
+            self._upper_bound = created
+            self._phase = "acknowledged"
+        except BaseException:
+            self._phase = "revoked"
+            raise
+        finally:
+            self._busy = False
 
 
 class StoreTransaction:

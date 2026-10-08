@@ -5,15 +5,15 @@
 [accepted architecture](causal-matchweek-selection-witness.md) remain the contract.
 This record decomposes implementation without changing that architecture.
 
-| Order | Ticket | Ownership boundary | Blocked by | Initial readiness |
+| Order | Ticket | Ownership boundary | Blocked by | Current readiness |
 | --- | --- | --- | --- | --- |
-| 1 | [#81](https://github.com/Awisalas/match-vet/issues/81) | Research/Store selection authority, RFC3161 verification, approved profile and trust provenance, protected v2 completion/replay | None | ready-for-agent |
-| 2 | [#82](https://github.com/Awisalas/match-vet/issues/82) | Immutable candidate descriptor, stage schemas and all direct/resume writer contracts, cross-version occupancy | #81 | Blocked |
+| 1 | [#81](https://github.com/Awisalas/match-vet/issues/81) | Research/Store selection authority, RFC3161 verification, approved profile and trust provenance, protected v2 completion/replay | None | Completed |
+| 2 | [#82](https://github.com/Awisalas/match-vet/issues/82) | Immutable candidate descriptor, stage schemas and all direct/resume writer contracts, cross-version occupancy | #81 (closed) | ready-for-agent |
 | 3 | [#83](https://github.com/Awisalas/match-vet/issues/83) | Selected-state consumers, CB01 adapter/denominator, F19 and report/evaluation/legacy dispatch | #82 | Blocked |
 | 4 | [#84](https://github.com/Awisalas/match-vet/issues/84) | Integrated seven-league successor proof and complete parent acceptance evidence | #83 | Blocked |
 
 All four are native sub-issues. Native blocking edges form
-`#81 → #82 → #83 → #84 → #80`. Only #81 has `ready-for-agent`.
+`#81 → #82 → #83 → #84 → #80`. Only #82 has `ready-for-agent`; #81 is complete.
 The parent is blocked by #84 and has no implementation readiness label.
 
 Each child contains exact scope, explicit non-scope, acceptance criteria, focused
@@ -69,3 +69,16 @@ TSA/TUF requests, source activation, operational artifacts or SQL migration are 
 scope. Tests run in focused Termux-safe batches, with directly affected historical
 regressions rather than the full suite. If storage sufficiency is disproved, stop
 and record the design question before any migration.
+
+## Protocol delivery, 2026-10-08
+
+#81 implements the isolated private causal protocol, protected v2 receipt and
+terminal crash/restart behavior. [Executed evidence](../../.audit/issue-81-implementation/README.md)
+covers 121 protocol/wire tests, 68 directly affected #75/v1 and CB01 trust
+regressions, 6 focused manifest regressions, strict typing, lint, formatting
+and executable historical/schema compatibility checks.
+
+#82 is the next unblocked child and remains open and unstarted. Real successor
+admission and authenticated activation still refuse; this delivery does not
+qualify a production Matchweek or complete any original parent acceptance proof.
+#80, #83 and #84 remain open.

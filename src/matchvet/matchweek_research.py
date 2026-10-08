@@ -14,7 +14,10 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from matchvet.causal_selection import _CausalGraph
 
 from matchvet.artifacts import (
     ArtifactError,
@@ -254,6 +257,16 @@ class MatchweekResearchRepository:
             else None,
         )
 
+    def _admit_v2(
+        self, f16_digest: str, *, references: tuple[ManifestArtifact, ...] | None = None
+    ) -> _CausalGraph:
+        raise MatchweekResearchError("Unsupported causal successor stage schemas until #82.")
+
+    def seal_completed_v2(self, f16_manifest_digest: str) -> FrozenMatchweekResearch:
+        from matchvet.causal_selection import _seal
+
+        return _seal(self, f16_manifest_digest)
+
     def seal_completed(self, f16_manifest_digest: str) -> FrozenMatchweekResearch:
         # Refuse nested entry before replay or a caller clock callback can run.
         if self._store._research_owner is not None:
@@ -308,6 +321,11 @@ class MatchweekResearchRepository:
             raise MatchweekResearchError(
                 "Selection was not acknowledged by the live operation."
             ) from error
+
+    def inspect_causal(self, selection_digest: str) -> FrozenMatchweekResearch:
+        from matchvet.causal_selection import _replay
+
+        return _replay(self, selection_digest, qualify=False)
 
     def require_preselection_open(self, freeze_id: str, policy_digest: str) -> str:
         try:
@@ -550,11 +568,14 @@ class MatchweekResearchRepository:
         return selected
 
     def replay(self, selection_digest: str) -> FrozenMatchweekResearch:
+        from matchvet.causal_selection import _replay, _version_v2
         from matchvet.f16 import MANIFEST_MEDIA_TYPE as F16_MEDIA_TYPE
         from matchvet.f16 import F16Error
 
         try:
             selection = self._artifacts.verify_manifest(selection_digest)
+            if selection.versions == (ManifestVersion.from_identity(_version_v2("selection")),):
+                return _replay(self, selection_digest)
             f16 = tuple(
                 ref.digest for ref in selection.artifacts if ref.media_type == F16_MEDIA_TYPE
             )
