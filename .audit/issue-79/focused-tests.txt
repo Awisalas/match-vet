@@ -1,0 +1,8 @@
+
+! KeyboardInterrupt
+when serializing dict item 'schema_version'
+when serializing dict item 'cutoff'
+when serializing dict item 'context' !
+/data/data/com.termux/files/usr/lib/python3.14/json/encoder.py:263: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+no tests ran in 1021.15s (0:17:01)

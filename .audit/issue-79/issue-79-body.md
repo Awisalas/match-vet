@@ -90,7 +90,7 @@ justified or performed.
 - [x] Specify old-proof limits, prospective compatibility, CB01 separation, exact
   provenance, schema sufficiency and operational availability losses.
 - [x] Resolve adversarial findings and retain append-only reviewable proof trail.
-- [ ] Publish the smallest cohesive implementation-ready successor issue and
+- [x] Publish the smallest cohesive implementation-ready successor issue and
   commit/push these design/research/proof records.
 
 ## Implementation and records
@@ -108,3 +108,10 @@ docs/research/causal-matchweek-witness-2026-10-08.md and .audit/issue-79/.
 No production timing code or activation, either live SQLite store, live fixture
 acquisition/rebuild, operational artifact publication, #70 fitting, founder-rule
 or six-hour change is authorized or performed in this decision task.
+
+Design/research/proof commit pushed to main: 6a9edebdc9ce1a2feede2307b43c4a04c9d9f485.
+
+- [ADR 0003](https://github.com/Awisalas/match-vet/blob/6a9edebdc9ce1a2feede2307b43c4a04c9d9f485/docs/adr/0003-causal-matchweek-selection-witness.md)
+- [Architecture](https://github.com/Awisalas/match-vet/blob/6a9edebdc9ce1a2feede2307b43c4a04c9d9f485/docs/design/causal-matchweek-selection-witness.md)
+- [Primary research](https://github.com/Awisalas/match-vet/blob/6a9edebdc9ce1a2feede2307b43c4a04c9d9f485/docs/research/causal-matchweek-witness-2026-10-08.md)
+- [Proof and review records](https://github.com/Awisalas/match-vet/tree/6a9edebdc9ce1a2feede2307b43c4a04c9d9f485/.audit/issue-79)

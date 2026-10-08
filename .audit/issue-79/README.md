@@ -12,7 +12,7 @@ No production timing mechanism is implemented or activated.
 - `decisions.tsv` is the canonical append-only decision trail.
 - `sources/identities.json` pins primary policy/source snapshots by SHA-256 and exact revision.
 - `proof.py` and `proof-result.json` are rerunnable isolated experiments.
-- `historical-tests*.txt` record the initial import failure and deliberately interrupted broad run; `focused-tests.txt` records the bounded successor run.
+- `historical-tests*.txt` record the initial import failure and deliberately interrupted broad run; `focused-tests.txt` records the interrupted focused historical rerun; `cb01-trust-tests.txt` records five passing retained-trust tests.
 
 ## Run the proof
 
@@ -42,8 +42,11 @@ live stores. The proof deliberately separates three kinds of evidence:
    for representation. This does not implement protected v2 domain authority.
 
 The broad historical regression run was interrupted after 11 passing cases in
-581.77 seconds. It is not claimed as a full-suite pass. The focused integrated,
-crypto, selected-writer and concurrent-selector cases are recorded separately.
+581.77 seconds. It is not claimed as a full-suite pass. The focused integrated, selected-writer and concurrent-selector rerun was
+interrupted during setup after 1021.15 seconds with no completed tests; it is not
+a pass. Those unchanged historical integration cases were not needed to claim
+a new runtime in this design-only task. The five retained CB01 trust tests then
+passed in 26.65 seconds, recorded in `cb01-trust-tests.txt`.
 
 The first storage attempt correctly failed because its artifact refs were unsorted.
 The corrected proof applies the existing digest order and passes. No repository
@@ -86,3 +89,9 @@ native child/dependent of #79. No implementation work was started.
 The pinned upstream TSA policy contains trailing spaces. The local source-only
 .gitattributes preserves its exact bytes for hash verification; authored records
 still receive normal whitespace checks.
+
+Design/research/proof commit pushed: `6a9edebdc9ce1a2feede2307b43c4a04c9d9f485`.
+Issue #79 is CLOSED with completed acceptance. Issue #80 remains OPEN and
+ready-for-agent after its native decision dependency closed. Production
+implementation was not started. Final publication/trail closure is committed
+separately so it does not invent a self-referential design SHA.

@@ -1,0 +1,16 @@
+{
+  "issue79": "CLOSED",
+  "issue80": "OPEN ready-for-agent",
+  "active_dependency_count": 0,
+  "design_commit_pushed": "6a9edebdc9ce1a2feede2307b43c4a04c9d9f485",
+  "production_src_and_tests_unchanged": true,
+  "primary_source_hashes_verified": true,
+  "historical_broad_run": "11 passed then interrupted at581.77s; not full-suite pass",
+  "historical_focused_run": "interrupted setup at1021.15s; no completed tests",
+  "retained_cb01_trust_tests": "5 passed in26.65s",
+  "isolated_proof": "passed; logical causality + real retained OpenSSL + shipped generic storage",
+  "ruff": "passed",
+  "new_v2_protected_integration": "unimplemented, successor80",
+  "production_activation": "refusing, unstarted",
+  "trail_review": "GPT-5.6-sol; original discovery breadth disclosed, no new flags"
+}

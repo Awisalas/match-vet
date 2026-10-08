@@ -131,3 +131,7 @@ fixtures, activate the source or publish operational artifacts. No #70 fitting,
 founder-rule/six-hour change, production PLAY promotion, new remote graph service
 or reinterpretation of old artifacts. Production timing implementation belongs
 to this issue, not #79; live activation requires its separately scoped operation.
+
+Accepted decision records are pushed in commit 6a9edebdc9ce1a2feede2307b43c4a04c9d9f485.
+[ADR 0003](https://github.com/Awisalas/match-vet/blob/6a9edebdc9ce1a2feede2307b43c4a04c9d9f485/docs/adr/0003-causal-matchweek-selection-witness.md) and
+[exact architecture](https://github.com/Awisalas/match-vet/blob/6a9edebdc9ce1a2feede2307b43c4a04c9d9f485/docs/design/causal-matchweek-selection-witness.md) are the implementation contract.
