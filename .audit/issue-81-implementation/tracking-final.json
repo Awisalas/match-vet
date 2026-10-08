@@ -1,0 +1,71 @@
+{
+  "implementation_commit": "7c22a71c7867ed47435bb3805f6b1aa01884fdfd",
+  "issues": [
+    {
+      "assignees": [],
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "blocking": 0,
+        "total_blocked_by": 2,
+        "total_blocking": 0
+      },
+      "labels": [],
+      "number": 80,
+      "state": "open"
+    },
+    {
+      "assignees": [
+        "Awisalas"
+      ],
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "blocking": 1,
+        "total_blocked_by": 0,
+        "total_blocking": 1
+      },
+      "labels": [],
+      "number": 81,
+      "state": "closed"
+    },
+    {
+      "assignees": [],
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "blocking": 1,
+        "total_blocked_by": 1,
+        "total_blocking": 1
+      },
+      "labels": [
+        "ready-for-agent"
+      ],
+      "number": 82,
+      "state": "open"
+    },
+    {
+      "assignees": [],
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "blocking": 1,
+        "total_blocked_by": 1,
+        "total_blocking": 1
+      },
+      "labels": [],
+      "number": 83,
+      "state": "open"
+    },
+    {
+      "assignees": [],
+      "issue_dependencies_summary": {
+        "blocked_by": 1,
+        "blocking": 1,
+        "total_blocked_by": 1,
+        "total_blocking": 1
+      },
+      "labels": [],
+      "number": 84,
+      "state": "open"
+    }
+  ],
+  "issue81_project_items": [],
+  "parent_original_acceptance_preserved": true
+}

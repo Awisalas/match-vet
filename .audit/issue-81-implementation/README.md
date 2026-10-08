@@ -120,3 +120,14 @@ transport authority and exact interval overflow. D rechecked both transport
 findings in memory and confirmed zero emitted requests and no residual blocker.
 A rechecked closing responses, slow headers, dispatch and callback guards; four
 focused checks passed and no remaining acceptance blocker was found.
+
+## Delivery and tracking
+
+Implementation and executed evidence were pushed to main in
+[7c22a71](https://github.com/Awisalas/match-vet/commit/7c22a71). #81 is closed
+as completed with its acceptance checkboxes marked. Native dependency state
+confirms #82 has zero open blockers; it is open, unassigned, labelled
+ready-for-agent and unstarted. #80/#83/#84 remain open. The original #80
+acceptance body was compared and preserved exactly. Repository tracking records
+the new frontier; #81 has no attached project items requiring board updates.
+[Verified tracker state](tracking-final.json) retains the final state snapshot.
