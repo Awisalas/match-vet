@@ -512,8 +512,16 @@ operational trusted UTC upper-bound provider, and #70 numerical derivation profi
 remain unresolved. The default clock refuses.
 
 [Production UTC research and ADR 0002](../adr/0002-production-trusted-utc.md)
-preserve that refusal. No evaluated source satisfies the unchanged return-time
-contract on Termux/Android. A timing-boundary decision is required before a
-production implementation ticket can be ready.
-[Issue #79](https://github.com/Awisalas/match-vet/issues/79) tracks that prerequisite
-under `needs-triage`. No live rebuild has started.
+preserve that refusal. No evaluated source satisfies the unchanged v1 return-time
+contract on Termux/Android. The prospective event-boundary decision below does not
+reinterpret that historical contract.
+[Issue #79](https://github.com/Awisalas/match-vet/issues/79) completed that decision
+with accepted [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md).
+[Parent #80](https://github.com/Awisalas/match-vet/issues/80) remains open for
+prospective causal implementation. Its dependency-ordered children are #81 witness
+protocol, #82 candidate/writer contracts, #83 downstream compatibility and #84
+integrated successor proof. Only #81 is initially `ready-for-agent`; native blocking
+edges are #81 → #82 → #83 → #84 → #80. See the
+[child plan and acceptance ownership](../design/causal-matchweek-implementation-tickets.md).
+Production refusal remains until the entire parent passes. No live rebuild or
+source activation has started; #70 fitting remains separate.

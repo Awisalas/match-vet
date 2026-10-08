@@ -1,0 +1,26 @@
+[
+  {
+    "number": 81,
+    "title": "Implement the causal Matchweek selection witness protocol",
+    "url": "https://github.com/Awisalas/match-vet/issues/81",
+    "blocked_by": null
+  },
+  {
+    "number": 82,
+    "title": "Bind prospective causal candidates across direct and resumed writers",
+    "url": "https://github.com/Awisalas/match-vet/issues/82",
+    "blocked_by": 81
+  },
+  {
+    "number": 83,
+    "title": "Dispatch causal selected state through CB01, F19 and evaluation",
+    "url": "https://github.com/Awisalas/match-vet/issues/83",
+    "blocked_by": 82
+  },
+  {
+    "number": 84,
+    "title": "Prove the complete causal Matchweek successor path for #80",
+    "url": "https://github.com/Awisalas/match-vet/issues/84",
+    "blocked_by": 83
+  }
+]
