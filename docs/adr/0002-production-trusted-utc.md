@@ -82,3 +82,12 @@ as actual-at-return bounds is false. A BOOTTIME anchor covers suspend only when
 its rate and read-error limits are qualified, and still has the final delivery gap.
 Moving authoritative execution to another host expands ownership/deployment and
 does not itself repair the literal return-time requirement.
+
+## Prospective successor, 2026-10-08
+
+[ADR 0003](0003-causal-matchweek-selection-witness.md) now explicitly authorizes
+a causal trusted remote event for newly versioned Matchweek selection. The
+actual-at-return impossibility above remains accepted. The refusing production
+default stays in place until the corrective implementation and successor tests
+complete. This decision's unchanged-v1 statements remain historical; they do not
+forbid the separately authorized prospective design in ADR 0003.

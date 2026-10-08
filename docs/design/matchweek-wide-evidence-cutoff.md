@@ -1,5 +1,12 @@
 # Matchweek-wide evidence cutoff correction
 
+Current successor: [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md)
+and [causal selection architecture](causal-matchweek-selection-witness.md) authorize
+a new prospective remote-event boundary for #79. The return-time clock and writer
+contracts below retain their historical v1 meaning. They remain implemented and
+refusing by default; causal timing code is not implemented. New work must use
+explicit successor versions, never reinterpret these artifacts or acceptance proofs.
+
 Status: implementation and isolated offline acceptance are complete under [#73](https://github.com/Awisalas/match-vet/issues/73) and [#78](https://github.com/Awisalas/match-vet/issues/78). Live authoritative validation remains pending.
 
 ## Decision

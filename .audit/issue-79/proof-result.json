@@ -1,0 +1,34 @@
+{
+  "causal": {
+    "admitted": 1,
+    "attack_contradictions": [
+      "request_before_commit",
+      "remote_event_after_T",
+      "upper_equals_T",
+      "candidate_computed_after_T"
+    ],
+    "delayed_delivery": "allowed",
+    "dependency_permutations": 5040,
+    "pause_error_schedules": 5120,
+    "qualified": 320,
+    "refused": 4800,
+    "return_bound_counterexample": "still fails",
+    "scope": "logical proof under stated trust/order premises, not production tests"
+  },
+  "retained_wire": {
+    "application_must_require_nonce": true,
+    "diagnostic_token_only": true,
+    "exact_signature_imprint": "pass",
+    "generic_no_nonce_verifier": "accepts",
+    "replayed_other_nonce": "refused",
+    "signed_accuracy_seconds": 1,
+    "upper_bound": "2026-10-05T04:50:22+00:00",
+    "wrong_imprint": "refused"
+  },
+  "storage": {
+    "four_exact_refs_roundtrip": "pass",
+    "protected_v2_publication": "not implemented",
+    "shipped_generic_schema": 1,
+    "sqlite_schema_unchanged": true
+  }
+}

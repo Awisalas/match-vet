@@ -1,5 +1,12 @@
 # Production trusted UTC decision and confidence shape
 
+Current successor: [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md)
+and [causal selection architecture](causal-matchweek-selection-witness.md) authorize
+a new prospective remote-event boundary for #79. The return-time clock and writer
+contracts below retain their historical v1 meaning. They remain implemented and
+refusing by default; causal timing code is not implemented. New work must use
+explicit successor versions, never reinterpret these artifacts or acceptance proofs.
+
 This design does not approve a production provider. See
 [ADR 0002](../adr/0002-production-trusted-utc.md) and the
 [primary-source research](../research/production-trusted-utc-2026-10-07.md).

@@ -1,0 +1,26 @@
+[
+  {
+    "file": ".audit/issue-79/sources/sigstore-tsa-policy.md",
+    "url": "https://raw.githubusercontent.com/sigstore/timestamp-authority/3a83b1f015affed68763ef73f7729aa478c650e1/docs/tsa-policy.md",
+    "sha256": "97a3306df4f0ea5f5f64a938072bb802492b7cf1fca0661b20de0a6c98071bcf",
+    "byte_length": 38584
+  },
+  {
+    "file": ".audit/issue-79/sources/sigstore-handler.go",
+    "url": "https://raw.githubusercontent.com/sigstore/timestamp-authority/3593e847b84fa501e2a0729eaea2c6ac982c4ab3/pkg/api/timestamp.go",
+    "sha256": "4dc8f6f7bedc2b9b9d0d560f8d8d583027b7a44eee92ac8566218cb9de64d216",
+    "byte_length": 8859
+  },
+  {
+    "file": ".audit/issue-79/sources/sigstore-readme.md",
+    "url": "https://raw.githubusercontent.com/sigstore/timestamp-authority/3593e847b84fa501e2a0729eaea2c6ac982c4ab3/README.md",
+    "sha256": "b039b0a5e4b01397bba6471626a6249014265fe3ba2629aef9df35a5d4b54895",
+    "byte_length": 14450
+  },
+  {
+    "file": ".audit/issue-79/sources/LICENSE",
+    "url": "https://raw.githubusercontent.com/sigstore/timestamp-authority/3593e847b84fa501e2a0729eaea2c6ac982c4ab3/LICENSE",
+    "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+    "byte_length": 11356
+  }
+]

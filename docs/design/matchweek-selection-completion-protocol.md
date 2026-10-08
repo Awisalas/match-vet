@@ -1,5 +1,12 @@
 # Matchweek selection completion protocol
 
+Current successor: [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md)
+and [causal selection architecture](causal-matchweek-selection-witness.md) authorize
+a new prospective remote-event boundary for #79. The return-time clock and writer
+contracts below retain their historical v1 meaning. They remain implemented and
+refusing by default; causal timing code is not implemented. New work must use
+explicit successor versions, never reinterpret these artifacts or acceptance proofs.
+
 Intent: prove that the exact immutable logical-Matchweek assignment and its complete
 dependency graph were durable before common T. A receipt may persist later and
 attest to that earlier event. It cannot select, replace, recompute, or repair state.

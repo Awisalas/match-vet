@@ -1,0 +1,61 @@
+
+==================================== ERRORS ====================================
+______________ ERROR collecting tests/test_matchweek_research.py _______________
+ImportError while importing test module '/data/data/com.termux/files/home/projects/match-vet/tests/test_matchweek_research.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../../usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_matchweek_research.py:12: in <module>
+    from matchweek_research_support import (
+tests/matchweek_research_support.py:13: in <module>
+    from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCUpperBound
+E   ModuleNotFoundError: No module named 'matchvet'
+____________________ ERROR collecting tests/test_issue76.py ____________________
+ImportError while importing test module '/data/data/com.termux/files/home/projects/match-vet/tests/test_issue76.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../../usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_issue76.py:8: in <module>
+    from matchweek_research_support import BEFORE, CUTOFF, Clock
+tests/matchweek_research_support.py:13: in <module>
+    from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCUpperBound
+E   ModuleNotFoundError: No module named 'matchvet'
+____________________ ERROR collecting tests/test_issue78.py ____________________
+ImportError while importing test module '/data/data/com.termux/files/home/projects/match-vet/tests/test_issue78.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../../usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_issue78.py:10: in <module>
+    from issue77_support import RetainedWitness
+tests/issue77_support.py:7: in <module>
+    from test_cb01_repository import _TUF_FIXTURE, DeterministicWitnessBackend
+tests/test_cb01_repository.py:12: in <module>
+    from test_match_evidence_cutoff import _freeze
+tests/test_match_evidence_cutoff.py:5: in <module>
+    from test_matchweek_membership import _persistable_schedule_assessment
+tests/test_matchweek_membership.py:12: in <module>
+    from matchvet.fixture_coverage import (
+E   ModuleNotFoundError: No module named 'matchvet'
+__________________ ERROR collecting tests/test_cb01_trust.py ___________________
+ImportError while importing test module '/data/data/com.termux/files/home/projects/match-vet/tests/test_cb01_trust.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../../usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_cb01_trust.py:9: in <module>
+    import matchvet.cb01_trust as cb01_trust
+E   ModuleNotFoundError: No module named 'matchvet'
+=========================== short test summary info ============================
+ERROR tests/test_matchweek_research.py
+ERROR tests/test_issue76.py
+ERROR tests/test_issue78.py
+ERROR tests/test_cb01_trust.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 4 errors during collection !!!!!!!!!!!!!!!!!!!!
+4 errors in 4.99s

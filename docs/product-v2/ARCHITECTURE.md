@@ -4,7 +4,25 @@ This document defines the target architecture and the boundary between V1 and V2
 
 Keep historical V1 artifacts and readers under their original versions. Keep SQLite and the Termux CLI. Use free, open, or official data sources and replaceable provider adapters. Do not add paid data or infrastructure, subscriptions, or an external app API in this phase.
 
-This architecture follows [Product V2 direction](PRODUCT-DIRECTION.md). The [cutoff correction decision](../adr/0001-matchweek-wide-evidence-cutoff.md) supersedes the independent-cutoff direction recorded in the historical [V1 migration audit](V1-MIGRATION-AUDIT.md). The correction is designed but not yet implemented.
+This architecture follows [Product V2 direction](PRODUCT-DIRECTION.md). The [cutoff correction decision](../adr/0001-matchweek-wide-evidence-cutoff.md) supersedes the independent-cutoff direction recorded in the historical [V1 migration audit](V1-MIGRATION-AUDIT.md). The #73/#74–#78 correction is historically complete under its deterministic trusted-clock premise. Its default production clock still refuses.
+
+## Production timing boundary
+
+[ADR 0003](../adr/0003-causal-matchweek-selection-witness.md) authorizes a prospective
+causal remote-event boundary. Complete the exact F11/F13/F14/F16 graph, durably
+commit the unique logical Matchweek selection, then construct a fresh cryptographic
+request to the qualified Sigstore RFC3161 TSA. Its signed event upper bound must
+satisfy `selection commit < event <= genTime + accuracy < common T`. Response
+delivery and protected receipt persistence may occur later. A lost or invalid
+witness leaves the occupied slot permanently unqualified, with no restart backfill.
+
+Prospective writer contracts remain unqualified candidates until this final proof;
+local time is advisory. All exact lineage, occupied-slot and immutable selected
+replay guards remain. The causal contract and affected artifacts/readers need
+new versions. The rule remains whole Friday–Monday Matchweek, earliest INCLUDED
+kickoff minus explicit 21600 seconds. CB01's separate post-T/pre-kickoff witness
+retains its existing semantics. No new production timing code or schema is
+implemented by this decision. See the [complete architecture contract](../design/causal-matchweek-selection-witness.md).
 
 ## Caller contract
 

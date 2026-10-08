@@ -1,0 +1,2 @@
+# Preserve exact upstream policy bytes, including trailing whitespace.
+sigstore-tsa-policy.md -whitespace
