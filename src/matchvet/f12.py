@@ -30,6 +30,8 @@ from matchvet.weather_provider_health import (
 F12_CONTRACT_VERSION = "matchvet-v2-contextual-research-attempt"
 F12_SCHEMA_VERSION = 1
 F12_ATTEMPT_MEDIA_TYPE = "application/vnd.matchvet.v2-contextual-attempt.v1+json"
+CAUSAL_F12_CONTRACT_VERSION = "matchvet-causal-contextual-attempt-v2"
+CAUSAL_F12_ATTEMPT_MEDIA_TYPE = "application/vnd.matchvet.causal-contextual-attempt.v2+json"
 _RESPONSE_MEDIA_TYPE = "application/vnd.matchvet.f11-weather-response.v2+json"
 
 
@@ -80,6 +82,7 @@ class ContextualResearchAttempt:
     response_artifact_digest: str | None
     response_digest: str | None
     provider_health_digest: str
+    candidate_contract_digest: str | None = None
 
     @classmethod
     def create(
@@ -92,6 +95,7 @@ class ContextualResearchAttempt:
         response_artifact_digest: str | None,
         error_type: str | None,
         response_status: int | None = None,
+        candidate_contract_digest: str | None = None,
     ) -> ContextualResearchAttempt:
         scope = open_meteo_requested_scope(request)
         if (request.fixture_id, request.cutoff_utc) != (
@@ -122,7 +126,8 @@ class ContextualResearchAttempt:
         )
         usability = (
             AttemptUsability.USABLE
-            if weather.state.value == "OBSERVED" and weather.is_frozen_input
+            if weather.state.value == "OBSERVED"
+            and (candidate_contract_digest is not None or weather.is_frozen_input)
             else AttemptUsability.UNUSABLE
         )
         acquired_at = health.checked_at_utc
@@ -137,10 +142,21 @@ class ContextualResearchAttempt:
             "cutoff_digest": cutoff.digest,
             "requested_scope_id": scope.scope_id,
         }
+        if candidate_contract_digest is not None:
+            from matchvet.causal_candidate import require_digest
+
+            require_digest(candidate_contract_digest)
+            identity["candidate_contract_digest"] = candidate_contract_digest
+        contract_version = (
+            CAUSAL_F12_CONTRACT_VERSION
+            if candidate_contract_digest is not None
+            else F12_CONTRACT_VERSION
+        )
+        schema_version = 2 if candidate_contract_digest is not None else F12_SCHEMA_VERSION
         attempt_id = "f12:" + _sha256(_canonical_json(identity))
         payload: dict[str, Any] = {
-            "contract_version": F12_CONTRACT_VERSION,
-            "schema_version": F12_SCHEMA_VERSION,
+            "contract_version": contract_version,
+            "schema_version": schema_version,
             "attempt_id": attempt_id,
             **identity,
             "fixture_revision_ref": cutoff.fixture_revision_ref,
@@ -157,8 +173,8 @@ class ContextualResearchAttempt:
         }
         digest = "sha256:" + _sha256(_canonical_json(payload))
         return cls(
-            contract_version=F12_CONTRACT_VERSION,
-            schema_version=F12_SCHEMA_VERSION,
+            contract_version=contract_version,
+            schema_version=schema_version,
             attempt_id=attempt_id,
             digest=digest,
             provider_id=OPEN_METEO_PROVIDER_ID,
@@ -178,14 +194,14 @@ class ContextualResearchAttempt:
             response_artifact_digest=response_artifact_digest,
             response_digest=weather.response_content_sha256,
             provider_health_digest=health.digest,
+            candidate_contract_digest=candidate_contract_digest,
         )
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            **asdict(self),
-            "outcome": self.outcome.value,
-            "usability": self.usability.value,
-        }
+        result = {**asdict(self), "outcome": self.outcome.value, "usability": self.usability.value}
+        if self.candidate_contract_digest is None:
+            result.pop("candidate_contract_digest")
+        return result
 
     def to_bytes(self) -> bytes:
         return _canonical_json(self.to_dict())
@@ -201,9 +217,13 @@ class ContextualResearchAttempt:
             raise F12Error("Malformed contextual research attempt.") from error
         if (
             attempt.to_bytes() != encoded
-            or attempt.contract_version != F12_CONTRACT_VERSION
+            or (attempt.contract_version, attempt.schema_version)
+            != (
+                (CAUSAL_F12_CONTRACT_VERSION, 2)
+                if attempt.candidate_contract_digest is not None
+                else (F12_CONTRACT_VERSION, F12_SCHEMA_VERSION)
+            )
             or type(attempt.schema_version) is not int
-            or attempt.schema_version != F12_SCHEMA_VERSION
             or attempt.provider_id != OPEN_METEO_PROVIDER_ID
             or attempt.capability_id != WEATHER_CAPABILITY_ID
         ):
@@ -218,6 +238,11 @@ class ContextualResearchAttempt:
             "cutoff_digest": attempt.cutoff_digest,
             "requested_scope_id": attempt.requested_scope_id,
         }
+        if attempt.candidate_contract_digest is not None:
+            from matchvet.causal_candidate import require_digest
+
+            require_digest(attempt.candidate_contract_digest)
+            identity["candidate_contract_digest"] = attempt.candidate_contract_digest
         if attempt.attempt_id != "f12:" + _sha256(_canonical_json(identity)):
             raise F12Error("Contextual research attempt ID differs from its request identity.")
         if attempt.digest != "sha256:" + _sha256(_canonical_json(payload)):
@@ -228,19 +253,42 @@ class ContextualResearchAttempt:
 class ContextualAttemptRepository:
     """Publish and resolve exact F12 attempts as protected immutable artifacts."""
 
-    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        *,
+        clock: TrustedUTCClock | None = None,
+        candidate_contract_digest: str | None = None,
+        selection_contract: str | None = None,
+    ) -> None:
         self.artifacts = ArtifactStore(store)
-        self.research = MatchweekResearchRepository(store, clock=clock)
+        self.research = MatchweekResearchRepository(
+            store,
+            clock=clock,
+            candidate_contract_digest=candidate_contract_digest,
+            selection_contract=selection_contract,
+        )
         self._clock = clock
         self.store = store
+        self.candidate_contract_digest = candidate_contract_digest
+        self.attempt_media_type = (
+            CAUSAL_F12_ATTEMPT_MEDIA_TYPE
+            if candidate_contract_digest is not None
+            else F12_ATTEMPT_MEDIA_TYPE
+        )
 
     def publish(self, attempt: ContextualResearchAttempt) -> ContextualResearchAttempt:
+        if attempt.candidate_contract_digest != self.candidate_contract_digest:
+            raise F12Error(
+                "Attempt candidate descriptor differs from explicit constructor context."
+            )
         checked = ContextualResearchAttempt.from_bytes(attempt.to_bytes())
         from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
 
         cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(checked.cutoff_id)
         if cutoff is None:
             raise F12Error("Exact F07 cutoff is missing.")
+        self.research.validate_context(cutoff.freeze_id, cutoff.policy_digest)
         selected = self.research.selected_for_boundary(cutoff.freeze_id, cutoff.policy_digest)
         if selected is not None:
             manifest = self.artifacts.verify_manifest(selected.digest)
@@ -267,7 +315,9 @@ class ContextualAttemptRepository:
                 raise F12Error("Attempt differs from the exact selected acquisition.")
             return selected_attempt
         self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
-        if self.research.is_corrected(cutoff.policy_digest):
+        if self.candidate_contract_digest is None and self.research.is_corrected(
+            cutoff.policy_digest
+        ):
             boundary = datetime.fromisoformat(cutoff.cutoff_at_utc)
             if any(
                 datetime.fromisoformat(time) > boundary
@@ -278,7 +328,7 @@ class ContextualAttemptRepository:
 
         def require_first_attempt() -> None:
             for metadata in self.store.artifact_catalog():
-                if metadata.media_type == F12_ATTEMPT_MEDIA_TYPE:
+                if metadata.media_type == self.attempt_media_type:
                     prior = ContextualResearchAttempt.from_bytes(
                         self.artifacts.read_artifact(metadata.digest)
                     )
@@ -297,6 +347,7 @@ class ContextualAttemptRepository:
         if existing is not None:
             if existing.to_bytes() != checked.to_bytes():
                 raise F12Error("A different acquisition already exists for this exact request.")
+            self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
             return existing
         from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
 
@@ -358,7 +409,12 @@ class ContextualAttemptRepository:
         ):
             raise F12Error("A failed attempt cannot be marked usable.")
         self._validate_response(checked)
-        artifacts.publish_artifact(checked.to_bytes(), F12_ATTEMPT_MEDIA_TYPE)
+        if self.candidate_contract_digest is not None:
+            from matchvet.candidate_primitives import retain_health
+
+            retain_health(self.store, artifacts, checked.provider_health_digest)
+        artifacts.publish_artifact(checked.to_bytes(), self.attempt_media_type)
+        self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
         return checked
 
     def get(self, attempt_id: str, *, cutoff_id: str | None = None) -> ContextualResearchAttempt:
@@ -381,10 +437,17 @@ class ContextualAttemptRepository:
     def _get_optional(self, attempt_id: str) -> ContextualResearchAttempt | None:
         matches: list[ContextualResearchAttempt] = []
         for metadata in self.store.artifact_catalog():
-            if metadata.media_type != F12_ATTEMPT_MEDIA_TYPE:
+            if metadata.media_type not in {F12_ATTEMPT_MEDIA_TYPE, CAUSAL_F12_ATTEMPT_MEDIA_TYPE}:
                 continue
             encoded = self.artifacts.read_artifact(metadata.digest)
             attempt = ContextualResearchAttempt.from_bytes(encoded)
+            expected_media = (
+                CAUSAL_F12_ATTEMPT_MEDIA_TYPE
+                if attempt.candidate_contract_digest is not None
+                else F12_ATTEMPT_MEDIA_TYPE
+            )
+            if metadata.media_type != expected_media:
+                raise F12Error("Attempt schema/media dispatch differs.")
             if attempt.attempt_id == attempt_id:
                 if metadata.retention_class != "PROTECTED":
                     raise F12Error("Attempt artifact is not protected.")
@@ -404,8 +467,22 @@ class ContextualAttemptRepository:
             "cutoff_digest": cutoff_digest,
             "requested_scope_id": requested_scope_id,
         }
+        from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
+
+        cutoff = MatchEvidenceCutoffRepository(self.store).replay(cutoff_id)
+        self.research.validate_context(cutoff.freeze_id, cutoff.policy_digest)
+        if self.candidate_contract_digest is not None:
+            selected = self.research.selected_for_boundary(cutoff.freeze_id, cutoff.policy_digest)
+            if selected is None:
+                self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
+            identity["candidate_contract_digest"] = self.candidate_contract_digest
         attempt_id = "f12:" + _sha256(_canonical_json(identity))
-        return self._get_optional(attempt_id)
+        scope = self.research.indexed_replay_catalog(cutoff.freeze_id, cutoff.policy_digest)
+        with self.store._scope_artifact_catalog(scope):
+            result = self._get_optional(attempt_id)
+        if self.candidate_contract_digest is not None and selected is None:
+            self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
+        return result
 
     def _validate_response(self, attempt: ContextualResearchAttempt) -> None:
         response_ref = attempt.response_artifact_digest

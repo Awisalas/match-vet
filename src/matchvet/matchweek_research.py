@@ -17,7 +17,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from matchvet.causal_candidate import CausalCandidateContract
     from matchvet.causal_selection import _CausalGraph
+    from matchvet.t15 import PolicyVersion
 
 from matchvet.artifacts import (
     ArtifactError,
@@ -131,7 +133,24 @@ def _reference(artifacts: ArtifactStore, digest: str) -> ManifestArtifact:
 class MatchweekResearchRepository:
     """Own admission, commit acknowledgement, one receipt attempt and exact replay."""
 
-    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        *,
+        clock: TrustedUTCClock | None = None,
+        candidate_contract_digest: str | None = None,
+        selection_contract: str | None = None,
+        advisory_clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        from matchvet.causal_candidate import writer_contract
+
+        self.selection_contract = writer_contract(candidate_contract_digest, selection_contract)
+        self.candidate_contract_digest = candidate_contract_digest
+        self._advisory_clock = advisory_clock
+        self._candidate_cache: dict[str, CausalCandidateContract] = {}
+        self._association_cache: dict[tuple[str, str], str] = {}
+        self._boundary_cache: dict[str, tuple[str, str]] = {}
+        self._run_association_cache: dict[tuple[str, str, str], tuple[str, str, str | None]] = {}
         self._store = store
         self._artifacts = ArtifactStore(store)
         self._clock = clock if clock is not None else _UnavailableClock()
@@ -260,7 +279,150 @@ class MatchweekResearchRepository:
     def _admit_v2(
         self, f16_digest: str, *, references: tuple[ManifestArtifact, ...] | None = None
     ) -> _CausalGraph:
-        raise MatchweekResearchError("Unsupported causal successor stage schemas until #82.")
+        from matchvet.causal_selection import _CausalGraph
+        from matchvet.f16 import CAUSAL_MANIFEST_MEDIA_TYPE, F16MatchweekProcessor
+
+        try:
+            metadata = self._store.artifact_metadata(f16_digest)
+            if metadata is None or metadata.media_type != CAUSAL_MANIFEST_MEDIA_TYPE:
+                raise MatchweekResearchError("Unsupported causal successor F16 contract.")
+            root = json.loads(self._artifacts.read_artifact(f16_digest))
+            if root.get("schema_version") != 2 or not isinstance(
+                root.get("candidate_contract_digest"), str
+            ):
+                raise MatchweekResearchError("Incomplete causal successor context.")
+            scope = (
+                frozenset(ref.digest for ref in references)
+                if references is not None
+                else self.indexed_replay_catalog(root["freeze_id"], root["cutoff_policy_digest"])
+            )
+            with (
+                self._store._scope_artifact_catalog(scope),
+                self._store._capture_verified_artifacts() as digests,
+            ):
+                manifest = F16MatchweekProcessor(self._store).replay_manifest(f16_digest)
+                value = manifest.to_dict()
+                candidate = self.resolve_candidate(value["candidate_contract_digest"])
+                freeze = MatchweekMembershipRepository(self._store).get_by_id(candidate.freeze_id)
+                assert freeze is not None
+                boundaries = MatchEvidenceCutoffRepository(self._store).replay_for_freeze(
+                    candidate.freeze_id, candidate.cutoff_policy_digest
+                )
+                if {row.cutoff_id for row in manifest.match_results} != {
+                    c.cutoff_id for c in boundaries
+                } or len({row.evidence_digest for row in manifest.match_results}) != 1:
+                    raise MatchweekResearchError("Incomplete homogeneous causal graph.")
+                closure = tuple(_reference(self._artifacts, item) for item in sorted(digests))
+                if references is not None and closure != references:
+                    raise MatchweekResearchError(
+                        "Causal bound references differ from the actual complete graph."
+                    )
+                graph = _CausalGraph(
+                    freeze.season,
+                    freeze.matchweek_friday,
+                    candidate.freeze_id,
+                    candidate.cutoff_policy_digest,
+                    candidate.cutoff_at_utc,
+                    f16_digest,
+                    closure,
+                    candidate.digest,
+                    candidate.freeze_digest,
+                    candidate.profile_digest,
+                    manifest.match_results[0].model_digest,
+                    candidate.engine_contract_digest,
+                    candidate.decision_policy_artifact_digest,
+                )
+                graph.check(self._artifacts)
+                return graph
+        except MatchweekResearchError:
+            raise
+        except (
+            ArtifactError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            IndexError,
+        ) as error:
+            raise MatchweekResearchError(
+                "Unsupported or incomplete causal successor graph."
+            ) from error
+
+    def publish_candidate(
+        self,
+        *,
+        freeze_id: str,
+        policy_digest: str,
+        profile_digest: str,
+        decision_policy: PolicyVersion,
+        engine_version: str,
+        witness_profile_digest: str,
+    ) -> str:
+        from matchvet.causal_candidate import publish
+
+        return publish(
+            self._store,
+            freeze_id=freeze_id,
+            policy_digest=policy_digest,
+            profile_digest=profile_digest,
+            decision_policy=decision_policy,
+            engine_version=engine_version,
+            witness_profile_digest=witness_profile_digest,
+        )
+
+    def resolve_candidate(self, digest: str) -> CausalCandidateContract:
+        from matchvet.causal_candidate import resolve
+
+        if self._store._verified_artifacts is not None:
+            return resolve(self._store, digest)
+        if digest not in self._candidate_cache:
+            self._candidate_cache[digest] = resolve(self._store, digest)
+        return self._candidate_cache[digest]
+
+    def require_causal_write(self, digest: str) -> None:
+        candidate = self.resolve_candidate(digest)
+        if (
+            self._store.snapshot_manifest_digest_for_snapshot(
+                selection_slot(candidate.logical_matchweek_id)
+            )
+            is not None
+        ):
+            raise MatchweekResearchError("The logical Matchweek selection slot is occupied.")
+        self._candidate_conflicts(candidate.logical_matchweek_id, digest)
+        if self._advisory_clock is not None:
+            observed = self._advisory_clock()
+            if observed.tzinfo is None or observed >= datetime.fromisoformat(
+                candidate.cutoff_at_utc
+            ):
+                raise MatchweekResearchError(
+                    "Advisory clock refuses obviously wasted candidate work."
+                )
+
+    def validate_context(
+        self,
+        freeze_id: str,
+        policy_digest: str,
+        *,
+        profile_digest: str | None = None,
+        decision_policy_digest: str | None = None,
+    ) -> None:
+        if self.candidate_contract_digest is None:
+            return
+        candidate = self.resolve_candidate(self.candidate_contract_digest)
+        if (
+            (candidate.freeze_id, candidate.cutoff_policy_digest) != (freeze_id, policy_digest)
+            or (profile_digest is not None and candidate.profile_digest != profile_digest)
+            or (
+                decision_policy_digest is not None
+                and candidate.decision_policy_digest != decision_policy_digest
+            )
+        ):
+            raise MatchweekResearchError("Explicit candidate descriptor context differs.")
+
+    def _candidate_conflicts(self, logical: str, candidate_digest: str | None) -> None:
+        from matchvet.causal_candidate import check_occupancy
+
+        check_occupancy(self, logical, candidate_digest)
 
     def seal_completed_v2(self, f16_manifest_digest: str) -> FrozenMatchweekResearch:
         from matchvet.causal_selection import _seal
@@ -325,9 +487,45 @@ class MatchweekResearchRepository:
     def inspect_causal(self, selection_digest: str) -> FrozenMatchweekResearch:
         from matchvet.causal_selection import _replay
 
+        selection = self._artifacts.verify_manifest(selection_digest)
+        logical = selection.matchweek_id.value
+        if self._store.snapshot_manifest_digest_for_snapshot(completion_slot(logical)) is None:
+            from matchvet.causal_selection import _manifest_v2, _version_v2
+            from matchvet.f16 import CAUSAL_MANIFEST_MEDIA_TYPE
+
+            if (
+                selection.versions != (ManifestVersion.from_identity(_version_v2("selection")),)
+                or self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical))
+                != selection_digest
+            ):
+                raise MatchweekResearchError("Inspection requires the exact indexed causal winner.")
+            roots = [
+                ref.digest
+                for ref in selection.artifacts
+                if ref.media_type == CAUSAL_MANIFEST_MEDIA_TYPE
+            ]
+            if len(roots) != 1:
+                raise MatchweekResearchError("Inspection requires one exact complete F16.")
+            graph = self._admit_v2(roots[0], references=selection.artifacts)
+            self._validate_manifest(
+                selection,
+                _manifest_v2(self, graph, role="selection", created=selection.created_at_utc),
+            )
+            return FrozenMatchweekResearch(
+                selection_digest,
+                graph.season,
+                graph.friday,
+                graph.freeze_id,
+                graph.policy_digest,
+                graph.cutoff,
+                graph.f16_digest,
+                "",
+            )
         return _replay(self, selection_digest, qualify=False)
 
     def require_preselection_open(self, freeze_id: str, policy_digest: str) -> str:
+        if self.candidate_contract_digest is not None:
+            raise MatchweekResearchError("Causal admission never returns trusted UTC.")
         try:
             freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
             if freeze is None:
@@ -374,8 +572,13 @@ class MatchweekResearchRepository:
                 continue
             evidence = json.loads(self._artifacts.read_artifact(metadata.digest))
             if metadata.media_type == F12_ATTEMPT_MEDIA_TYPE:
-                boundary = cutoffs.replay(evidence["cutoff_id"])
-                other_freeze, other_policy = boundary.freeze_id, boundary.policy_digest
+                if evidence["cutoff_id"] not in self._boundary_cache:
+                    boundary = cutoffs.replay(evidence["cutoff_id"])
+                    self._boundary_cache[evidence["cutoff_id"]] = (
+                        boundary.freeze_id,
+                        boundary.policy_digest,
+                    )
+                other_freeze, other_policy = self._boundary_cache[evidence["cutoff_id"]]
             else:
                 other_freeze, other_policy = evidence["freeze_id"], evidence["policy_digest"]
             if (other_freeze, other_policy) == (freeze_id, policy_digest):
@@ -431,8 +634,14 @@ class MatchweekResearchRepository:
         self, freeze_id: str, policy_digest: str, profile_digest: str, decision_policy_digest: str
     ) -> None:
         """Pin the whole-slate contract before any new F15/F16 phase or F14 input."""
+        self.validate_context(
+            freeze_id,
+            policy_digest,
+            profile_digest=profile_digest,
+            decision_policy_digest=decision_policy_digest,
+        )
         self.require_candidate_write(freeze_id, policy_digest)
-        if not self.is_corrected(policy_digest):
+        if self.candidate_contract_digest is not None or not self.is_corrected(policy_digest):
             return
         self._require_contract_identity(
             freeze_id, policy_digest, profile_digest, decision_policy_digest
@@ -456,8 +665,10 @@ class MatchweekResearchRepository:
             if metadata.media_type != DECISION_INPUT_MEDIA_TYPE:
                 continue
             value = json.loads(self._artifacts.read_artifact(metadata.digest))
-            cutoff = MatchEvidenceCutoffRepository(self._store).replay(value["cutoff_id"])
-            if (cutoff.freeze_id, cutoff.policy_digest) == (freeze_id, policy_digest) and (
+            if value["cutoff_id"] not in self._boundary_cache:
+                cutoff = MatchEvidenceCutoffRepository(self._store).replay(value["cutoff_id"])
+                self._boundary_cache[value["cutoff_id"]] = (cutoff.freeze_id, cutoff.policy_digest)
+            if self._boundary_cache[value["cutoff_id"]] == (freeze_id, policy_digest) and (
                 value["profile_digest"],
                 value["policy"].get("policy_digest"),
             ) != (profile_digest, decision_policy_digest):
@@ -467,6 +678,14 @@ class MatchweekResearchRepository:
 
     def require_candidate_write(self, freeze_id: str, policy_digest: str) -> str | None:
         """Dispatch legacy research separately; corrected writes share one authority."""
+        self.validate_context(freeze_id, policy_digest)
+        if self.candidate_contract_digest is not None:
+            self.require_causal_write(self.candidate_contract_digest)
+            return None
+        freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
+        if freeze is None:
+            raise MatchweekResearchError("Exact F06 freeze is missing.")
+        self._candidate_conflicts(_logical_identity(freeze.season, freeze.matchweek_friday), None)
         if self.is_corrected(policy_digest):
             return self.require_preselection_open(freeze_id, policy_digest)
         freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
@@ -488,13 +707,33 @@ class MatchweekResearchRepository:
         digest = self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical))
         if digest is None:
             return None
-        selected = self.replay(digest)
+        self.validate_context(freeze_id, policy_digest)
+        from matchvet.causal_selection import _version_v2
+
+        selection = self._artifacts.verify_manifest(digest)
+        causal_selection = selection.versions == (
+            ManifestVersion.from_identity(_version_v2("selection")),
+        )
+        if causal_selection and self.candidate_contract_digest is None:
+            raise MatchweekResearchError(
+                "Selected causal writer lookup requires explicit candidate context."
+            )
+        if self.candidate_contract_digest is not None:
+            if not causal_selection:
+                raise MatchweekResearchError("Selected contract differs from explicit candidate.")
+            selected = self.inspect_causal(digest)
+            graph = self._admit_v2(selected.f16_manifest_digest, references=selection.artifacts)
+            if graph.candidate_digest != self.candidate_contract_digest:
+                raise MatchweekResearchError("Selected candidate descriptor differs.")
+        else:
+            selected = self.replay(digest)
         if (selected.freeze_id, selected.policy_digest) != (freeze_id, policy_digest):
             raise MatchweekResearchError("The selected exact freeze and policy differ.")
         return selected
 
     def indexed_replay_catalog(self, freeze_id: str, policy_digest: str) -> frozenset[str] | None:
         """Read the frozen catalog view; this does not qualify a selection or a writer."""
+        from matchvet.f16 import CAUSAL_MANIFEST_MEDIA_TYPE
         from matchvet.f16 import MANIFEST_MEDIA_TYPE as F16_MEDIA_TYPE
 
         if self._store._artifact_catalog_scope is not None:
@@ -511,13 +750,44 @@ class MatchweekResearchRepository:
         if digest is None:
             return None
         selection = self._artifacts.verify_manifest(digest)
-        f16 = tuple(ref.digest for ref in selection.artifacts if ref.media_type == F16_MEDIA_TYPE)
+        f16 = tuple(
+            ref.digest
+            for ref in selection.artifacts
+            if ref.media_type in {F16_MEDIA_TYPE, CAUSAL_MANIFEST_MEDIA_TYPE}
+        )
         if len(f16) != 1:
             raise MatchweekResearchError("Selection must identify exactly one complete F16.")
         value = json.loads(self._artifacts.read_artifact(f16[0]))
         if (value["freeze_id"], value["cutoff_policy_digest"]) != (freeze_id, policy_digest):
             return None
         return frozenset(ref.digest for ref in selection.artifacts)
+
+    def candidate_run_guard(
+        self, freeze_id: str, policy_digest: str, contract: tuple[str, str]
+    ) -> Callable[[], object]:
+        """Guard run metadata without turning its clocks into stage authority."""
+        if self.candidate_contract_digest is not None:
+            artifacts = self.candidate_artifacts(freeze_id, policy_digest, contract=contract)
+            assert artifacts._write_guard is not None
+            return artifacts._write_guard
+        freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
+        if freeze is None:
+            raise MatchweekResearchError("Exact F15 freeze is missing.")
+        logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+        corrected = self.is_corrected(policy_digest)
+
+        def require_run_open() -> None:
+            self._candidate_conflicts(logical, None)
+            if (
+                self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical))
+                is not None
+            ):
+                raise MatchweekResearchError("The logical Matchweek selection slot is occupied.")
+            if corrected:
+                self._require_candidate_identity(logical, freeze_id, policy_digest)
+                self._require_contract_identity(freeze_id, policy_digest, *contract)
+
+        return require_run_open
 
     def candidate_artifacts(
         self,
@@ -527,8 +797,43 @@ class MatchweekResearchRepository:
         check_state: Callable[[], object] | None = None,
         contract: tuple[str, str] | None = None,
     ) -> ArtifactStore:
+        if self.candidate_contract_digest is not None:
+            self.validate_context(freeze_id, policy_digest)
+            self.require_causal_write(self.candidate_contract_digest)
+
+            def require_causal_open() -> None:
+                assert self.candidate_contract_digest is not None
+                self.require_causal_write(self.candidate_contract_digest)
+                if contract is not None:
+                    self.validate_context(
+                        freeze_id,
+                        policy_digest,
+                        profile_digest=contract[0],
+                        decision_policy_digest=contract[1],
+                    )
+                if check_state is not None:
+                    check_state()
+
+            return ArtifactStore(self._store, write_guard=require_causal_open)
         if not self.is_corrected(policy_digest):
-            return ArtifactStore(self._store)
+            self.require_candidate_write(freeze_id, policy_digest)
+            freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
+            assert freeze is not None
+            logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+
+            def require_legacy_open() -> None:
+                self._candidate_conflicts(logical, None)
+                if (
+                    self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical))
+                    is not None
+                ):
+                    raise MatchweekResearchError(
+                        "The logical Matchweek selection slot is occupied."
+                    )
+                if check_state is not None:
+                    check_state()
+
+            return ArtifactStore(self._store, write_guard=require_legacy_open)
         self.require_preselection_open(freeze_id, policy_digest)
         freeze = MatchweekMembershipRepository(self._store).get_by_id(freeze_id)
         assert freeze is not None
@@ -540,6 +845,7 @@ class MatchweekResearchRepository:
         )
 
         def require_open() -> None:
+            self._candidate_conflicts(logical, None)
             if (
                 self._store.snapshot_manifest_digest_for_snapshot(selection_slot(logical))
                 is not None

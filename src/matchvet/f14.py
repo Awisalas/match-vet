@@ -12,7 +12,13 @@ from typing import Any, cast
 from matchvet.artifacts import ArtifactStore
 from matchvet.f10 import V2_REQUIREMENT_CATALOG
 from matchvet.f12 import ContextualAttemptRepository
-from matchvet.f13 import INPUT_MEDIA_TYPE, F13Error, ModelContractRepository
+from matchvet.f13 import (
+    INPUT_MEDIA_TYPE,
+    F13Error,
+    ModelContractRepository,
+    media_for_schema,
+    research_context,
+)
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
 from matchvet.matchweek_membership import canonical_json
 from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
@@ -40,6 +46,8 @@ from matchvet.t15 import (
 PROFILE_MEDIA_TYPE = "application/vnd.matchvet.f14-preference-profile.v2+json"
 DECISION_INPUT_MEDIA_TYPE = "application/vnd.matchvet.f14-decision-input.v2+json"
 DECISION_MEDIA_TYPE = "application/vnd.matchvet.f14-decision-result.v2+json"
+CAUSAL_DECISION_INPUT_MEDIA_TYPE = "application/vnd.matchvet.f14-decision-input.v3+json"
+CAUSAL_DECISION_MEDIA_TYPE = "application/vnd.matchvet.f14-decision-result.v3+json"
 SCHEMA_VERSION = 2
 PROFILE_VERSION = "matchvet-founder-preference-profile-v1"
 
@@ -196,6 +204,7 @@ class DecisionInputBundle:
     model_result_digest: str
     policy: Mapping[str, object]
     candidate_inputs: Mapping[str, Mapping[str, object]]
+    candidate_contract_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("profile_digest", "evidence_digest", "cutoff_id", "model_result_digest"):
@@ -219,7 +228,12 @@ class DecisionInputBundle:
             "model_result_digest": self.model_result_digest,
             "policy": _plain(self.policy),
             "profile_digest": self.profile_digest,
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": 3 if self.candidate_contract_digest is not None else SCHEMA_VERSION,
+            **(
+                {"candidate_contract_digest": self.candidate_contract_digest}
+                if self.candidate_contract_digest is not None
+                else {}
+            ),
         }
 
 
@@ -235,7 +249,8 @@ class DecisionResult:
             if not isinstance(value, dict) or _bytes(value) != self.canonical_bytes:
                 raise F14Error("F14 decision result must be canonical JSON.")
             if (
-                value.get("schema_version") != SCHEMA_VERSION
+                type(value.get("schema_version")) is not int
+                or value.get("schema_version") not in {2, 3}
                 or value.get("status") != "RESEARCH_ONLY"
             ):
                 raise F14Error("Unsupported or non-research F14 decision result.")
@@ -343,15 +358,47 @@ class DecisionResult:
 class DecisionRepository:
     """Build, protect, and exactly replay one-match F14 decisions."""
 
-    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        *,
+        clock: TrustedUTCClock | None = None,
+        candidate_contract_digest: str | None = None,
+        selection_contract: str | None = None,
+    ) -> None:
         self.store = store
         self.artifacts = ArtifactStore(store)
-        self.research = MatchweekResearchRepository(store, clock=clock)
+        self.research = MatchweekResearchRepository(
+            store,
+            clock=clock,
+            candidate_contract_digest=candidate_contract_digest,
+            selection_contract=selection_contract,
+        )
         self.profiles = PreferenceProfileRepository(store)
+        self.candidate_contract_digest = candidate_contract_digest
+        self.input_media_type = (
+            CAUSAL_DECISION_INPUT_MEDIA_TYPE
+            if candidate_contract_digest is not None
+            else DECISION_INPUT_MEDIA_TYPE
+        )
+        self.decision_media_type = (
+            CAUSAL_DECISION_MEDIA_TYPE
+            if candidate_contract_digest is not None
+            else DECISION_MEDIA_TYPE
+        )
+
+    def _writer_context(self, bundle: DecisionInputBundle) -> None:
+        if bundle.candidate_contract_digest != self.candidate_contract_digest:
+            from matchvet.matchweek_research import MatchweekResearchError
+
+            raise MatchweekResearchError(
+                "Decision candidate descriptor differs from constructor context."
+            )
 
     def build_decision(self, bundle: DecisionInputBundle) -> DecisionResult:
         if not isinstance(bundle, DecisionInputBundle):
             raise F14Error("F14 requires an exact DecisionInputBundle.")
+        self._writer_context(bundle)
         cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(bundle.cutoff_id)
         if cutoff is None:
             raise F14Error("Exact F07 cutoff is missing.")
@@ -366,7 +413,7 @@ class DecisionRepository:
 
         def require_first_decision() -> str | None:
             for metadata in self.store.artifact_catalog():
-                if metadata.media_type != DECISION_INPUT_MEDIA_TYPE:
+                if metadata.media_type != self.input_media_type:
                     continue
                 raw = self._read(metadata.digest, DECISION_INPUT_MEDIA_TYPE)
                 prior_cutoff = MatchEvidenceCutoffRepository(self.store).replay(raw["cutoff_id"])
@@ -385,7 +432,7 @@ class DecisionRepository:
                 if raw["cutoff_id"] == bundle.cutoff_id and metadata.digest != input_digest:
                     raise F14Error("The frozen decision input cannot change.")
             for metadata in self.store.artifact_catalog():
-                if metadata.media_type != DECISION_MEDIA_TYPE:
+                if metadata.media_type != self.decision_media_type:
                     continue
                 prior = self._read(metadata.digest, DECISION_MEDIA_TYPE)
                 raw = self._read(prior["input_bundle_digest"], DECISION_INPUT_MEDIA_TYPE)
@@ -410,14 +457,20 @@ class DecisionRepository:
             check_state=require_first_decision,
             contract=(bundle.profile_digest, str(bundle.policy.get("policy_digest", ""))),
         )
-        input_record = artifacts.publish_artifact(input_bytes, DECISION_INPUT_MEDIA_TYPE)
-        result = self._evaluate(bundle, input_record.digest)
-        artifacts.publish_artifact(result.to_bytes(), DECISION_MEDIA_TYPE)
+        if self.candidate_contract_digest is not None:
+            result = self._evaluate(bundle, input_digest)
+            artifacts.publish_artifact(input_bytes, self.input_media_type)
+        else:
+            input_record = artifacts.publish_artifact(input_bytes, self.input_media_type)
+            result = self._evaluate(bundle, input_record.digest)
+        artifacts.publish_artifact(result.to_bytes(), self.decision_media_type)
+        self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
         return result
 
     def build_or_replay_decision(self, bundle: DecisionInputBundle) -> DecisionResult:
         """Build or replay the sole decision for this exact immutable input bundle."""
         input_digest = hashlib.sha256(_bytes(bundle.to_dict())).hexdigest()
+        self._writer_context(bundle)
         cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(bundle.cutoff_id)
         if cutoff is None:
             raise F14Error("Exact F07 cutoff is missing.")
@@ -438,7 +491,7 @@ class DecisionRepository:
         self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
         matches: set[str] = set()
         for metadata in self.store.artifact_catalog():
-            if metadata.media_type != DECISION_MEDIA_TYPE:
+            if metadata.media_type != self.decision_media_type:
                 continue
             value = self._read(metadata.digest, DECISION_MEDIA_TYPE)
             if value.get("input_bundle_digest") == input_digest:
@@ -454,7 +507,10 @@ class DecisionRepository:
     def replay(self, digest: str) -> DecisionResult:
         value = self._read(digest, DECISION_MEDIA_TYPE)
         try:
-            if value.get("schema_version") != SCHEMA_VERSION:
+            if type(value.get("schema_version")) is not int or value.get("schema_version") not in {
+                2,
+                3,
+            }:
                 raise F14Error("Unsupported F14 decision schema.")
             input_digest = value["input_bundle_digest"]
             raw_inputs = self._read(input_digest, DECISION_INPUT_MEDIA_TYPE)
@@ -465,6 +521,7 @@ class DecisionRepository:
                 model_result_digest=raw_inputs["model_result_digest"],
                 policy=raw_inputs["policy"],
                 candidate_inputs=raw_inputs["candidate_inputs"],
+                candidate_contract_digest=raw_inputs.get("candidate_contract_digest"),
             )
             if bundle.to_dict() != raw_inputs:
                 raise F14Error("Decision input bundle is noncanonical.")
@@ -479,9 +536,14 @@ class DecisionRepository:
 
     def _read(self, digest: str, media_type: str) -> dict[str, Any]:
         metadata = self.store.artifact_metadata(digest)
-        if metadata is None or (metadata.media_type, metadata.retention_class) != (
-            media_type,
-            "PROTECTED",
+        successor = {
+            DECISION_INPUT_MEDIA_TYPE: CAUSAL_DECISION_INPUT_MEDIA_TYPE,
+            DECISION_MEDIA_TYPE: CAUSAL_DECISION_MEDIA_TYPE,
+        }.get(media_type)
+        if (
+            metadata is None
+            or metadata.media_type not in {media_type, successor}
+            or metadata.retention_class != "PROTECTED"
         ):
             raise F14Error(f"Missing or wrong protected F14 artifact for {media_type}.")
         content = self.artifacts.read_artifact(digest)
@@ -489,6 +551,12 @@ class DecisionRepository:
             value = json.loads(content)
             if not isinstance(value, dict) or _bytes(value) != content:
                 raise F14Error("Malformed or noncanonical F14 artifact.")
+            schema = value.get("schema_version")
+            if type(schema) is not int or (metadata.media_type, schema) not in {
+                (media_type, 2),
+                (successor, 3),
+            }:
+                raise F14Error("Unsupported exact decision schema/media dispatch.")
             return value
         except (TypeError, ValueError) as error:
             raise F14Error("Malformed F14 artifact.") from error
@@ -497,17 +565,20 @@ class DecisionRepository:
         inputs = model["inputs"]
         metadata = self.store.artifact_metadata(inputs["history_snapshot_digest"])
         if metadata is None or (metadata.media_type, metadata.retention_class) != (
-            INPUT_MEDIA_TYPE,
+            media_for_schema(INPUT_MEDIA_TYPE, inputs["schema_version"]),
             "PROTECTED",
         ):
             raise F14Error("F13 historical model inputs are missing or unprotected.")
         snapshot_bytes = self.artifacts.read_artifact(inputs["history_snapshot_digest"])
         snapshot = json.loads(snapshot_bytes)
-        if _bytes(snapshot) != snapshot_bytes or snapshot.get("schema_version") != SCHEMA_VERSION:
+        if (
+            _bytes(snapshot) != snapshot_bytes
+            or snapshot.get("schema_version") != inputs["schema_version"]
+        ):
             raise F14Error("F13 historical model inputs are corrupt.")
         history = tuple(HistoricalMatch.from_mapping(row) for row in snapshot["history"])
         target = TargetMatch(**inputs["target"])
-        context = inputs["context"]
+        context = research_context(inputs)
         attempts: tuple[ResearchAttempt, ...] = ()
         attempt_ref = context.get("contextual_attempt")
         if attempt_ref is not None:
@@ -558,6 +629,20 @@ class DecisionRepository:
         except (F13Error, KeyError, TypeError, ValueError) as error:
             raise F14Error("Exact F13 model result cannot be replayed.") from error
         inputs = model["inputs"]
+        if inputs.get("candidate_contract_digest") != bundle.candidate_contract_digest or model[
+            "schema_version"
+        ] != (3 if bundle.candidate_contract_digest is not None else 2):
+            raise F14Error("Decision model candidate/schema differs.")
+        if bundle.candidate_contract_digest is not None:
+            candidate = self.research.resolve_candidate(bundle.candidate_contract_digest)
+            cutoff = MatchEvidenceCutoffRepository(self.store).replay(bundle.cutoff_id)
+            if (
+                candidate.freeze_id,
+                candidate.cutoff_policy_digest,
+                candidate.profile_digest,
+                candidate.decision_policy_digest,
+            ) != (cutoff.freeze_id, cutoff.policy_digest, bundle.profile_digest, policy.digest):
+                raise F14Error("Decision input candidate descriptor differs.")
         if inputs["requirement_catalog_digest"] != V2_REQUIREMENT_CATALOG.digest:
             raise F14Error("F13 model result does not reference the exact F10 catalog.")
         if inputs["evidence_set_digest"] != bundle.evidence_digest:
@@ -707,6 +792,11 @@ class DecisionRepository:
             "schema_version": SCHEMA_VERSION,
             "status": "RESEARCH_ONLY",
         }
+        if bundle.candidate_contract_digest is not None:
+            result_payload.update(
+                schema_version=3, candidate_contract_digest=bundle.candidate_contract_digest
+            )
+            lineage["candidate_contract_digest"] = bundle.candidate_contract_digest
         return DecisionResult(_bytes(result_payload))
 
 

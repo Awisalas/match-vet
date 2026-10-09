@@ -1,0 +1,148 @@
+..F...............................F.....F........F                       [100%]
+=================================== FAILURES ===================================
+_ test_direct_decision_binds_candidate_and_refuses_missing_constructor_context _
+
+successor = Successor(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-42/issue82-real-successor0'), r...a7432989a2571a6a9bf3873ba', decision_policy_digest='dd05fd64b1141ef8b20fa24c12eebbecb50bc1d63d41860aa257b4b3049f2e5e'))
+successor_store = <matchvet.store.Store object at 0x76ee57d010>
+
+    def test_direct_decision_binds_candidate_and_refuses_missing_constructor_context(
+        successor: Successor,
+        successor_store: Store,
+    ) -> None:
+        import json
+
+        from matchvet.artifacts import ArtifactStore
+
+        manifest = F16MatchweekProcessor(successor_store).replay_manifest(successor.manifest)
+        row = manifest.match_results[0]
+        result = DecisionRepository(successor_store).replay(row.decision_digest)
+        raw = json.loads(
+            ArtifactStore(successor_store).read_artifact(result.to_dict()["input_bundle_digest"])
+        )
+        raw.pop("schema_version")
+        bundle = DecisionInputBundle(**raw)
+        before = successor_store.artifact_catalog()
+        with pytest.raises(MatchweekResearchError):
+            DecisionRepository(successor_store).build_decision(bundle)
+        assert successor_store.artifact_catalog() == before
+        assert result.to_dict()["candidate_contract_digest"] == successor.candidate
+        assert result.to_dict()["lineage"]["candidate_contract_digest"] == successor.candidate
+>       with pytest.raises(ValueError, match="frozen"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests/test_issue82.py:111: Failed
+________ test_direct_f12_binds_constructor_and_reentrant_first_attempt _________
+
+weather_candidate = (Case(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-42/issue82-weather0'), request=Anal...1fa3b029943e42c6c94c3f5f4ed98e35a74686ed624470808', '04d44fbe3f23d97f232d49a11ceb2cac9b8407fafa5d0797ff3708adfc4b761b')
+weather_store = <matchvet.store.Store object at 0x76d7ed3390>
+
+
+
+    def test_direct_f12_binds_constructor_and_reentrant_first_attempt(
+        weather_candidate: tuple[Case, str, str], weather_store: Store
+    ) -> None:
+        from matchvet.f12 import ContextualAttemptRepository
+
+        case, digest, evidence_digest = weather_candidate
+        evidence = F11EvidenceRepository(weather_store).replay(
+            evidence_digest,
+            freeze_id=case.request.freeze_id,
+            policy_digest=case.request.cutoff_policy_digest,
+        )
+        reference = evidence.to_dict()["matches"][0]["contextual_attempt"]
+        attempt = ContextualAttemptRepository(weather_store).get(
+            reference["attempt_id"], cutoff_id=case.request.cutoff_ids[0]
+        )
+        assert attempt.candidate_contract_digest == digest
+        assert attempt.outcome.value == "SUCCEEDED"
+>       before = weather_store.artifact_catalog()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_issue82.py:496:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.f12.ContextualAttemptRepository object at 0x76d7e6fad0>
+attempt = ContextualResearchAttempt(contract_version='matchvet-causal-contextual-attempt-v2', schema_version=2, attempt_id='f12:...b36be2f1632f2debed43f0d', candidate_contract_digest='0dd830b4c4c50a41fa3b029943e42c6c94c3f5f4ed98e35a74686ed624470808')
+
+    def publish(self, attempt: ContextualResearchAttempt) -> ContextualResearchAttempt:
+        if attempt.candidate_contract_digest != self.candidate_contract_digest:
+>           raise F12Error(
+                "Attempt candidate descriptor differs from explicit constructor context."
+            )
+E           matchvet.f12.F12Error: Attempt candidate descriptor differs from explicit constructor context.
+
+src/matchvet/f12.py:282: F12Error
+__________ test_f11_exact_media_schema_pair_and_history_pair_refuses ___________
+
+successor = Successor(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-42/issue82-real-successor0'), r...a7432989a2571a6a9bf3873ba', decision_policy_digest='dd05fd64b1141ef8b20fa24c12eebbecb50bc1d63d41860aa257b4b3049f2e5e'))
+successor_store = <matchvet.store.Store object at 0x76d7ed1b30>
+
+>   ???
+E   sqlite3.IntegrityError: artifacts are immutable
+
+tests/test_issue82.py:689: IntegrityError
+____________ test_causal_graph_replay_through_read_only_connection _____________
+
+successor = Successor(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-42/issue82-real-successor0'), r...a7432989a2571a6a9bf3873ba', decision_policy_digest='dd05fd64b1141ef8b20fa24c12eebbecb50bc1d63d41860aa257b4b3049f2e5e'))
+successor_store = <matchvet.store.Store object at 0x76d7d92e90>
+
+    ) -> None:
+        from matchvet.store import StoreMode
+
+        connection = successor_store._connection_for_repository()
+        connection.execute("PRAGMA query_only = ON")
+        successor_store.status = replace(successor_store.status, mode=StoreMode.READ_ONLY_RECOVERY)
+        manifest = F16MatchweekProcessor(successor_store).replay_manifest(successor.manifest)
+        assert manifest.digest == successor.manifest
+>       assert (
+
+            MatchweekResearchRepository(successor_store)._admit_v2(successor.manifest).references
+            == successor.graph.references
+        )
+
+tests/test_issue82.py:1030:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matchvet/f16.py:502: in replay_manifest
+    child = self._replay_match_result(row["match_result_digest"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/matchvet/f16.py:827: in _replay_match_result
+    decision = DecisionRepository(self.store).replay(value["decision_digest"])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/matchvet/f14.py:528: in replay
+    expected = self._evaluate(bundle, input_digest)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/matchvet/f14.py:626: in _evaluate
+    .replay(bundle.model_result_digest, bundle.evidence_digest, bundle.cutoff_id)
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/matchvet/f13.py:957: in replay
+    binding = self._binding(evidence_digest, cutoff_id, candidate_digest=candidate_digest)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/matchvet/f13.py:208: in _binding
+    .replay(evidence_digest, freeze_id=cutoff.freeze_id, policy_digest=cutoff.policy_digest)
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/matchvet/f11.py:551: in replay
+    def replay(self, digest: str, *, freeze_id: str, policy_digest: str) -> F11EvidenceSet:
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/matchvet/f11.py:686: in _validate
+    "history": envelope["history"],
+src/matchvet/workload.py:1054: in load_canonical_fixture_history
+    + WorkloadScheduleRecorder(store).fixtures(season=season, exact_revisions=exact_revisions)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.workload.WorkloadScheduleRecorder object at 0x76d7db6a80>
+store = <matchvet.store.Store object at 0x76d7d92e90>
+
+    def __init__(self, store: Store) -> None:
+        if store.status.mode.value != "READ_WRITE":
+>           raise PermissionError("Workload schedule recording requires a healthy writable store.")
+E           PermissionError: Workload schedule recording requires a healthy writable store.
+
+src/matchvet/workload.py:819: PermissionError
+=========================== short test summary info ============================
+FAILED tests/test_issue82.py::test_direct_decision_binds_candidate_and_refuses_missing_constructor_context
+FAILED tests/test_issue82.py::test_direct_f12_binds_constructor_and_reentrant_first_attempt
+FAILED tests/test_issue82.py::test_f11_exact_media_schema_pair_and_history_pair_refuses
+FAILED tests/test_issue82.py::test_causal_graph_replay_through_read_only_connection
+4 failed, 46 passed in 6974.36s (1:56:14)

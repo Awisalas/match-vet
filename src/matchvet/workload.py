@@ -905,49 +905,93 @@ class WorkloadScheduleRecorder:
                 results.append(WorkloadScheduleRecord(event_id, fixture, event_digest))
         return tuple(results)
 
-    def fixtures(self, *, season: str | None = None) -> tuple[CanonicalFixture, ...]:
-        rows = (
-            self.store._connection_for_repository()
-            .execute(
-                """
-            SELECT source_fixture_id, revision_id, revision_digest, competition_key,
-                   competition_name, competition_type, season_label, home_team_id,
-                   home_team_name, away_team_id, away_team_name, kickoff_utc,
-                   fixture_status, observed_at_utc, cutoff_eligibility, provenance_json
-            FROM workload_schedule_events
-            WHERE (? IS NULL OR season_label = ?)
-            ORDER BY source_fixture_id, observed_at_utc, revision_id
-            """,
-                (season, season),
-            )
-            .fetchall()
+    def fixtures(
+        self,
+        *,
+        season: str | None = None,
+        exact_revisions: frozenset[tuple[str, str | None, str | None]] | None = None,
+    ) -> tuple[CanonicalFixture, ...]:
+        return _schedule_fixture_history(self.store, season=season, exact_revisions=exact_revisions)
+
+
+def _schedule_fixture_history(
+    store: Store,
+    *,
+    season: str | None = None,
+    exact_revisions: frozenset[tuple[str, str | None, str | None]] | None = None,
+) -> tuple[CanonicalFixture, ...]:
+    predicate, revision_parameters = _exact_revision_query(
+        exact_revisions, ("source_fixture_id", "revision_id", "revision_digest")
+    )
+    rows = (
+        store._connection_for_repository()
+        .execute(
+            """
+        SELECT source_fixture_id, revision_id, revision_digest, competition_key,
+               competition_name, competition_type, season_label, home_team_id,
+               home_team_name, away_team_id, away_team_name, kickoff_utc,
+               fixture_status, observed_at_utc, cutoff_eligibility, provenance_json
+        FROM workload_schedule_events
+        WHERE (? IS NULL OR season_label = ?)
+        """
+            + predicate
+            + " ORDER BY source_fixture_id, observed_at_utc, revision_id",
+            (season, season, *revision_parameters),
         )
-        result: list[CanonicalFixture] = []
-        for row in rows:
-            result.append(
-                CanonicalFixture(
-                    fixture_id=str(row[0]),
-                    revision_id=str(row[1]),
-                    revision_digest=str(row[2]) if row[2] is not None else None,
-                    competition_key=str(row[3]),
-                    competition_name=str(row[4]),
-                    competition_type=str(row[5]),
-                    season=str(row[6]),
-                    home_team_id=str(row[7]),
-                    home_team_name=str(row[8]) if row[8] is not None else None,
-                    away_team_id=str(row[9]),
-                    away_team_name=str(row[10]) if row[10] is not None else None,
-                    kickoff_utc=str(row[11]) if row[11] is not None else None,
-                    status=str(row[12]),
-                    provenance=_provenance_from_json(str(row[15])),
-                    cutoff_eligibility=str(row[14]),
-                )
+        .fetchall()
+    )
+    result: list[CanonicalFixture] = []
+    for row in rows:
+        result.append(
+            CanonicalFixture(
+                fixture_id=str(row[0]),
+                revision_id=str(row[1]),
+                revision_digest=str(row[2]) if row[2] is not None else None,
+                competition_key=str(row[3]),
+                competition_name=str(row[4]),
+                competition_type=str(row[5]),
+                season=str(row[6]),
+                home_team_id=str(row[7]),
+                home_team_name=str(row[8]) if row[8] is not None else None,
+                away_team_id=str(row[9]),
+                away_team_name=str(row[10]) if row[10] is not None else None,
+                kickoff_utc=str(row[11]) if row[11] is not None else None,
+                status=str(row[12]),
+                provenance=_provenance_from_json(str(row[15])),
+                cutoff_eligibility=str(row[14]),
             )
-        return tuple(result)
+        )
+    return tuple(result)
 
 
-def _t06_fixture_history(store: Store, *, season: str) -> tuple[CanonicalFixture, ...]:
+def _exact_revision_query(
+    exact: frozenset[tuple[str, str | None, str | None]] | None,
+    columns: tuple[str, str, str],
+) -> tuple[str, tuple[str | None, ...]]:
+    if exact is None:
+        return "", ()
+    if not exact:
+        return " AND 0", ()
+    ordered = sorted(exact, key=lambda row: tuple(value or "" for value in row))
+    terms = " AND ".join(
+        f"{column} IS json_extract(retained.value, '$[{i}]')" for i, column in enumerate(columns)
+    )
+    return (
+        " AND EXISTS (SELECT 1 FROM json_each(?) AS retained WHERE " + terms + ")",
+        (json.dumps(ordered, separators=(",", ":")),),
+    )
+
+
+def _t06_fixture_history(
+    store: Store,
+    *,
+    season: str,
+    exact_revisions: frozenset[tuple[str, str | None, str | None]] | None = None,
+) -> tuple[CanonicalFixture, ...]:
     connection = store._connection_for_repository()
+    predicate, revision_parameters = _exact_revision_query(
+        exact_revisions, ("f.fixture_id", "r.revision_id", "r.revision_digest")
+    )
     rows = connection.execute(
         """
         SELECT f.fixture_id, s.season_label, f.home_team_id, home.canonical_name,
@@ -964,9 +1008,10 @@ def _t06_fixture_history(store: Store, *, season: str) -> tuple[CanonicalFixture
         JOIN source_captures AS sc ON sc.capture_id = r.source_capture_id
         JOIN source_identities AS si ON si.source_id = sc.source_id
         WHERE s.season_label = ?
-        ORDER BY f.fixture_id, r.observed_at_utc, r.revision_id
-        """,
-        (season,),
+        """
+        + predicate
+        + " ORDER BY f.fixture_id, r.observed_at_utc, r.revision_id",
+        (season, *revision_parameters),
     ).fetchall()
     result: list[CanonicalFixture] = []
     for row in rows:
@@ -1009,12 +1054,13 @@ def load_canonical_fixture_history(
     *,
     season: str = "2026-27",
     context_fixtures: Iterable[CanonicalFixture] = (),
+    exact_revisions: frozenset[tuple[str, str | None, str | None]] | None = None,
 ) -> tuple[CanonicalFixture, ...]:
     """Load T06 canonical history plus persisted T08 context schedule events."""
 
     candidates = (
-        _t06_fixture_history(store, season=season)
-        + WorkloadScheduleRecorder(store).fixtures(season=season)
+        _t06_fixture_history(store, season=season, exact_revisions=exact_revisions)
+        + _schedule_fixture_history(store, season=season, exact_revisions=exact_revisions)
         + tuple(context_fixtures)
     )
     merged: list[CanonicalFixture] = []

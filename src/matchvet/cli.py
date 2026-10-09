@@ -84,12 +84,14 @@ def _parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="start a bounded Matchweek lifecycle")
     run.add_argument("date", nargs="?", help="Matchweek date in Africa/Lagos (YYYY-MM-DD)")
     _add_run_options(run)
+    _add_candidate_options(run)
     status = commands.add_parser("status", help="show a run's durable lifecycle state")
     status.add_argument("run_id", nargs="?", help="run ID; defaults to the latest run")
     _add_run_options(status)
     resume = commands.add_parser("resume", help="resume a digest-compatible unfinished run")
     resume.add_argument("run_id", nargs="?", help="run ID; defaults to the latest run")
     _add_run_options(resume)
+    _add_candidate_options(resume)
     ingest = commands.add_parser("ingest", help="acquire T06 fixtures and structured history")
     ingest.add_argument("--season", default="2026-27", help="current season in YYYY-YY form")
     ingest.add_argument(
@@ -215,6 +217,17 @@ def _add_run_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", dest="as_json", help="print JSON")
 
 
+def _add_candidate_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--candidate-contract-digest", help="exact retained unqualified causal candidate identity"
+    )
+    parser.add_argument(
+        "--selection-contract",
+        choices=("postcommit-upper-bound-v1", "matchvet-causal-selection-v2"),
+        help="explicit writer contract; causal selection requires a candidate digest",
+    )
+
+
 def _show_bootstrap_state() -> None:
     database_path = default_database_path()
     private_root = termux_private_root()
@@ -274,6 +287,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
             print(render_human_report(report), end="")
         return 0 if report["status"] == "PASS" else 1
     if parsed.command == "run":
+        if parsed.candidate_contract_digest is not None or parsed.selection_contract is not None:
+            from matchvet.causal_candidate_cli import handle_candidate_run
+
+            return handle_candidate_run(parsed)
         return _run_command(parsed.date, parsed.store, parsed.as_json)
     if parsed.command == "ingest":
         return _ingest_command(
@@ -342,6 +359,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
         from matchvet.operator_fixture_observation_cli import handle_fixture_observation
 
         return handle_fixture_observation(parsed)
+    if parsed.candidate_contract_digest is not None or parsed.selection_contract is not None:
+        from matchvet.causal_candidate_cli import handle_candidate_run
+
+        return handle_candidate_run(parsed)
     return _resume_command(parsed.run_id, parsed.store, parsed.as_json)
 
 

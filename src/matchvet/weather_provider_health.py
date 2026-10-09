@@ -84,10 +84,29 @@ class OpenMeteoHealthRecorder:
     """
 
     def __init__(
-        self, repository: ProviderHealthRepository, *, clock: Callable[[], str] | None = None
+        self,
+        repository: ProviderHealthRepository,
+        *,
+        clock: Callable[[], str] | None = None,
+        admission_guard: Callable[[], object] | None = None,
+        candidate_contract_digest: str | None = None,
+        selection_contract: str | None = None,
     ) -> None:
+        from matchvet.causal_candidate import writer_contract
+        from matchvet.matchweek_research import MatchweekResearchRepository
+
+        writer_contract(candidate_contract_digest, selection_contract)
+        self.candidate_contract_digest = candidate_contract_digest
+        self._candidate_owner = (
+            MatchweekResearchRepository(
+                repository._store, candidate_contract_digest=candidate_contract_digest
+            )
+            if candidate_contract_digest is not None
+            else None
+        )
         self.repository = repository
         self._clock = clock
+        self._admission_guard = admission_guard
         self._records: list[ProviderHealthRecord] = []
 
     @property
@@ -103,6 +122,13 @@ class OpenMeteoHealthRecorder:
         error: Exception | None = None,
     ) -> ProviderHealthRecord:
         from matchvet.weather import WeatherCoverageError, WeatherParseError, WeatherPolicyError
+
+        if self._candidate_owner is not None:
+            from matchvet.causal_candidate import require_weather_context
+
+            require_weather_context(self._candidate_owner, request)
+        if self._admission_guard is not None:
+            self._admission_guard()
 
         http_error = (
             error
@@ -310,8 +336,22 @@ class OpenMeteoHealthRecorder:
             failure=failure,
             provenance=provenance,
         )
-        if self._clock is not None:
+        if self._clock is not None and self.candidate_contract_digest is None:
             self._clock()
-        self.repository.persist_many((record,))
+        if self._admission_guard is not None:
+            self._admission_guard()
+        if self._candidate_owner is not None:
+            from matchvet.provider_health_repository import ProviderHealthRepository
+
+            assert self.candidate_contract_digest is not None
+            owner, digest = self._candidate_owner, self.candidate_contract_digest
+            ProviderHealthRepository(
+                self.repository._store, write_guard=lambda: owner.require_causal_write(digest)
+            ).persist_many((record,))
+            owner.require_causal_write(digest)
+        else:
+            self.repository.persist_many((record,))
+        if self._admission_guard is not None:
+            self._admission_guard()
         self._records.append(record)
         return record

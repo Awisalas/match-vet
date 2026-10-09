@@ -1,0 +1,27 @@
+baseline complete
+current complete
+{
+  "result": "PASS",
+  "base": "a65c033160dd1b6e50a5bf69e9c7e0aecb4e8bf0",
+  "artifacts": 30,
+  "media_types": [
+    "application/json",
+    "application/vnd.matchvet.f11-evidence-set.v3+json",
+    "application/vnd.matchvet.f11-fixture-history.v2+json",
+    "application/vnd.matchvet.f13-calibration.v2+json",
+    "application/vnd.matchvet.f13-distribution.v2+json",
+    "application/vnd.matchvet.f13-model-fit.v2+json",
+    "application/vnd.matchvet.f13-model-input.v2+json",
+    "application/vnd.matchvet.f13-model-result.v2+json",
+    "application/vnd.matchvet.f14-decision-input.v2+json",
+    "application/vnd.matchvet.f14-decision-result.v2+json",
+    "application/vnd.matchvet.f14-preference-profile.v2+json",
+    "application/vnd.matchvet.f16-match-result.v1+json",
+    "application/vnd.matchvet.f16-processing-manifest.v1+json",
+    "application/vnd.matchvet.match-evidence-cutoff-policy.v1+json",
+    "application/vnd.matchvet.match-evidence-cutoff.v1+json"
+  ],
+  "manifest": "542f1c9b81368bc35b924ea23462b486f1dde35211f20fcb0398ab616e2c2306",
+  "input_digest": "ea70a57b0c4ad71ab7ed87d58469b2105763bfe42dbcc37d802bf0f9ebc907bc",
+  "engine_version": "d625705c1ffa298aec34dc23fd6909e61121b454b6ff6fcb5f50d1ed5838c620"
+}

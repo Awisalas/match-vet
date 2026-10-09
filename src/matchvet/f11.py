@@ -7,16 +7,54 @@ artifact, including F09 observations, without observing a new provider state.
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import asdict, dataclass, replace
+from collections.abc import Iterable, Mapping
+from dataclasses import asdict, replace
 from datetime import datetime
-from typing import Any
-from urllib.error import HTTPError
 
 from matchvet.artifacts import ArtifactStore
 from matchvet.evidence import CutoffEligibility
+from matchvet.f11_contracts import (
+    CAUSAL_EVIDENCE_MEDIA_TYPE as CAUSAL_EVIDENCE_MEDIA_TYPE,
+)
+from matchvet.f11_contracts import (
+    CAUSAL_HISTORY_MEDIA_TYPE as CAUSAL_HISTORY_MEDIA_TYPE,
+)
+from matchvet.f11_contracts import (
+    EVIDENCE_MEDIA_TYPE as EVIDENCE_MEDIA_TYPE,
+)
+from matchvet.f11_contracts import (
+    HISTORY_MEDIA_TYPE as HISTORY_MEDIA_TYPE,
+)
+from matchvet.f11_contracts import (
+    RESPONSE_MEDIA_TYPE as RESPONSE_MEDIA_TYPE,
+)
+from matchvet.f11_contracts import (
+    F11Error as F11Error,
+)
+from matchvet.f11_contracts import (
+    F11EvidenceSet as F11EvidenceSet,
+)
+from matchvet.f11_contracts import (
+    _AcquisitionClient,
+    _parse_error_type,
+    _RetainedWeatherClient,
+)
+from matchvet.f11_contracts import (
+    _at_cutoff as _at_cutoff,
+)
+from matchvet.f11_contracts import (
+    _bytes as _bytes,
+)
+from matchvet.f11_contracts import (
+    _digest as _digest,
+)
+from matchvet.f11_contracts import (
+    _history_values as _history_values,
+)
+from matchvet.f11_contracts import (
+    prospective_context as prospective_context,
+)
 from matchvet.f12 import (
     AttemptOutcome,
     AttemptUsability,
@@ -28,7 +66,6 @@ from matchvet.match_evidence_cutoff import MatchEvidenceCutoff, MatchEvidenceCut
 from matchvet.matchweek_membership import (
     MatchweekMembershipFreeze,
     MembershipState,
-    canonical_json,
 )
 from matchvet.matchweek_membership_repository import MatchweekMembershipRepository
 from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
@@ -42,146 +79,46 @@ from matchvet.weather import (
     VenueLocation,
     WeatherClient,
     WeatherEvidenceBuilder,
-    WeatherHTTPResponse,
-    WeatherParseError,
     WeatherRequest,
     WeatherTarget,
-    WeatherUnavailable,
-    parse_open_meteo_response,
+    _build_weather_evidence,
 )
 from matchvet.weather_provider_health import open_meteo_requested_scope
 from matchvet.workload import (
     CanonicalFixture,
-    FixtureProvenance,
     WorkloadCalculator,
     WorkloadRules,
     _canonical_utc,
     load_canonical_fixture_history,
 )
 
-EVIDENCE_MEDIA_TYPE = "application/vnd.matchvet.f11-evidence-set.v3+json"
-HISTORY_MEDIA_TYPE = "application/vnd.matchvet.f11-fixture-history.v2+json"
-RESPONSE_MEDIA_TYPE = "application/vnd.matchvet.f11-weather-response.v2+json"
-
-
-class F11Error(ValueError):
-    """An exact F11 predecessor, evidence set or provenance reference is invalid."""
-
-
-def _bytes(value: object) -> bytes:
-    return canonical_json(value).encode()
-
-
-def _digest(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
-
-
-@dataclass(frozen=True)
-class F11EvidenceSet:
-    """Immutable canonical value; dictionary access returns a detached copy."""
-
-    canonical_bytes: bytes
-
-    def to_bytes(self) -> bytes:
-        return self.canonical_bytes
-
-    @property
-    def digest(self) -> str:
-        return _digest(self.canonical_bytes)
-
-    def to_dict(self) -> dict[str, Any]:
-        value: dict[str, Any] = json.loads(self.canonical_bytes)
-        return value
-
-
-@dataclass(frozen=True)
-class _RetainedWeatherClient:
-    content: bytes | None
-    retrieved_at_utc: str | None
-    response_status: int | None
-
-    def fetch(self, request: WeatherRequest, *, refresh: bool = False) -> WeatherHTTPResponse:
-        if self.content is None:
-            raise WeatherUnavailable("Retained acquisition was unavailable.")
-        if self.retrieved_at_utc is None or self.response_status is None:
-            raise F11Error("Weather response metadata is missing.")
-        return WeatherHTTPResponse(
-            content=self.content,
-            retrieved_at_utc=self.retrieved_at_utc,
-            response_status=self.response_status,
-            url=request.url,
-        )
-
-
-@dataclass
-class _AcquisitionClient:
-    client: WeatherClient
-    guard: Callable[[], object] | None = None
-    error_type: str | None = None
-    response_status: int | None = None
-
-    def fetch(self, request: WeatherRequest, *, refresh: bool = False) -> WeatherHTTPResponse:
-        if self.guard is not None:
-            self.guard()
-        try:
-            response = self.client.fetch(request, refresh=refresh)
-        except Exception as error:
-            self.error_type = type(error).__name__
-            http_error = error if isinstance(error, HTTPError) else error.__cause__
-            if isinstance(http_error, HTTPError):
-                self.response_status = http_error.code
-            raise
-        finally:
-            if self.guard is not None:
-                self.guard()
-        if self.guard is not None and (
-            datetime.fromisoformat(response.retrieved_at_utc)
-            > datetime.fromisoformat(request.cutoff_utc)
-        ):
-            raise F11Error("Weather retrieval is after the common cutoff.")
-        self.response_status = response.response_status
-        return response
-
-
-def _at_cutoff(fixture: CanonicalFixture, cutoff: str) -> CanonicalFixture:
-    boundary = datetime.fromisoformat(cutoff)
-    eligibility = CutoffEligibility.INDETERMINATE
-    if fixture.observed_at_utc is not None:
-        times = [fixture.observed_at_utc]
-        times.extend(p.published_at_utc for p in fixture.provenance if p.published_at_utc)
-        eligibility = (
-            CutoffEligibility.POST_CUTOFF
-            if any(datetime.fromisoformat(t) > boundary for t in times)
-            else CutoffEligibility.CUTOFF_VALID
-        )
-    return replace(fixture, cutoff_eligibility=eligibility)
-
-
-def _history_values(encoded: bytes) -> tuple[CanonicalFixture, ...]:
-    values = json.loads(encoded)
-    result = []
-    for value in values:
-        value["provenance"] = tuple(FixtureProvenance(**p) for p in value["provenance"])
-        result.append(CanonicalFixture(**value))
-    return tuple(result)
-
-
-def _parse_error_type(content: bytes, request: WeatherRequest, retrieved: str) -> str | None:
-    try:
-        parse_open_meteo_response(content, request, retrieved_at_utc=retrieved)
-    except WeatherParseError as error:
-        return type(error).__name__
-    return None
-
 
 class F11EvidenceRepository:
     """Own exact joins, acquisition retention and verified evidence-set replay."""
 
-    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        *,
+        clock: TrustedUTCClock | None = None,
+        candidate_contract_digest: str | None = None,
+        selection_contract: str | None = None,
+    ) -> None:
         self.store = store
         self.artifacts = ArtifactStore(store)
-        self.research = MatchweekResearchRepository(store, clock=clock)
+        self.research = MatchweekResearchRepository(
+            store,
+            clock=clock,
+            candidate_contract_digest=candidate_contract_digest,
+            selection_contract=selection_contract,
+        )
         self._clock = clock
+        self.candidate_contract_digest = candidate_contract_digest
+        self.evidence_media_type = (
+            CAUSAL_EVIDENCE_MEDIA_TYPE
+            if candidate_contract_digest is not None
+            else EVIDENCE_MEDIA_TYPE
+        )
 
     def build_or_replay_for_freeze(self, freeze_id: str, policy_digest: str) -> F11EvidenceSet:
         """Reuse the sole retained evidence request for these exact F06/F07 inputs.
@@ -191,6 +128,7 @@ class F11EvidenceRepository:
         a latest or fixture-only variant. With no retained set, acquire without
         weather because no exact venue mapping is available at this boundary.
         """
+        self.research.validate_context(freeze_id, policy_digest)
         selected = self.research.selected_for_boundary(freeze_id, policy_digest)
         if selected is not None:
             from matchvet.f16 import F16MatchweekProcessor
@@ -206,9 +144,9 @@ class F11EvidenceRepository:
         self.research.require_candidate_write(freeze_id, policy_digest)
         retained: set[str] = set()
         for metadata in self.store.artifact_catalog():
-            if metadata.media_type != EVIDENCE_MEDIA_TYPE:
+            if metadata.media_type != self.evidence_media_type:
                 continue
-            value = self._read(metadata.digest, EVIDENCE_MEDIA_TYPE)
+            value = self._read(metadata.digest, self.evidence_media_type)
             payload = json.loads(value)
             if (payload.get("freeze_id"), payload.get("policy_digest")) == (
                 freeze_id,
@@ -272,6 +210,7 @@ class F11EvidenceRepository:
         rules: WorkloadRules | None = None,
     ) -> F11EvidenceSet:
         """Build once for the exact request, or replay its retained acquisition."""
+        self.research.validate_context(freeze_id, policy_digest)
         freeze, cutoffs = self._inputs(freeze_id, policy_digest)
         context = tuple(sorted(context_fixtures, key=lambda f: _bytes(f.to_dict())))
         venues = dict(locations or {})
@@ -284,7 +223,10 @@ class F11EvidenceRepository:
             "context": [f.to_dict() for f in context],
             "locations": {key: value.to_dict() for key, value in sorted(venues.items())},
         }
+        if self.candidate_contract_digest is not None:
+            request["candidate_contract_digest"] = self.candidate_contract_digest
         request_digest = _digest(_bytes(request))
+        self.research.validate_context(freeze_id, policy_digest)
         selected = self.research.selected_for_boundary(freeze_id, policy_digest)
         if selected is not None:
             from matchvet.f16 import F16MatchweekProcessor
@@ -304,8 +246,8 @@ class F11EvidenceRepository:
         corrected = self.research.is_corrected(policy_digest)
         existing: list[F11EvidenceSet] = []
         for metadata in self.store.artifact_catalog():
-            if metadata.media_type == EVIDENCE_MEDIA_TYPE:
-                value = self._read(metadata.digest, EVIDENCE_MEDIA_TYPE)
+            if metadata.media_type == self.evidence_media_type:
+                value = self._read(metadata.digest, self.evidence_media_type)
                 candidate = json.loads(value)
                 if (
                     corrected
@@ -329,9 +271,9 @@ class F11EvidenceRepository:
 
         def require_exact_request() -> None:
             for metadata in self.store.artifact_catalog():
-                if metadata.media_type != EVIDENCE_MEDIA_TYPE:
+                if metadata.media_type != self.evidence_media_type:
                     continue
-                prior = json.loads(self._read(metadata.digest, EVIDENCE_MEDIA_TYPE))
+                prior = json.loads(self._read(metadata.digest, self.evidence_media_type))
                 if (prior["freeze_id"], prior["policy_digest"]) == (freeze_id, policy_digest) and (
                     prior["request_digest"] != request_digest
                     or (
@@ -341,11 +283,15 @@ class F11EvidenceRepository:
                 ):
                     raise F11Error("The frozen F11 request or evidence cannot change.")
 
-        artifacts = self.artifacts
-        if corrected:
-            artifacts = self.research.candidate_artifacts(
-                freeze_id, policy_digest, check_state=require_exact_request
-            )
+        artifacts = self.research.candidate_artifacts(
+            freeze_id,
+            policy_digest,
+            check_state=require_exact_request if corrected else None,
+        )
+        if not corrected and self.candidate_contract_digest is None:
+            # Keep the historical publication seam while guarding its transactions.
+            self.artifacts._write_guard = artifacts._write_guard
+            artifacts = self.artifacts
         history = load_canonical_fixture_history(
             self.store, season=freeze.season, context_fixtures=context
         )
@@ -367,9 +313,23 @@ class F11EvidenceRepository:
                     frozen_history.append(replace(fixture, provenance=provenance))
             history = tuple(frozen_history)
         history_bytes = _bytes(sorted((f.to_dict() for f in history), key=_bytes))
-        history_digest = artifacts.publish_artifact(history_bytes, HISTORY_MEDIA_TYPE).digest
+        history_media = HISTORY_MEDIA_TYPE
+        if self.candidate_contract_digest is not None:
+            history_bytes = _bytes(
+                {
+                    "schema_version": 1,
+                    "candidate_contract_digest": self.candidate_contract_digest,
+                    "freeze_id": freeze_id,
+                    "policy_digest": policy_digest,
+                    "history": json.loads(history_bytes),
+                }
+            )
+            history_media = CAUSAL_HISTORY_MEDIA_TYPE
+        history_digest = artifacts.publish_artifact(history_bytes, history_media).digest
         matches = []
-        contextual_attempts = ContextualAttemptRepository(self.store, clock=self._clock)
+        contextual_attempts = ContextualAttemptRepository(
+            self.store, clock=self._clock, candidate_contract_digest=self.candidate_contract_digest
+        )
         for cutoff in cutoffs:
             self.research.require_candidate_write(freeze_id, policy_digest)
             per_match = tuple(_at_cutoff(f, cutoff.cutoff_at_utc) for f in history)
@@ -406,9 +366,9 @@ class F11EvidenceRepository:
             acquisition = (
                 _AcquisitionClient(
                     weather_client,
-                    (lambda: self.research.require_preselection_open(freeze_id, policy_digest))
-                    if corrected
-                    else None,
+                    (lambda: self.research.require_candidate_write(freeze_id, policy_digest)),
+                    causal=self.candidate_contract_digest is not None,
+                    enforce_cutoff=corrected,
                 )
                 if weather_client is not None and retained_attempt is None
                 else None
@@ -425,16 +385,29 @@ class F11EvidenceRepository:
                     retained_attempt.retrieved_at_utc,
                     retained_attempt.response_status,
                 )
-                builder = WeatherEvidenceBuilder(replay_client)
+                builder = WeatherEvidenceBuilder(
+                    replay_client,
+                    candidate_contract_digest=self.candidate_contract_digest,
+                    store=self.store,
+                )
             else:
                 builder = WeatherEvidenceBuilder(
                     acquisition,
-                    provider_health_repository=ProviderHealthRepository(self.store),
+                    candidate_contract_digest=self.candidate_contract_digest,
+                    provider_health_repository=ProviderHealthRepository(
+                        self.store,
+                        write_guard=(
+                            lambda: self.research.require_candidate_write(freeze_id, policy_digest)
+                        ),
+                    ),
                     health_clock=(
                         lambda: self.research.require_preselection_open(freeze_id, policy_digest)
                     )
-                    if corrected
+                    if corrected and self.candidate_contract_digest is None
                     else None,
+                    admission_guard=(
+                        lambda: self.research.require_candidate_write(freeze_id, policy_digest)
+                    ),
                 )
             batch = builder.build(
                 (
@@ -447,7 +420,11 @@ class F11EvidenceRepository:
                 )
             )
             weather = batch.evidence[0]
-            if corrected and weather.forecast_issue_time_source == "retrieval_time_bound":
+            if (
+                corrected
+                and self.candidate_contract_digest is None
+                and weather.forecast_issue_time_source == "retrieval_time_bound"
+            ):
                 raise F11Error(
                     "Corrected weather requires a known publication time before retrieval."
                 )
@@ -487,6 +464,7 @@ class F11EvidenceRepository:
                         weather.response_bytes,
                         weather_request,
                         weather.retrieved_at_utc or "",
+                        causal=self.candidate_contract_digest is not None,
                     )
             contextual_attempt = None
             if retained_attempt is not None:
@@ -503,6 +481,7 @@ class F11EvidenceRepository:
                 try:
                     typed_attempt = ContextualResearchAttempt.create(
                         cutoff=cutoff,
+                        candidate_contract_digest=self.candidate_contract_digest,
                         request=weather_request,
                         weather=weather,
                         health=batch.provider_health_records[0],
@@ -526,8 +505,12 @@ class F11EvidenceRepository:
                         "cutoff_id": cutoff.cutoff_id,
                         "digest": cutoff.digest,
                     },
-                    "workload": workload.to_dict(),
-                    "weather": weather.to_dict(),
+                    "workload": prospective_context(workload.to_dict())
+                    if self.candidate_contract_digest is not None
+                    else workload.to_dict(),
+                    "weather": prospective_context(weather.to_dict())
+                    if self.candidate_contract_digest is not None
+                    else weather.to_dict(),
                     "provider_health_digests": sorted(
                         {r.digest for r in batch.provider_health_records}
                         | (
@@ -550,12 +533,20 @@ class F11EvidenceRepository:
             "history_artifact_digest": history_digest,
             "matches": matches,
         }
+        if self.candidate_contract_digest is not None:
+            payload.update(
+                schema_version=4,
+                candidate_contract_digest=self.candidate_contract_digest,
+                qualification="UNQUALIFIED",
+            )
         evidence = F11EvidenceSet(_bytes(payload))
         expected_evidence_digest = evidence.digest
         # Validate all references before publication, including caller context.
         self._validate(evidence, freeze_id, policy_digest)
-        artifacts.publish_artifact(evidence.to_bytes(), EVIDENCE_MEDIA_TYPE)
-        return self.replay(evidence.digest, freeze_id=freeze_id, policy_digest=policy_digest)
+        artifacts.publish_artifact(evidence.to_bytes(), self.evidence_media_type)
+        result = self.replay(evidence.digest, freeze_id=freeze_id, policy_digest=policy_digest)
+        self.research.require_candidate_write(freeze_id, policy_digest)
+        return result
 
     def replay(self, digest: str, *, freeze_id: str, policy_digest: str) -> F11EvidenceSet:
         """Replay named bytes and their complete exact predecessor/provenance chain."""
@@ -568,12 +559,27 @@ class F11EvidenceRepository:
 
     def _read(self, digest: str, media_type: str) -> bytes:
         metadata = self.store.artifact_metadata(digest)
-        if metadata is None or (metadata.media_type, metadata.retention_class) != (
-            media_type,
-            "PROTECTED",
+        supported = {media_type}
+        if media_type == EVIDENCE_MEDIA_TYPE:
+            supported.add(CAUSAL_EVIDENCE_MEDIA_TYPE)
+        if (
+            metadata is None
+            or metadata.media_type not in supported
+            or metadata.retention_class != "PROTECTED"
         ):
             raise F11Error("Missing or wrong F11 artifact reference.")
-        return self.artifacts.read_artifact(digest)
+        content = self.artifacts.read_artifact(digest)
+        if media_type == EVIDENCE_MEDIA_TYPE:
+            try:
+                value = json.loads(content)
+                expected = 4 if metadata.media_type == CAUSAL_EVIDENCE_MEDIA_TYPE else 3
+                if type(value["schema_version"]) is not int or value["schema_version"] != expected:
+                    raise F11Error("F11 evidence media/schema identity differs.")
+            except F11Error:
+                raise
+            except (ValueError, TypeError, KeyError) as error:
+                raise F11Error("Malformed F11 evidence contract.") from error
+        return content
 
     def _target(
         self, history: tuple[CanonicalFixture, ...], cutoff: MatchEvidenceCutoff
@@ -612,10 +618,22 @@ class F11EvidenceRepository:
 
     def _validate(self, evidence: F11EvidenceSet, freeze_id: str, policy_digest: str) -> None:
         value = evidence.to_dict()
+        causal = value.get("schema_version") == 4
+        candidate_digest = value.get("candidate_contract_digest") if causal else None
+        if causal:
+            if not isinstance(candidate_digest, str):
+                raise F11Error("Explicit candidate descriptor is missing.")
+            candidate = self.research.resolve_candidate(candidate_digest)
+            if (candidate.freeze_id, candidate.cutoff_policy_digest) != (
+                freeze_id,
+                policy_digest,
+            ) or value.get("qualification") != "UNQUALIFIED":
+                raise F11Error("F11 candidate descriptor context differs.")
         if (
             _bytes(value) != evidence.to_bytes()
             or set(value)
-            != {
+            != ({"candidate_contract_digest", "qualification"} if causal else set())
+            | {
                 "schema_version",
                 "freeze_id",
                 "freeze_digest",
@@ -626,7 +644,7 @@ class F11EvidenceRepository:
                 "matches",
             }
             or type(value["schema_version"]) is not int
-            or value["schema_version"] != 3
+            or value["schema_version"] != (4 if causal else 3)
         ):
             raise F11Error("Noncanonical or unsupported F11 evidence contract.")
         freeze, cutoffs = self._inputs(freeze_id, policy_digest)
@@ -643,13 +661,43 @@ class F11EvidenceRepository:
             request["policy_digest"],
         ) != (freeze_id, freeze.freeze_digest, policy_digest):
             raise F11Error("F11 request identity differs.")
+        if request.get("candidate_contract_digest") != candidate_digest:
+            raise F11Error("F11 request candidate identity differs.")
         rule_values = dict(request["rules"])
         rule_values["recent_windows_days"] = tuple(rule_values["recent_windows_days"])
         rules = WorkloadRules(**rule_values)
-        history = _history_values(self._read(value["history_artifact_digest"], HISTORY_MEDIA_TYPE))
+        history_content = self._read(
+            value["history_artifact_digest"],
+            CAUSAL_HISTORY_MEDIA_TYPE if causal else HISTORY_MEDIA_TYPE,
+        )
+        if causal:
+            envelope = json.loads(history_content)
+            if set(envelope) != {
+                "schema_version",
+                "candidate_contract_digest",
+                "freeze_id",
+                "policy_digest",
+                "history",
+            } or envelope != {
+                "schema_version": 1,
+                "candidate_contract_digest": candidate_digest,
+                "freeze_id": freeze_id,
+                "policy_digest": policy_digest,
+                "history": envelope["history"],
+            }:
+                raise F11Error("F11 history candidate association differs.")
+            history_content = _bytes(envelope["history"])
+        history = _history_values(history_content)
         context = _history_values(_bytes(request["context"]))
         referenced_history = load_canonical_fixture_history(
-            self.store, season=freeze.season, context_fixtures=context
+            self.store,
+            season=freeze.season,
+            context_fixtures=context,
+            exact_revisions=frozenset(
+                (f.fixture_id, f.revision_id, f.revision_digest) for f in history
+            )
+            if causal
+            else None,
         )
         self._verify_history(history, referenced_history, context)
         for fixture in history:
@@ -683,7 +731,10 @@ class F11EvidenceRepository:
             workload = WorkloadCalculator(
                 per_match, cutoff_utc=cutoff.cutoff_at_utc, rules=rules
             ).calculate(target)
-            if match["workload"] != json.loads(_bytes(workload.to_dict())):
+            expected_workload = (
+                prospective_context(workload.to_dict()) if causal else workload.to_dict()
+            )
+            if match["workload"] != json.loads(_bytes(expected_workload)):
                 raise F11Error("Retained workload differs from exact cutoff history.")
             weather = match["weather"]
             if (weather["cutoff_utc"], weather["target_time_utc"]) != (
@@ -722,21 +773,20 @@ class F11EvidenceRepository:
                     response, weather["retrieved_at_utc"], weather["response_status"]
                 )
             )
-            expected = (
-                WeatherEvidenceBuilder(retained_client)
-                .build(
-                    (
-                        WeatherTarget(
-                            cutoff.fixture_id,
-                            target.kickoff_utc or "",
-                            cutoff.cutoff_at_utc,
-                            location,
-                        ),
-                    )
-                )
-                .evidence[0]
+            # Reader-only retained bytes cannot acquire or persist health metadata.
+            expected = _build_weather_evidence(
+                fixture_id=cutoff.fixture_id,
+                target_time_utc=target.kickoff_utc or "",
+                cutoff_utc=cutoff.cutoff_at_utc,
+                location=location,
+                client=retained_client,
+                selection_contract="matchvet-causal-selection-v2"
+                if causal
+                else "postcommit-upper-bound-v1",
             )
-            if weather != expected.to_dict():
+            if weather != (
+                prospective_context(expected.to_dict()) if causal else expected.to_dict()
+            ):
                 raise F11Error("Weather differs from its retained acquisition.")
             attempted = (
                 location is not None
@@ -751,6 +801,10 @@ class F11EvidenceRepository:
                 raise F11Error("F12 attempt presence differs from whether a request was performed.")
             for health_digest in match["provider_health_digests"]:
                 record = ProviderHealthRepository(self.store).get(health_digest)
+                if causal:
+                    from matchvet.candidate_primitives import verify_health
+
+                    verify_health(self.store, health_digest)
                 if (
                     record is None
                     or location is None
@@ -784,7 +838,10 @@ class F11EvidenceRepository:
                     )
                 except F12Error as error:
                     raise F11Error("F12 attempt artifact is missing or corrupt.") from error
-                if attempt_ref["digest"] != typed_attempt.digest:
+                if (
+                    attempt_ref["digest"] != typed_attempt.digest
+                    or typed_attempt.candidate_contract_digest != candidate_digest
+                ):
                     raise F11Error("F12 attempt digest reference differs.")
                 if response is not None:
                     expected_error = (
@@ -797,6 +854,7 @@ class F11EvidenceRepository:
                                 location,
                             ),
                             weather["retrieved_at_utc"],
+                            causal=causal,
                         )
                         if weather["response_status"] == 200
                         else None
@@ -827,7 +885,7 @@ class F11EvidenceRepository:
                 expected_usability = (
                     AttemptUsability.USABLE
                     if weather["state"] == "OBSERVED"
-                    and weather["cutoff_eligibility"] == "CUTOFF_VALID"
+                    and (causal or weather["cutoff_eligibility"] == "CUTOFF_VALID")
                     else AttemptUsability.UNUSABLE
                 )
                 if attempt_ref["digest"] != typed_attempt.digest or (

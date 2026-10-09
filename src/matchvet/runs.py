@@ -10,7 +10,8 @@ import signal
 import sqlite3
 import subprocess
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -19,7 +20,14 @@ from types import FrameType, MappingProxyType
 from typing import Never, Protocol
 
 from matchvet.artifacts import ArtifactError, ArtifactStore
-from matchvet.store import MIGRATIONS, CanonicalIdentifier, InspectionStatus, Store, inspect_store
+from matchvet.store import (
+    MIGRATIONS,
+    CanonicalIdentifier,
+    InspectionStatus,
+    Store,
+    StoreTransaction,
+    inspect_store,
+)
 
 MIB = 1024 * 1024
 GIB = 1024 * MIB
@@ -474,14 +482,16 @@ class RunCoordinator:
         *,
         clock: Clock | None = None,
         budget: ResourceBudget = SETTLED_RESOURCE_BUDGET,
+        write_guard: Callable[[], object] | None = None,
     ) -> None:
         if store.status.mode.value != "READ_WRITE":
             raise PermissionError("Run coordination requires a healthy writable store.")
         self._store = store
         self._clock = clock or (lambda: datetime.now(UTC))
         self._budget = budget
-        self._repository = _RunRepository(store)
-        self._artifacts = ArtifactStore(store)
+        self._repository = _RunRepository(store, write_guard=write_guard)
+        self._write_guard = write_guard
+        self._artifacts = ArtifactStore(store, write_guard=write_guard)
 
     def start(
         self,
@@ -493,11 +503,15 @@ class RunCoordinator:
         executor: WorkExecutor | None = None,
         progress: ProgressReporter | None = None,
     ) -> RunStatus:
+        if self._write_guard is not None:
+            self._write_guard()
         preflight = preflight_resources(estimate, observation, self._budget)
         if not preflight.accepted:
             assert preflight.error is not None
             raise RunLifecycleError(preflight.error)
         self._artifacts.discard_incomplete_staging()
+        if self._write_guard is not None:
+            self._write_guard()
         self._verify_input_artifacts(inputs, "MV-PREFLIGHT-ARTIFACT_INVALID", "matchvet run")
         now = _utc(self._clock())
         owner = _process_token(os.getpid())
@@ -544,12 +558,16 @@ class RunCoordinator:
         executor: WorkExecutor | None = None,
         progress: ProgressReporter | None = None,
     ) -> RunStatus:
+        if self._write_guard is not None:
+            self._write_guard()
         preflight = preflight_resources(estimate, observation, self._budget)
         if not preflight.accepted:
             assert preflight.error is not None
             error = _with_recovery(preflight.error, f"matchvet resume {run_id}")
             raise RunLifecycleError(error, run_id)
         self._artifacts.discard_incomplete_staging()
+        if self._write_guard is not None:
+            self._write_guard()
         now = _utc(self._clock())
         active_run = self._repository.interrupt_abandoned(now)
         if active_run is not None:
@@ -905,9 +923,23 @@ class RunCoordinator:
 
 
 class _RunRepository:
-    def __init__(self, store: Store) -> None:
+    def __init__(self, store: Store, *, write_guard: Callable[[], object] | None = None) -> None:
         self._store = store
         self._connection = store._connection_for_repository()
+        self._write_guard = write_guard
+
+    @contextmanager
+    def _transaction(self) -> Iterator[StoreTransaction]:
+        if self._write_guard is not None:
+            self._write_guard()
+        with self._store.transaction() as transaction:
+            if self._write_guard is not None:
+                self._write_guard()
+            yield transaction
+            if self._write_guard is not None:
+                self._write_guard()
+        if self._write_guard is not None:
+            self._write_guard()
 
     def create_run(
         self,
@@ -921,7 +953,7 @@ class _RunRepository:
         now: str,
         owner_token: str,
     ) -> None:
-        with self._store.transaction() as transaction:
+        with self._transaction() as transaction:
             transaction.add_identifier(CanonicalIdentifier("research_run", run_id))
             self._connection.execute(
                 """
@@ -1027,7 +1059,7 @@ class _RunRepository:
         owner_token: str,
         started_at: str,
     ) -> int:
-        with self._store.transaction():
+        with self._transaction():
             row = self._connection.execute(
                 """
                 SELECT attempt_count FROM run_work_units
@@ -1079,7 +1111,7 @@ class _RunRepository:
         checkpoint_at: str,
         elapsed_seconds: int,
     ) -> None:
-        with self._store.transaction():
+        with self._transaction():
             order = RUN_PHASES.index(phase)
             artifacts_json = _canonical_json(artifact_digests).decode()
             self._connection.execute(
@@ -1147,7 +1179,7 @@ class _RunRepository:
         elapsed_seconds: int,
         error: RunError,
     ) -> None:
-        with self._store.transaction():
+        with self._transaction():
             self._connection.execute(
                 """
                 UPDATE run_attempts
@@ -1206,7 +1238,7 @@ class _RunRepository:
         if not running:
             return None
         elapsed_by_run: dict[str, int] = {}
-        with self._store.transaction():
+        with self._transaction():
             for row in running:
                 elapsed = _elapsed_between(str(row[4]), now)
                 elapsed_by_run[str(row[0])] = elapsed_by_run.get(str(row[0]), 0) + elapsed
@@ -1243,7 +1275,7 @@ class _RunRepository:
         return None
 
     def record_error(self, run_id: str, error: RunError, now: str, reuse_state: str) -> None:
-        with self._store.transaction():
+        with self._transaction():
             self._connection.execute(
                 """
                 UPDATE research_runs
@@ -1263,7 +1295,7 @@ class _RunRepository:
         owner_token: str,
         now: str,
     ) -> None:
-        with self._store.transaction():
+        with self._transaction():
             self._connection.execute(
                 """
                 UPDATE research_runs
@@ -1284,7 +1316,7 @@ class _RunRepository:
             )
 
     def complete_run(self, run_id: str, publication_digest: str, now: str) -> None:
-        with self._store.transaction():
+        with self._transaction():
             self._connection.execute(
                 """
                 INSERT INTO run_completions (run_id, publication_digest, completed_at_utc)

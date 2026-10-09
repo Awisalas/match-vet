@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
@@ -103,11 +104,14 @@ class _ContextualRecordMetadata:
 class ProviderHealthRepository:
     """Persist, load, and list immutable F04 values in the authoritative store."""
 
-    def __init__(self, store: Store) -> None:
+    def __init__(self, store: Store, *, write_guard: Callable[[], object] | None = None) -> None:
         self._store = store
+        self._write_guard = write_guard
 
     def persist_many(self, records: tuple[ProviderHealthRecord, ...]) -> tuple[str, ...]:
         """Atomically append fixture or contextual observations after exact validation."""
+        if self._write_guard is not None:
+            self._write_guard()
         if not isinstance(records, tuple):
             records = tuple(records)
         metadata_by_digest: dict[str, _RecordMetadata] = {}
@@ -156,6 +160,8 @@ class ProviderHealthRepository:
         persisted_digests: set[str] = set()
         try:
             with self._store.transaction() as transaction:
+                if self._write_guard is not None:
+                    self._write_guard()
                 for digest in ordered_digests:
                     if digest in contextual_metadata:
                         contextual = contextual_metadata[digest]
@@ -240,10 +246,14 @@ class ProviderHealthRepository:
                         (*metadata.indexed_values(), persisted_at),
                     )
                     persisted_digests.add(digest)
+                if self._write_guard is not None:
+                    self._write_guard()
         except sqlite3.IntegrityError as error:
             raise ProviderHealthIntegrityError(
                 "The provider health batch violates an immutable store constraint."
             ) from error
+        if self._write_guard is not None:
+            self._write_guard()
         return tuple(sorted(persisted_digests))
 
     def get(self, record_digest: str) -> ProviderHealthRecord | None:

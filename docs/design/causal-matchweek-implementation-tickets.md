@@ -8,12 +8,12 @@ This record decomposes implementation without changing that architecture.
 | Order | Ticket | Ownership boundary | Blocked by | Current readiness |
 | --- | --- | --- | --- | --- |
 | 1 | [#81](https://github.com/Awisalas/match-vet/issues/81) | Research/Store selection authority, RFC3161 verification, approved profile and trust provenance, protected v2 completion/replay | None | Completed |
-| 2 | [#82](https://github.com/Awisalas/match-vet/issues/82) | Immutable candidate descriptor, stage schemas and all direct/resume writer contracts, cross-version occupancy | #81 (closed) | ready-for-agent |
-| 3 | [#83](https://github.com/Awisalas/match-vet/issues/83) | Selected-state consumers, CB01 adapter/denominator, F19 and report/evaluation/legacy dispatch | #82 | Blocked |
+| 2 | [#82](https://github.com/Awisalas/match-vet/issues/82) | Immutable candidate descriptor, stage schemas and all direct/resume writer contracts, cross-version occupancy | #81 (closed) | Completed |
+| 3 | [#83](https://github.com/Awisalas/match-vet/issues/83) | Selected-state consumers, CB01 adapter/denominator, F19 and report/evaluation/legacy dispatch | #82 (closed) | ready-for-agent |
 | 4 | [#84](https://github.com/Awisalas/match-vet/issues/84) | Integrated seven-league successor proof and complete parent acceptance evidence | #83 | Blocked |
 
 All four are native sub-issues. Native blocking edges form
-`#81 → #82 → #83 → #84 → #80`. Only #82 has `ready-for-agent`; #81 is complete.
+`#81 → #82 → #83 → #84 → #80`. Only #83 has `ready-for-agent`; #81 and #82 are complete.
 The parent is blocked by #84 and has no implementation readiness label.
 
 Each child contains exact scope, explicit non-scope, acceptance criteria, focused
@@ -78,7 +78,26 @@ covers 121 protocol/wire tests, 68 directly affected #75/v1 and CB01 trust
 regressions, 6 focused manifest regressions, strict typing, lint, formatting
 and executable historical/schema compatibility checks.
 
-#82 is the next unblocked child and remains open and unstarted. Real successor
-admission and authenticated activation still refuse; this delivery does not
-qualify a production Matchweek or complete any original parent acceptance proof.
-#80, #83 and #84 remain open.
+The protocol delivery used isolated graph fixtures. Real successor graph admission
+is supplied by the subsequent #82 delivery below. Authenticated production
+activation remains refusing.
+
+## Candidate and writer delivery
+
+#82 implements one immutable unqualified descriptor and propagates its exact
+`candidate_contract_digest` through direct and resumed F11–F16 work. Explicit
+successor contracts preserve historical canonical bytes and engine identities.
+The research owner's shared occupancy predicate checks old and new timing-bearing
+associations. Descriptor publication alone leaves the candidate vacant; the first
+guarded publication pins it inside its transaction.
+
+The existing #81 owner validates the complete actual successor graph, including
+F12 weather attempts and exact SQL-backed health preimages. Its witness transport
+and protected receipt semantics are unchanged. Selected and terminal-unqualified
+slots permit inspection and exact replay, with no new candidate work.
+
+[Focused execution and review evidence](../../.audit/issue-82-implementation/README.md)
+records the writer matrix, affected historical regressions, protocol seams, and
+the comparison against pre-#82 canonical artifacts. #83 is ready and unstarted.
+#80, #83, and #84 remain open. Original parent acceptance checkboxes remain
+reserved for #84's integrated proof, and production activation remains refusing.

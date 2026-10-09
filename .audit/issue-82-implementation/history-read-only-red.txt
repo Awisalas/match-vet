@@ -1,0 +1,43 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________ test_retained_history_reads_without_schedule_writer_authority _________
+
+candidate = Case(root=PosixPath('/data/data/com.termux/files/usr/tmp/pytest-of-u0_a410/pytest-50/issue76-candidate0'), request=Ana...', catalog_digest='8566a6cd9862d35e883c1c389283e7913d62e2279f4c3c083d64cc4814865392'), candidate_contract_digest=None))
+candidate_store = <matchvet.store.Store object at 0x6f10e41e50>
+
+    def test_retained_history_reads_without_schedule_writer_authority(
+        candidate: Case, candidate_store: Store
+    ) -> None:
+        from matchvet.store import StoreMode
+        from matchvet.workload import WorkloadScheduleRecorder, load_canonical_fixture_history
+
+        history = load_canonical_fixture_history(candidate_store)
+        assert history
+        retained = frozenset((f.fixture_id, f.revision_id, f.revision_digest) for f in history)
+        before = candidate_store.artifact_catalog()
+        candidate_store._connection_for_repository().execute("PRAGMA query_only = ON")
+        candidate_store.status = replace(candidate_store.status, mode=StoreMode.READ_ONLY_RECOVERY)
+        with pytest.raises(PermissionError, match="writable store"):
+            WorkloadScheduleRecorder(candidate_store)
+>       assert load_canonical_fixture_history(candidate_store, exact_revisions=retained) == history
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_issue82.py:1083:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matchvet/workload.py:1054: in load_canonical_fixture_history
+    + WorkloadScheduleRecorder(store).fixtures(season=season, exact_revisions=exact_revisions)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matchvet.workload.WorkloadScheduleRecorder object at 0x6f10e41f90>
+store = <matchvet.store.Store object at 0x6f10e41e50>
+
+    def __init__(self, store: Store) -> None:
+        if store.status.mode.value != "READ_WRITE":
+>           raise PermissionError("Workload schedule recording requires a healthy writable store.")
+E           PermissionError: Workload schedule recording requires a healthy writable store.
+
+src/matchvet/workload.py:819: PermissionError
+=========================== short test summary info ============================
+FAILED tests/test_issue82.py::test_retained_history_reads_without_schedule_writer_authority
+1 failed in 14.42s

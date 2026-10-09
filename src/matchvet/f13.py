@@ -7,16 +7,89 @@ import json
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
-from matchvet import t11, t12, t13, t14
 from matchvet.artifacts import ArtifactStore
 from matchvet.evidence import EvidenceState
 from matchvet.f10 import V2_REQUIREMENT_CATALOG
 from matchvet.f11 import HISTORY_MEDIA_TYPE, F11EvidenceRepository
 from matchvet.f12 import ContextualAttemptRepository
+from matchvet.f13_contracts import (
+    CALIBRATION_MEDIA_TYPE as CALIBRATION_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    CAUSAL_BINDING_MEDIA_TYPE as CAUSAL_BINDING_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    CAUSAL_CALIBRATION_MEDIA_TYPE as CAUSAL_CALIBRATION_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    CAUSAL_INPUT_MEDIA_TYPE as CAUSAL_INPUT_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    CAUSAL_MODEL_MEDIA_TYPE as CAUSAL_MODEL_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    CAUSAL_PREDICTION_MEDIA_TYPE as CAUSAL_PREDICTION_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    CAUSAL_RESULT_MEDIA_TYPE as CAUSAL_RESULT_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    INPUT_MEDIA_TYPE as INPUT_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    MODEL_MEDIA_TYPE as MODEL_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    PREDICTION_MEDIA_TYPE as PREDICTION_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    RESEARCH_ADAPTER_VERSION as RESEARCH_ADAPTER_VERSION,
+)
+from matchvet.f13_contracts import (
+    RESULT_MEDIA_TYPE as RESULT_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    SCHEMA_VERSION as SCHEMA_VERSION,
+)
+from matchvet.f13_contracts import (
+    SOURCE_MEDIA_TYPE as SOURCE_MEDIA_TYPE,
+)
+from matchvet.f13_contracts import (
+    F13Error as F13Error,
+)
+from matchvet.f13_contracts import (
+    _bytes as _bytes,
+)
+from matchvet.f13_contracts import (
+    _digest as _digest,
+)
+from matchvet.f13_contracts import (
+    _engine_contract as _engine_contract,
+)
+from matchvet.f13_contracts import (
+    _plain as _plain,
+)
+from matchvet.f13_contracts import (
+    causal_engine_contract as causal_engine_contract,
+)
+from matchvet.f13_contracts import (
+    causal_engine_version_identity as causal_engine_version_identity,
+)
+from matchvet.f13_contracts import (
+    engine_contract_for_schema as engine_contract_for_schema,
+)
+from matchvet.f13_contracts import (
+    engine_version_identity as engine_version_identity,
+)
+from matchvet.f13_contracts import (
+    media_for_schema as media_for_schema,
+)
+from matchvet.f13_contracts import (
+    research_context as research_context,
+)
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
-from matchvet.matchweek_membership import canonical_json
 from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCClock
 from matchvet.store import Store
 from matchvet.t09 import (
@@ -42,82 +115,6 @@ from matchvet.t14 import (
     calibrate_distribution,
     fit_calibration,
 )
-
-INPUT_MEDIA_TYPE = "application/vnd.matchvet.f13-model-input.v2+json"
-RESULT_MEDIA_TYPE = "application/vnd.matchvet.f13-model-result.v2+json"
-MODEL_MEDIA_TYPE = "application/vnd.matchvet.f13-model-fit.v2+json"
-PREDICTION_MEDIA_TYPE = "application/vnd.matchvet.f13-distribution.v2+json"
-CALIBRATION_MEDIA_TYPE = "application/vnd.matchvet.f13-calibration.v2+json"
-SOURCE_MEDIA_TYPE = "application/vnd.matchvet.f13-history-source.v2+json"
-SCHEMA_VERSION = 2
-RESEARCH_ADAPTER_VERSION = "f13-t09-history-context-v2"
-
-
-class F13Error(ValueError):
-    """The exact model contract or one of its predecessors is invalid."""
-
-
-def _plain(value: object) -> object:
-    if isinstance(value, Mapping):
-        return {str(k): _plain(v) for k, v in value.items()}
-    if isinstance(value, (tuple, list)):
-        return [_plain(v) for v in value]
-    return value
-
-
-def _bytes(value: object) -> bytes:
-    return canonical_json(_plain(value)).encode()
-
-
-def _digest(value: object) -> str:
-    return hashlib.sha256(_bytes(value)).hexdigest()
-
-
-def _engine_contract() -> dict[str, object]:
-    researcher = EvidenceResearcher()
-    return {
-        "RESEARCH_ADAPTER": {
-            "version": RESEARCH_ADAPTER_VERSION,
-            "feature_rules_digest": researcher.feature_rules.digest,
-            "research_rules_digest": researcher.research_rules_digest,
-        },
-        "FULL_TIME_GOALS": {
-            "model_version": t11.T11_MODEL_VERSION,
-            "algorithm_version": t11.T11_ALGORITHM_VERSION,
-            "feature_version": t11.T11_FEATURE_VERSION,
-            "config_digest": t11.T11ModelConfig().digest,
-        },
-        "FIRST_HALF_GOALS": {
-            "model_version": t12.FIRST_HALF_GOAL_MODEL_VERSION,
-            "algorithm_version": t12.T12_ALGORITHM_VERSION,
-            "feature_version": t12.T12_FEATURE_VERSION,
-            "config_digest": t12.T12ModelConfig().digest,
-        },
-        "SECOND_HALF_GOALS": {
-            "model_version": t12.SECOND_HALF_GOAL_MODEL_VERSION,
-            "algorithm_version": t12.T12_ALGORITHM_VERSION,
-            "feature_version": t12.T12_FEATURE_VERSION,
-            "config_digest": t12.T12ModelConfig().digest,
-        },
-        "CORNERS": {
-            "model_version": t13.T13_MODEL_VERSION,
-            "algorithm_version": t13.T13_ALGORITHM_VERSION,
-            "feature_version": t13.T13_FEATURE_VERSION,
-            "config_digest": t13.T13ModelConfig().digest,
-        },
-        "CALIBRATION_UNCERTAINTY": {
-            "model_version": t14.T14_MODEL_VERSION,
-            "algorithm_version": t14.T14_ALGORITHM_VERSION,
-            "feature_version": t14.T14_FEATURE_VERSION,
-            "calibration_version": t14.T14_CALIBRATION_VERSION,
-            "config_digest": t14.T14Config().digest,
-        },
-    }
-
-
-def engine_version_identity() -> str:
-    """Return the deterministic identity of the configured T11-T14 engine contract."""
-    return _digest(_engine_contract())
 
 
 @dataclass(frozen=True)
@@ -153,17 +150,34 @@ class CalibrationCase:
 class ModelContractRepository:
     """Build and replay exact contracts; no latest lookups or caller model facts."""
 
-    def __init__(self, store: Store, *, clock: TrustedUTCClock | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        *,
+        clock: TrustedUTCClock | None = None,
+        candidate_contract_digest: str | None = None,
+        selection_contract: str | None = None,
+    ) -> None:
         self.store = store
         self.artifacts = ArtifactStore(store)
-        self.research = MatchweekResearchRepository(store, clock=clock)
+        self.research = MatchweekResearchRepository(
+            store,
+            clock=clock,
+            candidate_contract_digest=candidate_contract_digest,
+            selection_contract=selection_contract,
+        )
         self._clock = clock
+        self.candidate_contract_digest = candidate_contract_digest
+        self.result_media_type = (
+            CAUSAL_RESULT_MEDIA_TYPE if candidate_contract_digest is not None else RESULT_MEDIA_TYPE
+        )
 
     def _read(self, digest: str, media_type: str) -> dict[str, Any]:
         metadata = self.store.artifact_metadata(digest)
-        if metadata is None or (metadata.media_type, metadata.retention_class) != (
-            media_type,
-            "PROTECTED",
+        if (
+            metadata is None
+            or metadata.media_type not in {media_type, media_for_schema(media_type, 3)}
+            or metadata.retention_class != "PROTECTED"
         ):
             raise F13Error(f"Missing or wrong protected artifact reference for {media_type}.")
         content = self.artifacts.read_artifact(digest)
@@ -171,11 +185,21 @@ class ModelContractRepository:
             value = json.loads(content)
             if not isinstance(value, dict) or _bytes(value) != content:
                 raise F13Error("Noncanonical model contract.")
+            if media_type not in {SOURCE_MEDIA_TYPE, CAUSAL_BINDING_MEDIA_TYPE}:
+                schema = value.get("schema_version")
+                if (
+                    type(schema) is not int
+                    or schema not in {2, 3}
+                    or metadata.media_type != media_for_schema(media_type, schema)
+                ):
+                    raise F13Error("Unsupported exact model schema/media dispatch.")
             return value
         except (ValueError, TypeError) as error:
             raise F13Error("Malformed model contract.") from error
 
-    def _binding(self, evidence_digest: str, cutoff_id: str) -> dict[str, Any]:
+    def _binding(
+        self, evidence_digest: str, cutoff_id: str, *, candidate_digest: str | None = None
+    ) -> dict[str, Any]:
         cutoff = MatchEvidenceCutoffRepository(self.store).get_by_id(cutoff_id)
         if cutoff is None:
             raise F13Error("Exact F07 cutoff is missing.")
@@ -184,13 +208,24 @@ class ModelContractRepository:
             .replay(evidence_digest, freeze_id=cutoff.freeze_id, policy_digest=cutoff.policy_digest)
             .to_dict()
         )
+        if evidence.get("candidate_contract_digest") != candidate_digest or evidence[
+            "schema_version"
+        ] != (4 if candidate_digest is not None else 3):
+            raise F13Error("Evidence candidate context/schema differs from model contract.")
+        schema = 3 if candidate_digest is not None else 2
         matches = [m for m in evidence["matches"] if m["cutoff"]["cutoff_id"] == cutoff_id]
         if len(matches) != 1 or matches[0]["cutoff"]["digest"] != cutoff.digest:
             raise F13Error("Evidence does not name this exact cutoff.")
         history_meta = self.store.artifact_metadata(evidence["history_artifact_digest"])
-        if history_meta is None or history_meta.media_type != HISTORY_MEDIA_TYPE:
+        from matchvet.f11 import CAUSAL_HISTORY_MEDIA_TYPE
+
+        if history_meta is None or history_meta.media_type != (
+            CAUSAL_HISTORY_MEDIA_TYPE if candidate_digest is not None else HISTORY_MEDIA_TYPE
+        ):
             raise F13Error("Missing F11 history.")
         fixtures = json.loads(self.artifacts.read_artifact(history_meta.digest))
+        if candidate_digest is not None:
+            fixtures = fixtures["history"]
         target_rows = [
             f
             for f in fixtures
@@ -214,7 +249,12 @@ class ModelContractRepository:
             source_assertion_ids=(cutoff.fixture_revision_ref,),
         )
         return {
-            "schema_version": SCHEMA_VERSION,
+            **(
+                {"candidate_contract_digest": candidate_digest}
+                if candidate_digest is not None
+                else {}
+            ),
+            "schema_version": schema,
             "fixture_id": cutoff.fixture_id,
             "freeze_id": cutoff.freeze_id,
             "freeze_digest": cutoff.freeze_digest,
@@ -224,8 +264,10 @@ class ModelContractRepository:
             "cutoff_digest": cutoff.digest,
             "evidence_set_digest": evidence_digest,
             "requirement_catalog_digest": V2_REQUIREMENT_CATALOG.digest,
-            "engine_contract": _engine_contract(),
-            "research_adapter_version": RESEARCH_ADAPTER_VERSION,
+            "engine_contract": engine_contract_for_schema(schema),
+            "research_adapter_version": "f13-t09-causal-context-v3"
+            if schema == 3
+            else RESEARCH_ADAPTER_VERSION,
             "target": target.to_dict(),
             "context": matches[0],
         }
@@ -308,16 +350,34 @@ class ModelContractRepository:
         ):
             raise F13Error("A frozen model already exists; replay its exact inputs.")
         expected_result: str | None = None
+        expected_snapshot: str | None = None
+        expected_binding: str | None = None
 
         def require_first_model() -> None:
             prior = self.retained_result_digest(evidence_digest, cutoff_id)
             if prior is not None and prior != expected_result:
                 raise F13Error("A frozen model already exists; replay its exact inputs.")
+            if self.candidate_contract_digest is not None:
+                for metadata in self.store.artifact_catalog():
+                    if metadata.media_type not in {
+                        CAUSAL_INPUT_MEDIA_TYPE,
+                        CAUSAL_BINDING_MEDIA_TYPE,
+                    }:
+                        continue
+                    raw = self._read(metadata.digest, metadata.media_type)
+                    if raw.get("cutoff_id") == cutoff_id and metadata.digest != (
+                        expected_snapshot
+                        if metadata.media_type == CAUSAL_INPUT_MEDIA_TYPE
+                        else expected_binding
+                    ):
+                        raise F13Error("The frozen model input cannot change.")
 
         artifacts = self.research.candidate_artifacts(
             cutoff.freeze_id, cutoff.policy_digest, check_state=require_first_model
         )
-        inputs = self._binding(evidence_digest, cutoff_id)
+        inputs = self._binding(
+            evidence_digest, cutoff_id, candidate_digest=self.candidate_contract_digest
+        )
         boundary = datetime.fromisoformat(inputs["target"]["cutoff_utc"])
         retained = []
         excluded = []
@@ -338,15 +398,36 @@ class ModelContractRepository:
         retained.sort(key=_bytes)
         if len({m["fixture_id"] for m in retained}) != len(retained):
             raise F13Error("Conflicting or duplicate historical fixture inputs.")
-        snapshot = {"schema_version": SCHEMA_VERSION, "history": retained}
-        inputs["history_snapshot_digest"] = artifacts.publish_artifact(
-            _bytes(snapshot), INPUT_MEDIA_TYPE
-        ).digest
+        snapshot = {"schema_version": inputs["schema_version"], "history": retained}
+        if self.candidate_contract_digest is not None:
+            snapshot.update(
+                candidate_contract_digest=self.candidate_contract_digest, cutoff_id=cutoff_id
+            )
+            expected_snapshot = _digest(snapshot)
+        inputs["history_snapshot_digest"] = _digest(snapshot)
         inputs["excluded_history"] = sorted(excluded, key=_bytes)
         inputs["calibration_cases"] = sorted((asdict(c) for c in calibration_cases), key=_bytes)
-        result = self._evaluate(inputs, snapshot, artifacts=artifacts)
+        if self.candidate_contract_digest is not None:
+            expected_binding = _digest(inputs)
+        if self.candidate_contract_digest is not None:
+            require_first_model()
+            result = self._evaluate(inputs, snapshot, compute_only=True)
+            artifacts.publish_artifact(_bytes(snapshot), CAUSAL_INPUT_MEDIA_TYPE)
+            artifacts.publish_artifact(_bytes(inputs), CAUSAL_BINDING_MEDIA_TYPE)
+            # Complete every fit/prediction/calibration before publishing outputs.
+            for family, row in result.to_dict()["results"].items():
+                for payload, media in (
+                    (row["fit"], MODEL_MEDIA_TYPE),
+                    (row["prediction"], PREDICTION_MEDIA_TYPE),
+                    (row["calibration"], CALIBRATION_MEDIA_TYPE),
+                ):
+                    self._retain(payload, media, inputs, ModelFamily(family), artifacts=artifacts)
+        else:
+            artifacts.publish_artifact(_bytes(snapshot), INPUT_MEDIA_TYPE)
+            result = self._evaluate(inputs, snapshot, artifacts=artifacts)
         expected_result = result.digest
-        artifacts.publish_artifact(result.to_bytes(), RESULT_MEDIA_TYPE)
+        artifacts.publish_artifact(result.to_bytes(), self.result_media_type)
+        self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
         return result
 
     def build_from_retained_history(self, evidence_digest: str, cutoff_id: str) -> ModelContract:
@@ -373,14 +454,15 @@ class ModelContractRepository:
         self.research.require_candidate_write(cutoff.freeze_id, cutoff.policy_digest)
         existing: set[str] = set()
         for metadata in self.store.artifact_catalog():
-            if metadata.media_type != RESULT_MEDIA_TYPE:
+            if metadata.media_type != self.result_media_type:
                 continue
             value = self._read(metadata.digest, RESULT_MEDIA_TYPE)
             inputs = value.get("inputs")
             if isinstance(inputs, Mapping) and (
                 inputs.get("evidence_set_digest"),
                 inputs.get("cutoff_id"),
-            ) == (evidence_digest, cutoff_id):
+                inputs.get("candidate_contract_digest"),
+            ) == (evidence_digest, cutoff_id, self.candidate_contract_digest):
                 existing.add(metadata.digest)
         if len(existing) > 1:
             raise F13Error("Conflicting retained model results name the same evidence and cutoff.")
@@ -420,14 +502,15 @@ class ModelContractRepository:
         """Locate the sole protected result for exact inputs, without a latest lookup."""
         matches: set[str] = set()
         for metadata in self.store.artifact_catalog():
-            if metadata.media_type != RESULT_MEDIA_TYPE:
+            if metadata.media_type != self.result_media_type:
                 continue
             value = self._read(metadata.digest, RESULT_MEDIA_TYPE)
             inputs = value.get("inputs")
             if isinstance(inputs, Mapping) and (
                 inputs.get("evidence_set_digest"),
                 inputs.get("cutoff_id"),
-            ) == (evidence_digest, cutoff_id):
+                inputs.get("candidate_contract_digest"),
+            ) == (evidence_digest, cutoff_id, self.candidate_contract_digest):
                 matches.add(metadata.digest)
         if len(matches) > 1:
             raise F13Error("Conflicting retained model results name the same evidence and cutoff.")
@@ -567,17 +650,24 @@ class ModelContractRepository:
         family: ModelFamily,
         *,
         artifacts: ArtifactStore | None,
+        compute_only: bool = False,
     ) -> str:
         envelope = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": inputs["schema_version"],
+            **(
+                {"candidate_contract_digest": inputs["candidate_contract_digest"]}
+                if inputs["schema_version"] == 3
+                else {}
+            ),
             "input_digest": _digest(inputs),
             "model_family": family.value,
             "payload": payload,
         }
         digest = _digest(envelope)
+        media_type = media_for_schema(media_type, inputs["schema_version"])
         if artifacts is not None:
             artifacts.publish_artifact(_bytes(envelope), media_type)
-        elif self._read(digest, media_type) != json.loads(_bytes(envelope)):
+        elif not compute_only and self._read(digest, media_type) != json.loads(_bytes(envelope)):
             raise F13Error("Wrong model artifact lineage.")
         return digest
 
@@ -587,6 +677,7 @@ class ModelContractRepository:
         snapshot: dict[str, Any],
         *,
         artifacts: ArtifactStore | None = None,
+        compute_only: bool = False,
     ) -> ModelContract:
         expected_keys = {
             "schema_version",
@@ -607,10 +698,26 @@ class ModelContractRepository:
             "engine_contract",
             "research_adapter_version",
         }
+        schema = inputs["schema_version"]
+        engine = engine_contract_for_schema(schema)
+        if schema == 3:
+            expected_keys.add("candidate_contract_digest")
+            candidate = self.research.resolve_candidate(inputs["candidate_contract_digest"])
+            if (candidate.freeze_id, candidate.engine_version) != (
+                inputs["freeze_id"],
+                _digest(engine),
+            ):
+                raise F13Error("Model candidate engine/context differs.")
+        if (
+            inputs.get("engine_contract") != engine
+            or inputs.get("research_adapter_version")
+            != cast(dict[str, object], engine["RESEARCH_ADAPTER"])["version"]
+        ):
+            raise F13Error("Unsupported explicit model engine/adapter identity.")
         if (
             set(inputs) != expected_keys
             or type(inputs["schema_version"]) is not int
-            or (inputs["schema_version"] != SCHEMA_VERSION)
+            or (inputs["schema_version"] != schema)
         ):
             raise F13Error("Unsupported model input schema.")
         if not isinstance(inputs["calibration_cases"], list) or not isinstance(
@@ -619,14 +726,17 @@ class ModelContractRepository:
             raise F13Error("Malformed model input collections.")
         if (
             type(snapshot.get("schema_version")) is not int
-            or snapshot["schema_version"] != SCHEMA_VERSION
+            or snapshot["schema_version"] != schema
             or set(snapshot)
-            != {
-                "schema_version",
-                "history",
-            }
+            != ({"candidate_contract_digest", "cutoff_id"} if schema == 3 else set())
+            | {"schema_version", "history"}
         ):
             raise F13Error("Unsupported historical input schema.")
+        if schema == 3 and (
+            snapshot.get("candidate_contract_digest"),
+            snapshot.get("cutoff_id"),
+        ) != (inputs["candidate_contract_digest"], inputs["cutoff_id"]):
+            raise F13Error("Model snapshot candidate context differs.")
         if not isinstance(snapshot["history"], list) or any(
             not isinstance(row, dict) for row in snapshot["history"]
         ):
@@ -682,12 +792,13 @@ class ModelContractRepository:
                     reason="Exact F11/F12 weather acquisition attempt.",
                 ),
             )
+        context = research_context(inputs)
         state = EvidenceResearcher().build(
             EvidenceResearchInput(
                 target=target,
                 history=history,
-                workload=inputs["context"]["workload"],
-                weather=inputs["context"]["weather"],
+                workload=context["workload"],
+                weather=context["weather"],
                 mandatory_research=attempts,
             )
         )
@@ -720,7 +831,12 @@ class ModelContractRepository:
             fit_value = fit.to_dict()
             prediction_value = prediction.to_dict()
             results[family.value] = {
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": schema,
+                **(
+                    {"candidate_contract_digest": inputs["candidate_contract_digest"]}
+                    if schema == 3
+                    else {}
+                ),
                 "fixture_id": target.fixture_id,
                 "input_digest": _digest(inputs),
                 "input_lineage": {
@@ -743,10 +859,20 @@ class ModelContractRepository:
                 "model_version": fit.model_version,
                 "model_fit_digest": fit.digest,
                 "model_artifact_digest": self._retain(
-                    fit_value, MODEL_MEDIA_TYPE, inputs, family, artifacts=artifacts
+                    fit_value,
+                    MODEL_MEDIA_TYPE,
+                    inputs,
+                    family,
+                    artifacts=artifacts,
+                    compute_only=compute_only,
                 ),
                 "prediction_artifact_digest": self._retain(
-                    prediction_value, PREDICTION_MEDIA_TYPE, inputs, family, artifacts=artifacts
+                    prediction_value,
+                    PREDICTION_MEDIA_TYPE,
+                    inputs,
+                    family,
+                    artifacts=artifacts,
+                    compute_only=compute_only,
                 ),
                 "calibration_artifact_digest": self._retain(
                     calibration.to_dict(),
@@ -754,6 +880,7 @@ class ModelContractRepository:
                     inputs,
                     family,
                     artifacts=artifacts,
+                    compute_only=compute_only,
                 ),
                 "fit": fit_value,
                 "prediction_digest": prediction.digest,
@@ -782,7 +909,12 @@ class ModelContractRepository:
         return ModelContract(
             _bytes(
                 {
-                    "schema_version": SCHEMA_VERSION,
+                    "schema_version": schema,
+                    **(
+                        {"candidate_contract_digest": inputs["candidate_contract_digest"]}
+                        if schema == 3
+                        else {}
+                    ),
                     "inputs": inputs,
                     "input_digest": _digest(inputs),
                     "features": [f.to_dict() for f in state.derived_features],
@@ -813,13 +945,20 @@ class ModelContractRepository:
     def replay(self, digest: str, evidence_digest: str, cutoff_id: str) -> ModelContract:
         value = self._read(digest, RESULT_MEDIA_TYPE)
         try:
-            if (
-                type(value["schema_version"]) is not int
-                or value["schema_version"] != SCHEMA_VERSION
-            ):
+            if type(value["schema_version"]) is not int or value["schema_version"] not in {2, 3}:
                 raise F13Error("Unsupported model result schema.")
-            binding = self._binding(evidence_digest, cutoff_id)
             inputs = value["inputs"]
+            candidate_digest = inputs.get("candidate_contract_digest")
+            if (
+                value.get("candidate_contract_digest") != candidate_digest
+                or value["schema_version"] != inputs["schema_version"]
+            ):
+                raise F13Error("Model result candidate/schema differs from input.")
+            binding = self._binding(evidence_digest, cutoff_id, candidate_digest=candidate_digest)
+            if candidate_digest is not None:
+                retained_inputs = self._read(value["input_digest"], CAUSAL_BINDING_MEDIA_TYPE)
+                if retained_inputs != inputs:
+                    raise F13Error("Exact model input binding differs.")
             if any(_bytes(inputs.get(k)) != _bytes(v) for k, v in binding.items()):
                 raise F13Error("Wrong membership, cutoff or evidence reference.")
             snapshot = self._read(inputs["history_snapshot_digest"], INPUT_MEDIA_TYPE)

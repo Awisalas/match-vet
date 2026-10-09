@@ -1,0 +1,5 @@
+...........
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/data/data/com.termux/files/home/projects/match-vet/tests/test_issue76.py:523: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+11 passed in 2982.51s (0:49:42)

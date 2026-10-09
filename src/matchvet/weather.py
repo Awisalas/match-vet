@@ -26,6 +26,7 @@ from matchvet.evidence import CutoffEligibility, EvidenceClass, EvidenceState
 from matchvet.store import CanonicalIdentifier, Store
 
 if TYPE_CHECKING:
+    from matchvet.matchweek_research import MatchweekResearchRepository
     from matchvet.provider_health import ProviderHealthRecord
     from matchvet.provider_health_repository import ProviderHealthRepository
     from matchvet.weather_provider_health import OpenMeteoHealthRecorder
@@ -449,9 +450,12 @@ def parse_open_meteo_response(
     retrieved_at_utc: str,
     response_status: int = 200,
     source_locator: str | None = None,
+    selection_contract: str = "postcommit-upper-bound-v1",
 ) -> WeatherEvidence:
     """Parse and cutoff-classify one Open-Meteo response."""
 
+    if selection_contract not in {"postcommit-upper-bound-v1", "matchvet-causal-selection-v2"}:
+        raise WeatherParseError("Unsupported explicit weather selection contract.")
     if response_status != 200:
         raise WeatherParseError(f"Open-Meteo response status is {response_status}.")
     response, raw = _payload_mapping(payload)
@@ -514,19 +518,30 @@ def parse_open_meteo_response(
     cutoff_valid = issue <= cutoff and retrieved <= cutoff
     eligibility = CutoffEligibility.CUTOFF_VALID if cutoff_valid else CutoffEligibility.POST_CUTOFF
     freshness = Freshness.CUTOFF_VALID if cutoff_valid else Freshness.POST_CUTOFF
+    unknown_reason = None if cutoff_valid else "FORECAST_POST_CUTOFF"
+    if selection_contract == "matchvet-causal-selection-v2":
+        known_publication = issue_source != "retrieval_time_bound"
+        if known_publication and issue > retrieved:
+            raise WeatherParseError("Weather publication is after its retrieval.")
+        cutoff_valid = known_publication and issue <= cutoff
+        eligibility = CutoffEligibility.INDETERMINATE
+        freshness = Freshness.UNKNOWN
+        unknown_reason = (
+            None
+            if cutoff_valid
+            else "FORECAST_POST_CUTOFF"
+            if known_publication
+            else "FORECAST_PUBLICATION_UNKNOWN"
+        )
     age = max(0.0, (cutoff - issue).total_seconds())
     return WeatherEvidence(
         fixture_id=request.fixture_id,
         target_time_utc=request.target_time_utc,
         cutoff_utc=request.cutoff_utc,
-        state=(
-            EvidenceState.OBSERVED
-            if eligibility is CutoffEligibility.CUTOFF_VALID
-            else EvidenceState.UNKNOWN
-        ),
+        state=(EvidenceState.OBSERVED if cutoff_valid else EvidenceState.UNKNOWN),
         cutoff_eligibility=eligibility,
         freshness=freshness,
-        unknown_reason=(None if cutoff_valid else "FORECAST_POST_CUTOFF"),
+        unknown_reason=unknown_reason,
         forecast_model=str(response.get("model") or request.model),
         forecast_issue_time_utc=issue_time,
         forecast_issue_time_source=issue_source,
@@ -570,6 +585,57 @@ def build_weather_evidence(
     eligible_target_match: bool = True,
     refresh: bool = False,
     health_recorder: OpenMeteoHealthRecorder | None = None,
+    selection_contract: str = "postcommit-upper-bound-v1",
+    candidate_owner: MatchweekResearchRepository | None = None,
+) -> WeatherEvidence:
+    """Acquire only under explicit candidate admission; retained replay is separate."""
+    from matchvet.causal_candidate import (
+        CAUSAL_CONTRACT,
+        HISTORICAL_CONTRACT,
+        require_weather_context,
+    )
+    from matchvet.matchweek_research import MatchweekResearchError
+
+    if selection_contract not in {CAUSAL_CONTRACT, HISTORICAL_CONTRACT}:
+        raise MatchweekResearchError("Unsupported explicit weather selection contract.")
+    if selection_contract == CAUSAL_CONTRACT:
+        if candidate_owner is None or candidate_owner.candidate_contract_digest is None:
+            raise MatchweekResearchError(
+                "Causal weather acquisition requires explicit owner context."
+            )
+        candidate_owner.require_causal_write(candidate_owner.candidate_contract_digest)
+        if location is not None and location.available:
+            require_weather_context(
+                candidate_owner, WeatherRequest(fixture_id, target_time_utc, cutoff_utc, location)
+            )
+    result = _build_weather_evidence(
+        fixture_id=fixture_id,
+        target_time_utc=target_time_utc,
+        cutoff_utc=cutoff_utc,
+        location=location,
+        client=client,
+        eligible_target_match=eligible_target_match,
+        refresh=refresh,
+        health_recorder=health_recorder,
+        selection_contract=selection_contract,
+    )
+    if selection_contract == CAUSAL_CONTRACT:
+        assert candidate_owner is not None and candidate_owner.candidate_contract_digest is not None
+        candidate_owner.require_causal_write(candidate_owner.candidate_contract_digest)
+    return result
+
+
+def _build_weather_evidence(
+    *,
+    fixture_id: str,
+    target_time_utc: str,
+    cutoff_utc: str,
+    location: VenueLocation | None,
+    client: WeatherClient | None,
+    eligible_target_match: bool = True,
+    refresh: bool = False,
+    health_recorder: OpenMeteoHealthRecorder | None = None,
+    selection_contract: str = "postcommit-upper-bound-v1",
 ) -> WeatherEvidence:
     """Fetch and parse weather for one eligible Target Match only."""
 
@@ -646,6 +712,7 @@ def build_weather_evidence(
             retrieved_at_utc=response.retrieved_at_utc,
             response_status=response.response_status,
             source_locator=response.url or request.url,
+            selection_contract=selection_contract,
         )
     except WeatherParseError as error:
         if health_recorder is not None:
@@ -879,8 +946,28 @@ class WeatherEvidenceBuilder:
         *,
         provider_health_repository: ProviderHealthRepository | None = None,
         health_clock: Callable[[], str] | None = None,
+        admission_guard: Callable[[], object] | None = None,
+        candidate_contract_digest: str | None = None,
+        selection_contract: str | None = None,
+        store: Store | None = None,
     ) -> None:
+        from matchvet.causal_candidate import writer_contract
+
+        self.selection_contract = writer_contract(candidate_contract_digest, selection_contract)
+        self.candidate_contract_digest = candidate_contract_digest
+        self._candidate_store = store or (
+            provider_health_repository._store if provider_health_repository is not None else None
+        )
+        if (
+            store is not None
+            and provider_health_repository is not None
+            and store is not provider_health_repository._store
+        ):
+            raise WeatherParseError(
+                "Weather acquisition and health must use the same candidate store."
+            )
         self.health_clock = health_clock
+        self.admission_guard = admission_guard
         self.client = client
         self.provider_health_repository = provider_health_repository
 
@@ -892,8 +979,32 @@ class WeatherEvidenceBuilder:
     ) -> WeatherBatch:
         from matchvet.weather_provider_health import OpenMeteoHealthRecorder
 
+        if self.admission_guard is not None:
+            self.admission_guard()
+
+        owner = None
+        if self.candidate_contract_digest is not None:
+            from matchvet.matchweek_research import (
+                MatchweekResearchError,
+                MatchweekResearchRepository,
+            )
+
+            if self._candidate_store is None:
+                raise MatchweekResearchError(
+                    "Causal weather acquisition requires an explicit owner store."
+                )
+            owner = MatchweekResearchRepository(
+                self._candidate_store, candidate_contract_digest=self.candidate_contract_digest
+            )
+            owner.require_causal_write(self.candidate_contract_digest)
+
         recorder = (
-            OpenMeteoHealthRecorder(self.provider_health_repository, clock=self.health_clock)
+            OpenMeteoHealthRecorder(
+                self.provider_health_repository,
+                clock=self.health_clock,
+                admission_guard=self.admission_guard,
+                candidate_contract_digest=self.candidate_contract_digest,
+            )
             if self.provider_health_repository is not None
             else None
         )
@@ -908,12 +1019,18 @@ class WeatherEvidenceBuilder:
                 eligible_target_match=target.eligible_target_match,
                 refresh=refresh,
                 health_recorder=recorder,
+                selection_contract=self.selection_contract,
+                candidate_owner=owner,
             )
             for target in targets
         )
         after_calls = (
             len(getattr(self.client, "calls", ())) if self.client is not None else before_calls
         )
+        if self.admission_guard is not None:
+            self.admission_guard()
+        if owner is not None and self.candidate_contract_digest is not None:
+            owner.require_causal_write(self.candidate_contract_digest)
         return WeatherBatch(
             evidence,
             len(targets),
