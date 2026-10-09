@@ -117,3 +117,18 @@ Numerical and profile decisions therefore remain evidence-dependent.
   completion evidence.
 - The earlier #70 planning and status entries are preserved in the commits
   listed above.
+
+## #86 capture-index representation gap (documented before storage change)
+
+F16 and #80 already retain and replay the complete selected graph and its
+pre-`T` causal witness. CB01 and F19 retain exact per-fixture/preference
+publication, enrollment, settlement, and correction artifacts. Those identities
+do not provide one immutable snapshot of the INCLUDED F06 membership × enabled
+preference denominator, the separate excluded-membership reasons, and the
+unattempted/failed/withdrawn/unsupported rows with their exact later CB01/F19
+attachment versions. `BootstrapRepository.inspect_denominator` is a
+reconstructed view over the current failure catalog and selected receipts; it
+has no content digest or append-only successor identity. F16 selection
+manifests end before CB01 and F19. A protected capture-index artifact is
+therefore required to freeze this aggregate and its exact replay lineage. This
+representation gap requires no SQLite migration.
