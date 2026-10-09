@@ -99,10 +99,10 @@ to raise `Authenticated causal profile activation is unavailable`; this proof do
 not enable a live source, #70 fitting, or promotion.
 
 No production defect was found, so no production fix or schema change was needed.
-The only production-facing source of test data remains the existing test helper;
-the small `matchweek_friday` helper parameter defaults to the prior historical
-value and is used only to build the synthetic #84 schedule.
+The only change to an existing helper is test-only: it accepts an optional
+synthetic `matchweek_friday` and defaults to the prior historical date. No
+production Python module changed.
 
-Implementation commit SHA: to be recorded after the required checks and commit.
+Implementation commit: [4612229e52f9728730c6925e3b2849c6978ccef5](https://github.com/Awisalas/match-vet/commit/4612229e52f9728730c6925e3b2849c6978ccef5).
 Open #84 acceptance blockers: none. Live source activation remains outside this
 ticket and is intentionally disabled.

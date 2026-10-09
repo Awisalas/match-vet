@@ -153,4 +153,5 @@ boundary. The integrated success case passed; retained-wire verification passed
 and occupancy cases passed 5; Ruff, strict mypy, formatting and diff checks
 passed. No production fix or schema change was required. #83 and #84 are complete;
 #80's 18 acceptance criteria are checked from this executed evidence. Production
-profile activation remains disabled.
+profile activation remains disabled. The proof is committed in
+[`4612229e52f9728730c6925e3b2849c6978ccef5`](https://github.com/Awisalas/match-vet/commit/4612229e52f9728730c6925e3b2849c6978ccef5).
