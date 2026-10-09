@@ -11,12 +11,25 @@ is its accepted, non-executable successor. It leaves methodology 0.1.0,
 chronology 0.2.0, released V1 artifacts and readers, CB01 core, and historical
 cohorts unchanged.
 
-[#85](https://github.com/Awisalas/match-vet/issues/85) is OPEN with
-`ready-for-agent`. Its implementation contract records the accepted prerequisite
-and specifies the versioned support and comparison consumer seam. [#86](https://github.com/Awisalas/match-vet/issues/86)
-is OPEN, remains not ready for implementation, and is blocked by #85. Issue #70
-remains blocked by #85 and #86. The acceptance commit SHA is recorded in the
-linked #70 status comment after the commit is created.
+[#85](https://github.com/Awisalas/match-vet/issues/85) is CLOSED. Its versioned
+F13/F14/T15 consumer seam is implemented in commit
+`976beb8216d9174d20ff7184e289c09827e12061`. [#86](https://github.com/Awisalas/match-vet/issues/86)
+remains OPEN, not ready for implementation, and was not started under #85. The
+separate prospective evidence authorization remains pending. Issue #70 remains
+OPEN with `needs-info`; implementing the contract does not supply the missing
+chronological evidence or resolve numerical/profile decisions.
+
+## #85 implementation record
+
+- Added versioned CandidateInput support, exact protected gate-proof readers,
+  and F14 replay identities without changing released V1 readers or formats.
+- Added T15 joint finalist comparison with an order-independent maximal set
+  and unresolved-primary AVOID behavior.
+- Focused checks: 51 tests passed across the fast focused run and exact replay;
+  Ruff, strict mypy on changed production modules, and `git diff --check` passed.
+- Implementation commit: `976beb8216d9174d20ff7184e289c09827e12061`.
+- Open blockers: #70 still needs a prospectively captured corrected-chronology
+  V2 cohort; #86 remains not ready and was not started.
 
 ## Decision recorded
 
@@ -38,7 +51,7 @@ linked #70 status comment after the commit is created.
 
 ## Compatibility and work boundaries
 
-- #85 may implement the versioned consumer and replay contract. It does not
+- #85 implemented the versioned consumer and replay contract. It does not
   authorize a statistical fit or production PLAY.
 - #86 defines the later prospective evidence bootstrap. It must use the exact
   corrected F06/F07 inputs and #80 selection witness before cutoff, then retain
@@ -57,15 +70,15 @@ linked #70 status comment after the commit is created.
 
 ## Ordered blockers
 
-1. Implement and review #85's versioned CandidateInput support and joint T1
-   comparison contract. Missing support must remain UNKNOWN, and old readers
-   must retain their existing meanings.
-2. Only after #85 completes, authorize the source and causal-witness profile
-   required by #86. This authorization is separate from this ADR.
-3. Run #86 prospectively. Retain exact cutoff-valid inputs, immutable
-   provenance, all denominator rows, and later source-backed outcomes. Keep
-   unavailable, unattempted, UNKNOWN, failed, VOID, and unsupported states
-   visible.
+1. #85's versioned CandidateInput support and joint T1 comparison contract is
+   implemented in `976beb8216d9174d20ff7184e289c09827e12061`. Missing support
+   remains UNKNOWN, and old readers retain their existing meanings.
+2. Separately authorize the source and causal-witness profile required by #86.
+   This authorization is separate from this ADR and remains pending.
+3. Only after authorization, run #86 prospectively. Retain exact cutoff-valid
+   inputs, immutable provenance, all denominator rows, and later source-backed
+   outcomes. Keep unavailable, unattempted, UNKNOWN, failed, VOID, and
+   unsupported states visible.
 4. Freeze development, validation, and untouched final-evaluation manifests
    before assigning evidence roles.
 5. Resolve the empirical methods and profiles under #13 from eligible
@@ -76,10 +89,9 @@ linked #70 status comment after the commit is created.
 
 MatchVet has no prospectively captured corrected-chronology V2 cohort that
 joins exact cutoff-valid inputs, F13 predictions, F14/F16 RESEARCH_ONLY records,
-and later source-backed outcomes. The versioned #85 consumer seam is also not
-implemented. Existing historical rows cannot prove earlier prediction
-availability, and production causal activation still refuses. Numerical and
-profile decisions therefore remain evidence-dependent.
+and later source-backed outcomes. Existing historical rows cannot prove earlier
+prediction availability, and production causal activation still refuses.
+Numerical and profile decisions therefore remain evidence-dependent.
 
 ## Earlier repository bookkeeping
 
