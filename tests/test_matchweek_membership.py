@@ -278,11 +278,12 @@ def _persistable_schedule_assessment(
     tmp_path: Path,
     rows: tuple[tuple[str, str, str, str], ...],
     *,
+    matchweek_friday: str = "2026-09-25",
     duplicate_first_candidate: bool = False,
     venue_for_first: str | None = None,
     rows_by_league: dict[str, tuple[tuple[str, str, str, str], ...]] | None = None,
 ) -> FixtureCoverageAssessment:
-    scopes = fixture_scopes_for_matchweek("2026-09-25", season="2026-27")
+    scopes = fixture_scopes_for_matchweek(matchweek_friday, season="2026-27")
     importer = FixtureHistoryImporter(store, private_root=tmp_path)
     attempts: list[ProviderAttempt] = []
     evidence: list[ProviderCoverageEvidence] = []

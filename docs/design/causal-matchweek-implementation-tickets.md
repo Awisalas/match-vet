@@ -1,6 +1,7 @@
 # Causal Matchweek implementation tickets
 
-[Parent #80](https://github.com/Awisalas/match-vet/issues/80) remains open.
+[Parent #80](https://github.com/Awisalas/match-vet/issues/80) is complete; its
+original acceptance matrix and final evidence are in the #84 audit record.
 [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md) and the
 [accepted architecture](causal-matchweek-selection-witness.md) remain the contract.
 This record decomposes implementation without changing that architecture.
@@ -10,11 +11,11 @@ This record decomposes implementation without changing that architecture.
 | 1 | [#81](https://github.com/Awisalas/match-vet/issues/81) | Research/Store selection authority, RFC3161 verification, approved profile and trust provenance, protected v2 completion/replay | None | Completed |
 | 2 | [#82](https://github.com/Awisalas/match-vet/issues/82) | Immutable candidate descriptor, stage schemas and all direct/resume writer contracts, cross-version occupancy | #81 (closed) | Completed |
 | 3 | [#83](https://github.com/Awisalas/match-vet/issues/83) | Selected-state consumers, CB01 adapter/denominator, F19 and report/evaluation/legacy dispatch | #82 (closed) | Completed |
-| 4 | [#84](https://github.com/Awisalas/match-vet/issues/84) | Integrated seven-league successor proof and complete parent acceptance evidence | #83 (closed) | ready-for-agent |
+| 4 | [#84](https://github.com/Awisalas/match-vet/issues/84) | Integrated seven-league successor proof and complete parent acceptance evidence | #83 (closed) | Completed |
 
 All four are native sub-issues. Native blocking edges form
-`#81 → #82 → #83 → #84 → #80`. Only #84 has `ready-for-agent`; #81–#83 are complete.
-The parent is blocked by #84 and has no implementation readiness label.
+`#81 → #82 → #83 → #84 → #80`; all child issues and the parent acceptance are
+complete. Production activation remains refusing under the default configuration.
 
 Each child contains exact scope, explicit non-scope, acceptance criteria, focused
 tests, dependencies and a model/skill recommendation. Copies of the published
@@ -28,8 +29,8 @@ capability or admission bypass is introduced to make an intermediate slice usabl
 ## Parent acceptance coverage
 
 Ordinals below refer to the original 18 acceptance checkboxes in #80, preserved
-unchanged in the parent and in the ticketing snapshot. These are planned evidence
-obligations, not completed successor acceptance.
+unchanged in the parent and in the ticketing snapshot. The exact executed mapping
+is recorded in the [#84 evidence index](../../.audit/issue-84-implementation/README.md).
 
 | Criterion | Requirement | Implementation owner | Final proof |
 | --- | --- | --- | --- |
@@ -59,9 +60,9 @@ founder cutoff remains earliest INCLUDED kickoff minus explicit 21600 seconds.
 #73–#78 stay historically complete. Old v1/legacy meanings, canonical bytes,
 engine identities and CB01 software commitments remain unchanged.
 
-Production refusal persists until all children and the entire #80 acceptance proof
-pass. A child never authorizes an enabled partial adapter. Final proof also does
-not authorize live activation, production promotion or #70 fitting.
+Production refusal persists under the default configuration after this proof. A
+child never authorizes an enabled partial adapter. The final proof does not
+authorize live activation, production promotion or #70 fitting.
 
 All implementation and proof use isolated temporary stores, deterministic synthetic
 graphs and retained offline wire fixtures. No live stores, live fixture acquisition,
@@ -131,5 +132,25 @@ passed. Retained historical commitments reconstruct with unchanged SHA-256 value
 CB01 core `7de7f617d652329146a3fa3c4f2b9638134dfb3c8d4c931bb35b6a90ac200092`,
 CB01 trust `4f75585163f353bc6dfcac1e566ee1502562d9a03b7c6e2b1fefc2800974c9be`,
 and method 0.1.0 `1ebeb80f33190f18440d2dcfa5b2526d3907223471f4b2711b7445b0ece8e200`.
-The implementation is committed as `c6ef6bc`; original #80 acceptance remains
-reserved for #84, and production activation remains refusing.
+The implementation is committed as `c6ef6bc`; production activation remains refusing.
+
+## Integrated successor proof, 2026-10-09
+
+#84 completed the isolated seven-scope Friday–Monday path through F06/F07/F11/F12/
+F13/F14/F15/F16, fresh causal selection/completion, CB01, evaluation and F19.
+The synthetic RFC3161 event is signed locally and checked by the real profile
+verifier. Its `U<T` interval is delivered and receipted after T. Reopen replays
+offline, and the same store preserves its v1 selection, receipt, canonical graph
+bytes and identities. CB01 retains the complete denominator and independently
+asserts `T < signed genTime < kickoff`; F19 corrections preserve exact lineage and
+frozen prediction inputs.
+
+[Issue #84 evidence and the ordered 18-criterion #80 mapping](../../.audit/issue-84-implementation/README.md)
+record every owning child, runnable test/result, retained-wire run, focused
+historical regression, final static checks, assumptions and remaining operational
+boundary. The integrated success case passed; retained-wire verification passed
+7 focused cases; the affected membership module passed 102 cases; focused timing
+and occupancy cases passed 5; Ruff, strict mypy, formatting and diff checks
+passed. No production fix or schema change was required. #83 and #84 are complete;
+#80's 18 acceptance criteria are checked from this executed evidence. Production
+profile activation remains disabled.
