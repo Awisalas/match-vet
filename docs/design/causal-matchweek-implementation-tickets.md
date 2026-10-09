@@ -9,11 +9,11 @@ This record decomposes implementation without changing that architecture.
 | --- | --- | --- | --- | --- |
 | 1 | [#81](https://github.com/Awisalas/match-vet/issues/81) | Research/Store selection authority, RFC3161 verification, approved profile and trust provenance, protected v2 completion/replay | None | Completed |
 | 2 | [#82](https://github.com/Awisalas/match-vet/issues/82) | Immutable candidate descriptor, stage schemas and all direct/resume writer contracts, cross-version occupancy | #81 (closed) | Completed |
-| 3 | [#83](https://github.com/Awisalas/match-vet/issues/83) | Selected-state consumers, CB01 adapter/denominator, F19 and report/evaluation/legacy dispatch | #82 (closed) | ready-for-agent |
-| 4 | [#84](https://github.com/Awisalas/match-vet/issues/84) | Integrated seven-league successor proof and complete parent acceptance evidence | #83 | Blocked |
+| 3 | [#83](https://github.com/Awisalas/match-vet/issues/83) | Selected-state consumers, CB01 adapter/denominator, F19 and report/evaluation/legacy dispatch | #82 (closed) | Completed |
+| 4 | [#84](https://github.com/Awisalas/match-vet/issues/84) | Integrated seven-league successor proof and complete parent acceptance evidence | #83 (closed) | ready-for-agent |
 
 All four are native sub-issues. Native blocking edges form
-`#81 → #82 → #83 → #84 → #80`. Only #83 has `ready-for-agent`; #81 and #82 are complete.
+`#81 → #82 → #83 → #84 → #80`. Only #84 has `ready-for-agent`; #81–#83 are complete.
 The parent is blocked by #84 and has no implementation readiness label.
 
 Each child contains exact scope, explicit non-scope, acceptance criteria, focused
@@ -98,6 +98,38 @@ slots permit inspection and exact replay, with no new candidate work.
 
 [Focused execution and review evidence](../../.audit/issue-82-implementation/README.md)
 records the writer matrix, affected historical regressions, protocol seams, and
-the comparison against pre-#82 canonical artifacts. #83 is ready and unstarted.
-#80, #83, and #84 remain open. Original parent acceptance checkboxes remain
-reserved for #84's integrated proof, and production activation remains refusing.
+the comparison against pre-#82 canonical artifacts.
+
+## Selected-state consumer delivery
+
+#83 implements explicit causal selection-v2 resolution for CB01, F19 and
+evaluation. Downstream qualification binds the indexed selection, exact
+completion receipt, candidate contract, F16 engine identity and selection reader;
+generic completion, candidate-only, terminal, withdrawn, alternate and unsupported
+state cannot supply recommendations. Historical inspection remains labeled as
+inspection only.
+
+CB01 core and trust-verifier sources remain byte-for-byte unchanged. The adapter
+keeps its strict `T < signed genTime < controlling kickoff` check separate from
+the causal witness's proof that the complete selected Matchweek existed before
+`T`. The `INCLUDED membership × enabled preference` denominator remains complete
+when F16, a receipt, a witness or an enrollment attempt is missing or fails.
+
+F19 binds settlement and corrections to the exact selected F16 manifest, match
+result and F14 decision, including the causal qualified origin. Cache reuse checks
+the current selected state and receipt before using retained artifacts. Correction
+records remain append-only and predecessor-linked; outcomes remain settlement
+evidence and do not change frozen recommendation inputs. Evaluation labels causal
+selection-v2, corrected historical v1 and legacy per-match cohorts separately.
+
+Focused issue #83 consumer tests cover qualification refusal and success, complete
+denominators, CB01 role and chronology separation, F19 exact origin/cache/correction
+lineage and cohort dispatch. Directly affected #77 retained-wire and strict-time
+regressions, historical F19 replay and F13 engine identity tests passed. Ruff,
+strict mypy on the five changed source modules, formatting and `git diff --check`
+passed. Retained historical commitments reconstruct with unchanged SHA-256 values:
+CB01 core `7de7f617d652329146a3fa3c4f2b9638134dfb3c8d4c931bb35b6a90ac200092`,
+CB01 trust `4f75585163f353bc6dfcac1e566ee1502562d9a03b7c6e2b1fefc2800974c9be`,
+and method 0.1.0 `1ebeb80f33190f18440d2dcfa5b2526d3907223471f4b2711b7445b0ece8e200`.
+The implementation is committed as `c6ef6bc`; original #80 acceptance remains
+reserved for #84, and production activation remains refusing.
