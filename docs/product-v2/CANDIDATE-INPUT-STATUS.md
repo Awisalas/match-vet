@@ -43,7 +43,8 @@ chronological evidence or numerical/profile decisions.
   causal-witness profile are separately approved and operational.
 - #86 implementation has not started and does not supply the missing #70
   cohort.
-- Readiness correction commit SHA: recorded in the status-log follow-up commit.
+- Readiness correction commit SHA:
+  `198c96f83e04240fc077d3c5454e5c04613aa941`.
 
 ## Decision recorded
 
