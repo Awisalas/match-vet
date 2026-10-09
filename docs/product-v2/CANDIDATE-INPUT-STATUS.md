@@ -132,3 +132,25 @@ has no content digest or append-only successor identity. F16 selection
 manifests end before CB01 and F19. A protected capture-index artifact is
 therefore required to freeze this aggregate and its exact replay lineage. This
 representation gap requires no SQLite migration.
+
+## #86 implementation record
+
+- Added `ResearchCaptureRepository.capture_week` as the bounded offline index
+  and exact-index continuation entry point. It retains the seven-scope F06/F07
+  freeze, selected F11/F13/F14/F16 graph, signed pre-`T` #80 witness, complete
+  INCLUDED F06 membership × enabled preference denominator, and excluded F06
+  reasons in one protected replayable artifact.
+- CB01 continuation is gated by an exact protected real-source-use decision
+  and the operational qualified causal selection. F19 attachments require the
+  exact enrolled row, non-PENDING source-backed evidence, and source timestamps
+  strictly after that fixture's controlling kickoff. Corrections are
+  append-only. The index assigns no evaluation roles. No SQLite migration was
+  added.
+- Offline verification: `tests/test_research_capture.py` (8 passed), Ruff,
+  formatter, strict mypy for `research_capture.py`, and `git diff --check`.
+- Implementation commit: `54951a6a5401fa2622028ac99035bde1c8634428`.
+- #86 is closed. #70 remains open with `needs-info` and has no qualified
+  prospective cohort yet.
+- Real prospective collection remains blocked until real-source use and the
+  causal-witness profile are separately approved and operational for the exact
+  capture. Neither prerequisite was approved or activated in this ticket.
