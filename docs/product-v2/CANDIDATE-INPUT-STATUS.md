@@ -14,10 +14,13 @@ cohorts unchanged.
 [#85](https://github.com/Awisalas/match-vet/issues/85) is CLOSED. Its versioned
 F13/F14/T15 consumer seam is implemented in commit
 `976beb8216d9174d20ff7184e289c09827e12061`. [#86](https://github.com/Awisalas/match-vet/issues/86)
-remains OPEN, not ready for implementation, and was not started under #85. The
-separate prospective evidence authorization remains pending. Issue #70 remains
-OPEN with `needs-info`; implementing the contract does not supply the missing
-chronological evidence or resolve numerical/profile decisions.
+is OPEN with `ready-for-agent`. Its offline bootstrap implementation and
+testing are ready to proceed. No real case may qualify, and no live collection
+may run, until real-source use and the causal-witness profile are separately
+approved and operational. This readiness does not authorize either prerequisite
+or supply the missing #70 cohort. #86 implementation has not started. Issue #70
+remains OPEN with `needs-info`; implementing #85 does not resolve its
+chronological evidence or numerical/profile decisions.
 
 ## #85 implementation record
 
@@ -29,7 +32,18 @@ chronological evidence or resolve numerical/profile decisions.
   Ruff, strict mypy on changed production modules, and `git diff --check` passed.
 - Implementation commit: `976beb8216d9174d20ff7184e289c09827e12061`.
 - Open blockers: #70 still needs a prospectively captured corrected-chronology
-  V2 cohort; #86 remains not ready and was not started.
+  V2 cohort; #86 live operation still requires separately approved and
+  operational real-source use and causal-witness profile.
+
+## #86 readiness record
+
+- Dependencies #69, #71, #72, #80, #84, and #85 are CLOSED.
+- #86 is ready for offline bootstrap implementation and testing. No real case
+  qualifies and no live collection may run before real-source use and the
+  causal-witness profile are separately approved and operational.
+- #86 implementation has not started and does not supply the missing #70
+  cohort.
+- Readiness correction commit SHA: recorded in the status-log follow-up commit.
 
 ## Decision recorded
 
@@ -73,8 +87,10 @@ chronological evidence or resolve numerical/profile decisions.
 1. #85's versioned CandidateInput support and joint T1 comparison contract is
    implemented in `976beb8216d9174d20ff7184e289c09827e12061`. Missing support
    remains UNKNOWN, and old readers retain their existing meanings.
-2. Separately authorize the source and causal-witness profile required by #86.
-   This authorization is separate from this ADR and remains pending.
+2. #86 may implement and test its offline bootstrap path. Separately approve and
+   operationalize real-source use and the causal-witness profile before any
+   case can qualify or live collection can run. This authorization remains
+   pending.
 3. Only after authorization, run #86 prospectively. Retain exact cutoff-valid
    inputs, immutable provenance, all denominator rows, and later source-backed
    outcomes. Keep unavailable, unattempted, UNKNOWN, failed, VOID, and
