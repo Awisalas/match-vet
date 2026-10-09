@@ -6,17 +6,30 @@ import json
 from dataclasses import dataclass
 from typing import Any, cast
 
-from matchvet.artifacts import ArtifactStore
+from matchvet.artifacts import ArtifactError, ArtifactStore, ManifestVersion
+from matchvet.causal_dispatch import (
+    InspectedCausalSelection,
+    QualifiedCausalSelection,
+    inspect_causal_selection,
+    resolve_qualified_causal_selection,
+)
 from matchvet.cb01_schema import normalize_utc
 from matchvet.f10 import V1_BASELINE_CATALOG, V2_REQUIREMENT_CATALOG
-from matchvet.f13 import RESULT_MEDIA_TYPE
+from matchvet.f13 import CAUSAL_RESULT_MEDIA_TYPE, RESULT_MEDIA_TYPE
 from matchvet.f14 import (
+    CAUSAL_DECISION_INPUT_MEDIA_TYPE,
+    CAUSAL_DECISION_MEDIA_TYPE,
     DECISION_INPUT_MEDIA_TYPE,
     DECISION_MEDIA_TYPE,
     PreferenceProfile,
     PreferenceProfileRepository,
 )
-from matchvet.f16 import MATCH_RESULT_MEDIA_TYPE, F16MatchweekProcessor
+from matchvet.f16 import (
+    CAUSAL_MANIFEST_MEDIA_TYPE,
+    CAUSAL_MATCH_RESULT_MEDIA_TYPE,
+    MATCH_RESULT_MEDIA_TYPE,
+    F16MatchweekProcessor,
+)
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
 from matchvet.matchweek_membership import (
     MatchweekMembershipFreeze,
@@ -45,6 +58,7 @@ class FixtureEnrollmentInput:
     cutoff_id: str
     profile_digest: str
     f16_manifest_digest: str | None = None
+    selection_digest: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,13 +75,19 @@ class PreparedSources:
     expected_preference_ids: tuple[str, ...]
     f16_manifest_digest: str | None
     f16_match_digest: str | None
+    qualification_status: str
 
 
 _FAMILY_IDS = ("CORNERS", "FIRST_HALF_GOALS", "FULL_TIME_GOALS", "SECOND_HALF_GOALS")
 _UNAVAILABLE_REASON = "EXACT_UPSTREAM_LINEAGE_NOT_AVAILABLE"
 
 
-def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> PreparedSources:
+def prepare_fixture_sources(
+    store: Store,
+    request: FixtureEnrollmentInput,
+    *,
+    historical_inspection: bool = False,
+) -> PreparedSources:
     """Replay exact immutable inputs and preserve each enabled preference row."""
     freeze = MatchweekMembershipRepository(store).get_by_id(request.freeze_id)
     if freeze is None or freeze.freeze_id != request.freeze_id:
@@ -102,25 +122,65 @@ def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> Pr
     ):
         raise CB01SourceError("Exact F07 cutoff differs from the selected F06 membership.")
 
-    # Policy dispatch preserves legacy reconstruction, including incomplete batches.
-    # Corrected batches cannot exist as recommendation commitments before selection.
-    if (
-        MatchEvidenceCutoffRepository(store).read_policy(cutoff.policy_digest).rule
-        == CORRECTED_RULE
-    ):
+    policy = MatchEvidenceCutoffRepository(store).read_policy(cutoff.policy_digest)
+    owner = MatchweekResearchRepository(store)
+    causal_selection: QualifiedCausalSelection | InspectedCausalSelection | None = None
+    selected = None
+    if request.selection_digest is not None:
+        if request.f16_manifest_digest is None:
+            raise CB01SourceError("An exact selection requires its exact F16 manifest.")
         try:
-            selected = MatchweekResearchRepository(store).selected_for_boundary(
-                freeze.freeze_id, cutoff.policy_digest
-            )
-        except MatchweekResearchError as error:
+            selection_manifest = owner._artifacts.verify_manifest(request.selection_digest)
+            from matchvet.causal_selection import _version_v2
+
+            if selection_manifest.versions == (
+                ManifestVersion.from_identity(_version_v2("selection")),
+            ):
+                causal_selection = (
+                    inspect_causal_selection(store, request.selection_digest)
+                    if historical_inspection
+                    else resolve_qualified_causal_selection(store, request.selection_digest)
+                )
+            else:
+                selected = owner.replay(request.selection_digest)
+        except (ArtifactError, MatchweekResearchError) as error:
+            raise CB01SourceError("Exact CB01 selection lineage failed replay.") from error
+    elif request.f16_manifest_digest is not None:
+        metadata = store.artifact_metadata(request.f16_manifest_digest)
+        if metadata is not None and metadata.media_type == CAUSAL_MANIFEST_MEDIA_TYPE:
             raise CB01SourceError(
-                "Corrected CB01 selected Matchweek lineage failed replay."
-            ) from error
-        if selected is None or (
-            selected.f16_manifest_digest != request.f16_manifest_digest
-            or normalize_utc(selected.cutoff_at_utc) != normalize_utc(cutoff.cutoff_at_utc)
-        ):
-            raise CB01SourceError("Corrected CB01 requires the exact selected F16/common cutoff.")
+                "Causal F16 requires an explicit exact qualified selection-v2 identity."
+            )
+
+    if request.f16_manifest_digest is not None and policy.rule == CORRECTED_RULE:
+        if causal_selection is not None:
+            if (
+                causal_selection.selection_digest != request.selection_digest
+                or causal_selection.f16_manifest_digest != request.f16_manifest_digest
+                or causal_selection.selection.freeze_id != freeze.freeze_id
+                or causal_selection.selection.policy_digest != cutoff.policy_digest
+                or causal_selection.candidate.profile_digest != profile.digest
+                or normalize_utc(causal_selection.selection.cutoff_at_utc)
+                != normalize_utc(cutoff.cutoff_at_utc)
+            ):
+                raise CB01SourceError(
+                    "Causal CB01 requires the exact qualified selected graph and common cutoff."
+                )
+        else:
+            if selected is None:
+                try:
+                    selected = owner.selected_for_boundary(freeze.freeze_id, cutoff.policy_digest)
+                except MatchweekResearchError as error:
+                    raise CB01SourceError(
+                        "Corrected CB01 selected Matchweek lineage failed replay."
+                    ) from error
+            if selected is None or (
+                selected.f16_manifest_digest != request.f16_manifest_digest
+                or normalize_utc(selected.cutoff_at_utc) != normalize_utc(cutoff.cutoff_at_utc)
+            ):
+                raise CB01SourceError(
+                    "Corrected CB01 requires the exact selected F16/common cutoff."
+                )
 
     home_id, away_id, kickoff = _fixture_identity(store, membership)
     scope = next((item for item in freeze.scopes if item.scope_id == membership.scope_id), None)
@@ -160,6 +220,15 @@ def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> Pr
     candidate_inputs: dict[str, Any] = {}
     candidate_input_bundle_digest: str | None = None
     if f16_manifest_digest is not None:
+        manifest_metadata = store.artifact_metadata(f16_manifest_digest)
+        is_causal = (
+            manifest_metadata is not None
+            and manifest_metadata.media_type == CAUSAL_MANIFEST_MEDIA_TYPE
+        )
+        if is_causal != (causal_selection is not None):
+            raise CB01SourceError(
+                "CB01 F16 contract and explicit selection-v2 dispatch do not match."
+            )
         manifest = F16MatchweekProcessor(store).replay_manifest(f16_manifest_digest)
         manifest_value = manifest.to_dict()
         if (
@@ -186,7 +255,10 @@ def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> Pr
         f16_match_digest = matched.match_result_digest
         artifacts = ArtifactStore(store)
         match_value = _read_json_artifact(
-            store, artifacts, f16_match_digest, MATCH_RESULT_MEDIA_TYPE
+            store,
+            artifacts,
+            f16_match_digest,
+            CAUSAL_MATCH_RESULT_MEDIA_TYPE if is_causal else MATCH_RESULT_MEDIA_TYPE,
         )
         if (
             match_value.get("freeze_id") != freeze.freeze_id
@@ -198,9 +270,22 @@ def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> Pr
         f11_digest = cast(str, match_value["evidence_digest"])
         f13_digest = cast(str, match_value["model_digest"])
         f14_digest = cast(str, match_value["decision_digest"])
-        model_value = _read_json_artifact(store, artifacts, f13_digest, RESULT_MEDIA_TYPE)
-        decision_value = _read_json_artifact(store, artifacts, f14_digest, DECISION_MEDIA_TYPE)
-        _validate_f13_identity(model_value, f13_digest, f11_digest, cutoff.cutoff_id)
+        model_value = _read_json_artifact(
+            store,
+            artifacts,
+            f13_digest,
+            CAUSAL_RESULT_MEDIA_TYPE if is_causal else RESULT_MEDIA_TYPE,
+        )
+        decision_value = _read_json_artifact(
+            store,
+            artifacts,
+            f14_digest,
+            CAUSAL_DECISION_MEDIA_TYPE if is_causal else DECISION_MEDIA_TYPE,
+        )
+        candidate_digest = causal_selection.candidate_contract_digest if causal_selection else None
+        _validate_f13_identity(
+            model_value, f13_digest, f11_digest, cutoff.cutoff_id, candidate_digest
+        )
         _validate_f14_identity(
             decision_value,
             profile.digest,
@@ -208,6 +293,7 @@ def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> Pr
             cutoff.cutoff_id,
             f13_digest,
             cast(str, match_value["policy_digest"]),
+            candidate_digest,
         )
         lineage = _complete_lineage(
             freeze,
@@ -221,11 +307,17 @@ def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> Pr
             f14_digest,
             model_value,
             match_value,
+            causal_selection,
         )
+        if causal_selection is not None:
+            lineage["causal_selection"] = causal_selection.lineage_value()
         decision_input_digest = cast(str, decision_value["input_bundle_digest"])
         candidate_input_bundle_digest = decision_input_digest
         decision_input = _read_json_artifact(
-            store, artifacts, decision_input_digest, DECISION_INPUT_MEDIA_TYPE
+            store,
+            artifacts,
+            decision_input_digest,
+            CAUSAL_DECISION_INPUT_MEDIA_TYPE if is_causal else DECISION_INPUT_MEDIA_TYPE,
         )
         if not isinstance(decision_input.get("candidate_inputs"), dict):
             raise CB01SourceError("Exact F14 candidate input bundle is malformed.")
@@ -281,6 +373,15 @@ def prepare_fixture_sources(store: Store, request: FixtureEnrollmentInput) -> Pr
         expected_preference_ids=expected,
         f16_manifest_digest=f16_manifest_digest,
         f16_match_digest=f16_match_digest,
+        qualification_status=(
+            "HISTORICAL_INSPECTION_ONLY"
+            if isinstance(causal_selection, InspectedCausalSelection)
+            else "PRESENTLY_QUALIFIED_CAUSAL_SELECTION_V2"
+            if causal_selection is not None
+            else "HISTORICAL_V1_SELECTION"
+            if selected is not None
+            else "NO_SELECTION_QUALIFICATION"
+        ),
     )
 
 
@@ -295,8 +396,13 @@ def replay_fixture_sources(store: Store, batch_body: dict[str, Any]) -> Prepared
         cutoff_id=anchor["cutoff"]["id"],
         profile_digest=anchor["profile"]["digest"],
         f16_manifest_digest=f16["digest"] if f16["state"] == "PRESENT" else None,
+        selection_digest=(
+            lineage["causal_selection"]["selection_digest"]
+            if "causal_selection" in lineage
+            else None
+        ),
     )
-    prepared = prepare_fixture_sources(store, request)
+    prepared = prepare_fixture_sources(store, request, historical_inspection=True)
     if prepared.anchor != anchor or prepared.lineage != lineage:
         raise CB01SourceError("Retained batch differs from exact replayed upstream lineage.")
     return prepared
@@ -357,6 +463,7 @@ def _complete_lineage(
     f14_digest: str,
     model: dict[str, Any],
     match_value: dict[str, Any],
+    causal_selection: QualifiedCausalSelection | None = None,
 ) -> dict[str, Any]:
     lineage = _base_lineage(freeze, membership, cutoff, profile)
     model_inputs = model.get("inputs")
@@ -370,15 +477,29 @@ def _complete_lineage(
     lineage.update(
         {
             "f11_evidence": _reference(f11_digest, "f11-evidence-v3", f11_digest),
-            "f13_input": _reference(f"f13-input:{f13_digest}", "f13-v2", input_digest),
-            "f13_result": _reference(f13_digest, "f13-v2", f13_digest),
-            "f13_history": _reference(history_digest, "f13-history-v2", history_digest),
-            "f14_decision": _reference(f14_digest, "f14-v2", f14_digest),
+            "f13_input": _reference(
+                f"f13-input:{f13_digest}", "f13-v3" if causal_selection else "f13-v2", input_digest
+            ),
+            "f13_result": _reference(
+                f13_digest, "f13-v3" if causal_selection else "f13-v2", f13_digest
+            ),
+            "f13_history": _reference(
+                history_digest,
+                "f13-history-v3" if causal_selection else "f13-history-v2",
+                history_digest,
+            ),
+            "f14_decision": _reference(
+                f14_digest, "f14-v3" if causal_selection else "f14-v2", f14_digest
+            ),
             "f14_policy": _reference(
                 f"f14-policy:{policy_digest}", "research-only", cast(str, policy_digest)
             ),
-            "f16_manifest": _reference(manifest_digest, "f16-v1", manifest_digest),
-            "f16_match_result": _reference(match_digest, "f16-match-v1", match_digest),
+            "f16_manifest": _reference(
+                manifest_digest, "f16-v2" if causal_selection else "f16-v1", manifest_digest
+            ),
+            "f16_match_result": _reference(
+                match_digest, "f16-match-v2" if causal_selection else "f16-match-v1", match_digest
+            ),
         }
     )
     return lineage
@@ -405,6 +526,7 @@ def _pre_enrollment(
     ) != canonical_upstream_bytes(preference.to_dict()):
         raise CB01SourceError("F14 preference contract differs from the exact T10 Profile.")
     family_key = _family_for(preference)
+    f13_version = "v3" if "causal_selection" in lineage else "v2"
     family_result = model["results"].get(family_key) if model is not None else None
     forecast_families: list[dict[str, Any]] = []
     for family_id in _FAMILY_IDS:
@@ -431,23 +553,25 @@ def _pre_enrollment(
             {
                 "family_id": family_id,
                 "input_reference": _reference(
-                    f"f13-input:{model['input_digest']}", "f13-v2", model["input_digest"]
+                    f"f13-input:{model['input_digest']}",
+                    f"f13-{f13_version}",
+                    model["input_digest"],
                 ),
                 "fit_reference": _artifact_reference(
-                    output.get("model_artifact_digest"), "f13-model-v2"
+                    output.get("model_artifact_digest"), f"f13-model-{f13_version}"
                 ),
                 "prediction_reference": _artifact_reference(
-                    output.get("prediction_artifact_digest"), "f13-distribution-v2"
+                    output.get("prediction_artifact_digest"), f"f13-distribution-{f13_version}"
                 ),
                 "calibration_reference": _artifact_reference(
-                    output.get("calibration_artifact_digest"), "f13-calibration-v2"
+                    output.get("calibration_artifact_digest"), f"f13-calibration-{f13_version}"
                 ),
                 "retained_family_payload": output,
             }
         )
     forecast = {
         "result_reference": (
-            _artifact_reference(f13_digest, "f13-v2")
+            _artifact_reference(f13_digest, f"f13-{f13_version}")
             if f13_digest is not None
             else _unavailable_reference("UNPERFORMED", _UNAVAILABLE_REASON)
         ),
@@ -459,6 +583,7 @@ def _pre_enrollment(
         row if isinstance(row, dict) else {},
         candidate_inputs,
         candidate_input_bundle_digest,
+        f13_version,
         f11_digest,
         f13_digest,
         f14_digest,
@@ -516,6 +641,7 @@ def _support(
     row: dict[str, Any],
     candidate_inputs: dict[str, Any],
     candidate_input_bundle_digest: str | None,
+    f13_version: str,
     f11_digest: str | None,
     f13_digest: str | None,
     f14_digest: str | None,
@@ -526,7 +652,7 @@ def _support(
         "candidate_input": (
             _reference(
                 f"f14-candidate-input:{preference_id}",
-                "f14-input-v2",
+                "f14-input-v3" if f13_version == "v3" else "f14-input-v2",
                 candidate_input_bundle_digest,
             )
             if existing_candidate is not None and candidate_input_bundle_digest is not None
@@ -543,7 +669,11 @@ def _support(
             else _unavailable_reference("UNPERFORMED", _UNAVAILABLE_REASON)
         ),
         "adversarial_review": (
-            _reference(f"f14-adversarial-review:{preference_id}", "f14-v2", f14_digest)
+            _reference(
+                f"f14-adversarial-review:{preference_id}",
+                "f14-v3" if f13_version == "v3" else "f14-v2",
+                f14_digest,
+            )
             if vetting.get("adversarial_review") is not None and f14_digest is not None
             else _unavailable_reference(
                 "ABSENT" if f14_digest is not None else "UNPERFORMED",
@@ -552,13 +682,18 @@ def _support(
         ),
         "calibration": (
             _artifact_reference(
-                family_result.get("calibration_artifact_digest"), "f13-calibration-v2"
+                family_result.get("calibration_artifact_digest"),
+                f"f13-calibration-{f13_version}",
             )
             if isinstance(family_result, dict)
             else _unavailable_reference("UNPERFORMED", _UNAVAILABLE_REASON)
         ),
         "baseline": (
-            _reference(f"f14-baseline:{preference_id}", "f14-v2", f14_digest)
+            _reference(
+                f"f14-baseline:{preference_id}",
+                "f14-v3" if f13_version == "v3" else "f14-v2",
+                f14_digest,
+            )
             if vetting.get("baseline") is not None and f14_digest is not None
             else _unavailable_reference(
                 "ABSENT" if f14_digest is not None else "UNPERFORMED",
@@ -618,7 +753,11 @@ def _eligibility(support: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_f13_identity(
-    value: dict[str, Any], result_digest: str, evidence_digest: str, cutoff_id: str
+    value: dict[str, Any],
+    result_digest: str,
+    evidence_digest: str,
+    cutoff_id: str,
+    candidate_contract_digest: str | None = None,
 ) -> None:
     inputs = value.get("inputs")
     if (
@@ -630,8 +769,12 @@ def _validate_f13_identity(
         raise CB01SourceError("Exact F13 result does not bind its retained F11/F07 inputs.")
     if not isinstance(value.get("results"), dict) or tuple(sorted(value["results"])) != _FAMILY_IDS:
         raise CB01SourceError("Exact F13 result does not retain all four model families.")
-    if value.get("schema_version") != 2:
-        raise CB01SourceError("Unsupported F13 model result schema for CB01.")
+    expected_schema = 3 if candidate_contract_digest is not None else 2
+    if value.get("schema_version") != expected_schema or (
+        candidate_contract_digest is not None
+        and value.get("candidate_contract_digest") != candidate_contract_digest
+    ):
+        raise CB01SourceError("Unsupported F13 model result schema or candidate for CB01.")
     if not result_digest:
         raise CB01SourceError("F13 result digest is missing.")
 
@@ -643,6 +786,7 @@ def _validate_f14_identity(
     cutoff_id: str,
     f13_digest: str,
     policy_digest: str,
+    candidate_contract_digest: str | None = None,
 ) -> None:
     lineage = value.get("lineage")
     if not isinstance(lineage, dict) or (
@@ -653,6 +797,11 @@ def _validate_f14_identity(
         lineage.get("t15_policy_digest"),
     ) != (profile_digest, evidence_digest, cutoff_id, f13_digest, policy_digest):
         raise CB01SourceError("Exact F14 decision does not bind its F06/F07/F11/F13/F16 lineage.")
+    if candidate_contract_digest is not None and (
+        value.get("candidate_contract_digest") != candidate_contract_digest
+        or lineage.get("candidate_contract_digest") != candidate_contract_digest
+    ):
+        raise CB01SourceError("Exact F14 decision differs from the qualified causal candidate.")
 
 
 def _fixture_identity(store: Store, membership: MembershipDecision) -> tuple[str, str, str]:

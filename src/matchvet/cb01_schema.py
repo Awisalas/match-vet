@@ -212,6 +212,27 @@ LINEAGE_KEYS = frozenset(
         "f16_match_result",
     }
 )
+CAUSAL_SELECTION_KEYS = frozenset(
+    {
+        "selection_digest",
+        "completion_receipt_digest",
+        "candidate_contract_digest",
+        "candidate_contract_version",
+        "engine_contract_digest",
+        "engine_version",
+        "selection_reader",
+    }
+)
+SELECTION_READER_KEYS = frozenset(
+    {
+        "version_id",
+        "definition_id",
+        "kind",
+        "name",
+        "content_sha256",
+        "canonical_contract_version",
+    }
+)
 PREFERENCE_KEYS = frozenset(
     {
         "id",
@@ -671,9 +692,34 @@ def _validate_anchor(value: object) -> None:
 
 
 def _validate_lineage(value: object) -> None:
-    refs = _keys(value, LINEAGE_KEYS, "Lineage")
+    if not isinstance(value, dict) or frozenset(value) not in {
+        LINEAGE_KEYS,
+        LINEAGE_KEYS | {"causal_selection"},
+    }:
+        raise CB01SchemaError("Lineage has unsupported exact keys.")
+    refs = {key: value[key] for key in LINEAGE_KEYS}
     for reference in refs.values():
         _validate_reference(reference)
+    if "causal_selection" in value:
+        causal = _keys(value["causal_selection"], CAUSAL_SELECTION_KEYS, "CausalSelection")
+        for key in (
+            "selection_digest",
+            "completion_receipt_digest",
+            "candidate_contract_digest",
+            "engine_contract_digest",
+            "engine_version",
+        ):
+            _digest(causal[key], f"causal selection {key}")
+        if causal["candidate_contract_version"] != "matchvet-causal-selection-v2":
+            raise CB01SchemaError("Unsupported causal candidate contract version.")
+        reader = _keys(causal["selection_reader"], SELECTION_READER_KEYS, "SelectionReader")
+        for key in ("version_id", "definition_id", "kind", "name", "content_sha256"):
+            _nonempty_string(reader[key], f"selection reader {key}")
+        _digest(reader["content_sha256"], "selection reader content digest")
+        if type(reader["canonical_contract_version"]) is not int or (
+            reader["canonical_contract_version"] != 2
+        ):
+            raise CB01SchemaError("Unsupported causal selection reader contract version.")
 
 
 def _validate_preference(value: object) -> None:

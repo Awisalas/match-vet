@@ -11,9 +11,20 @@ from typing import Any, cast
 
 from matchvet.artifacts import ArtifactError, ArtifactStore
 from matchvet.f14 import DecisionRepository, F14Error
-from matchvet.f16 import F16Error, F16MatchweekProcessor
+from matchvet.f16 import (
+    CAUSAL_MANIFEST_MEDIA_TYPE,
+    F16Error,
+    F16MatchweekProcessor,
+)
+from matchvet.f16 import MANIFEST_MEDIA_TYPE as LEGACY_MANIFEST_MEDIA_TYPE
 from matchvet.matchweek_membership import canonical_json
-from matchvet.matchweek_research import MatchweekResearchError, MatchweekResearchRepository
+from matchvet.matchweek_membership_repository import MatchweekMembershipRepository
+from matchvet.matchweek_research import (
+    MatchweekResearchError,
+    MatchweekResearchRepository,
+    _logical_identity,
+)
+from matchvet.research_identity import completion_slot, selection_slot
 from matchvet.store import Store
 from matchvet.t10 import (
     DEFAULT_PREFERENCE_CATALOG,
@@ -27,7 +38,22 @@ from matchvet.t10 import (
 )
 
 SETTLEMENT_MEDIA_TYPE = "application/vnd.matchvet.f19-settlement.v1+json"
+CAUSAL_SETTLEMENT_MEDIA_TYPE = "application/vnd.matchvet.f19-settlement.v2+json"
 SCHEMA_VERSION = 1
+CAUSAL_SCHEMA_VERSION = 2
+_CAUSAL_IDENTITY_KEYS = {
+    "selection_digest",
+    "completion_receipt_digest",
+    "candidate_contract_digest",
+    "candidate_contract_version",
+    "engine_contract_digest",
+    "engine_version",
+    "selection_reader_version_id",
+    "selection_reader_definition_id",
+    "selection_reader_name",
+    "selection_reader_content_digest",
+    "selection_reader_contract_version",
+}
 
 
 class F19Error(ValueError):
@@ -155,14 +181,21 @@ class SettlementRepository:
             "evidence_digest": grade.evidence_digest,
             "grade": grade.to_dict(),
             "predecessor_digest": previous.digest if previous is not None else None,
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": (
+                CAUSAL_SCHEMA_VERSION if "selection_digest" in identity else SCHEMA_VERSION
+            ),
             "settlement_result": grade.settlement_result.value
             if grade.settlement_result is not None
             else None,
             "state": state.value,
         }
         content = _bytes(value)
-        published = self.artifacts.publish_artifact(content, SETTLEMENT_MEDIA_TYPE)
+        media_type = (
+            CAUSAL_SETTLEMENT_MEDIA_TYPE
+            if "selection_digest" in identity
+            else SETTLEMENT_MEDIA_TYPE
+        )
+        published = self.artifacts.publish_artifact(content, media_type)
         return self._replay(published.digest)
 
     def replay(self, digest: str) -> SettlementRecord:
@@ -186,9 +219,14 @@ class SettlementRepository:
     def _replay(self, digest: str) -> SettlementRecord:
         try:
             metadata = self.store.artifact_metadata(digest)
-            if metadata is None or (metadata.media_type, metadata.retention_class) != (
-                SETTLEMENT_MEDIA_TYPE,
-                "PROTECTED",
+            if (
+                metadata is None
+                or metadata.media_type
+                not in {
+                    SETTLEMENT_MEDIA_TYPE,
+                    CAUSAL_SETTLEMENT_MEDIA_TYPE,
+                }
+                or metadata.retention_class != "PROTECTED"
             ):
                 raise F19Error("Missing or wrong protected F19 settlement artifact.")
             content = self.artifacts.read_artifact(digest)
@@ -199,6 +237,7 @@ class SettlementRepository:
                 or _digest(content) != digest
             ):
                 raise F19Error("F19 settlement artifact is malformed or noncanonical.")
+            causal = metadata.media_type == CAUSAL_SETTLEMENT_MEDIA_TYPE
             expected_keys = {
                 "manifest_digest",
                 "match_result_digest",
@@ -214,14 +253,17 @@ class SettlementRepository:
                 "settlement_result",
                 "state",
             }
+            if causal:
+                expected_keys |= _CAUSAL_IDENTITY_KEYS
             if set(value) != expected_keys or type(value["schema_version"]) is not int:
                 raise F19Error("F19 settlement artifact schema is invalid.")
-            if value["schema_version"] != SCHEMA_VERSION:
+            if value["schema_version"] != (CAUSAL_SCHEMA_VERSION if causal else SCHEMA_VERSION):
                 raise F19Error("Unsupported F19 settlement schema.")
             identity, fixture_id, preference = self._lineage(
                 value["manifest_digest"],
                 value["match_result_digest"],
                 value["preference_id"],
+                historical_inspection=causal,
             )
             if _identity(value) != identity or value["fixture_id"] != fixture_id:
                 raise F19Error("F19 settlement identity differs from exact F16/F14 lineage.")
@@ -274,33 +316,191 @@ class SettlementRepository:
             raise F19Error("Malformed or invalid F19 settlement lineage.") from error
 
     def _lineage(
-        self, manifest_digest: str, match_result_digest: str, preference_id: str
+        self,
+        manifest_digest: str,
+        match_result_digest: str,
+        preference_id: str,
+        *,
+        historical_inspection: bool = False,
     ) -> tuple[dict[str, str], str, BettingPreference]:
-        # Check policy admission even on cache hits; the selected receipt may disappear.
-        # Full F16 replay remains necessary when constructing a new lineage cache entry.
-        manifest_value = json.loads(self.artifacts.read_artifact(manifest_digest))
+        metadata = self.store.artifact_metadata(manifest_digest)
+        if (
+            metadata is None
+            or metadata.retention_class != "PROTECTED"
+            or metadata.media_type not in {LEGACY_MANIFEST_MEDIA_TYPE, CAUSAL_MANIFEST_MEDIA_TYPE}
+        ):
+            raise F19Error("Exact protected F16 manifest is unavailable for settlement.")
+        try:
+            manifest_content = self.artifacts.read_artifact(manifest_digest)
+            manifest_value = json.loads(manifest_content)
+            if not isinstance(manifest_value, dict) or _bytes(manifest_value) != manifest_content:
+                raise F19Error("F16 manifest is malformed or noncanonical for settlement.")
+        except F19Error:
+            raise
+        except (ArtifactError, TypeError, ValueError) as error:
+            raise F19Error("Exact protected F16 manifest cannot be read for settlement.") from error
         owner = MatchweekResearchRepository(self.store)
-        if owner.is_corrected(manifest_value["cutoff_policy_digest"]):
+        if metadata.media_type == CAUSAL_MANIFEST_MEDIA_TYPE and owner.is_corrected(
+            manifest_value["cutoff_policy_digest"]
+        ):
             try:
-                selected = owner.selected_for_boundary(
+                freeze = MatchweekMembershipRepository(self.store).get_by_id(
+                    manifest_value["freeze_id"]
+                )
+                if freeze is None:
+                    raise F19Error("Causal F16 references a missing exact F06 freeze.")
+                logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+                selection_digest = self.store.snapshot_manifest_digest_for_snapshot(
+                    selection_slot(logical)
+                )
+                if selection_digest is None:
+                    raise F19Error("Causal settlement requires an exact selected owner state.")
+                from matchvet.causal_dispatch import (
+                    inspect_causal_selection,
+                    resolve_qualified_causal_selection,
+                )
+
+                selected = (
+                    inspect_causal_selection(self.store, selection_digest)
+                    if historical_inspection
+                    else resolve_qualified_causal_selection(self.store, selection_digest)
+                )
+            except MatchweekResearchError as error:
+                raise F19Error("Corrected settlement selected lineage failed replay.") from error
+            if selected.f16_manifest_digest != manifest_digest:
+                raise F19Error("Corrected settlement requires the exact selected F16 manifest.")
+            logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+            receipt_digest = self.store.snapshot_manifest_digest_for_snapshot(
+                completion_slot(logical)
+            )
+            if receipt_digest is None or selected.completion_receipt_digest != receipt_digest:
+                raise F19Error("Causal settlement requires the exact retained completion receipt.")
+            causal_identity = {
+                "selection_digest": selected.selection_digest,
+                "completion_receipt_digest": selected.completion_receipt_digest,
+                "candidate_contract_digest": selected.candidate_contract_digest,
+                "candidate_contract_version": selected.candidate.contract_version,
+                "engine_contract_digest": selected.engine_contract_digest,
+                "engine_version": selected.engine_version,
+                "selection_reader_version_id": selected.selection_reader.version_id.value,
+                "selection_reader_definition_id": selected.selection_reader.definition_id.value,
+                "selection_reader_name": selected.selection_reader.name,
+                "selection_reader_content_digest": selected.selection_reader.content_sha256,
+                "selection_reader_contract_version": str(
+                    selected.selection_reader.canonical_contract_version
+                ),
+            }
+        elif owner.is_corrected(manifest_value["cutoff_policy_digest"]):
+            if metadata.media_type == CAUSAL_MANIFEST_MEDIA_TYPE:
+                raise F19Error("Causal F16 requires the corrected common-cutoff policy.")
+            try:
+                selected_v1 = owner.selected_for_boundary(
                     manifest_value["freeze_id"], manifest_value["cutoff_policy_digest"]
                 )
             except MatchweekResearchError as error:
                 raise F19Error("Corrected settlement selected lineage failed replay.") from error
-            if selected is None or selected.f16_manifest_digest != manifest_digest:
+            if selected_v1 is None or selected_v1.f16_manifest_digest != manifest_digest:
                 raise F19Error("Corrected settlement requires the exact selected F16 manifest.")
+            causal_identity = {}
+        else:
+            if metadata.media_type == CAUSAL_MANIFEST_MEDIA_TYPE:
+                raise F19Error("Causal F16 settlement requires exact corrected qualification.")
+            causal_identity = {}
+
         cache_key = (manifest_digest, match_result_digest, preference_id)
         cached = self._lineage_cache.get(cache_key)
         if cached is not None:
+            identity, fixture_id, preference = cached
+            match_values = manifest_value.get("matches")
+            exact_matches = (
+                [
+                    row
+                    for row in match_values
+                    if isinstance(row, dict)
+                    and row.get("match_result_digest") == match_result_digest
+                ]
+                if isinstance(match_values, list)
+                else []
+            )
+            expected_identity = {
+                **causal_identity,
+                "decision_digest": (
+                    exact_matches[0].get("decision_digest") if len(exact_matches) == 1 else None
+                ),
+                "manifest_digest": manifest_digest,
+                "match_result_digest": match_result_digest,
+                "preference_id": preference_id,
+            }
+            if (
+                len(exact_matches) != 1
+                or identity != expected_identity
+                or exact_matches[0].get("decision_digest") is None
+            ):
+                raise F19Error("Cached settlement lineage differs from the exact selected origin.")
             try:
-                for digest in (manifest_digest, match_result_digest, cached[0]["decision_digest"]):
+                for digest in (
+                    manifest_digest,
+                    match_result_digest,
+                    identity["decision_digest"],
+                    exact_matches[0].get("evidence_digest", ""),
+                    exact_matches[0].get("model_digest", ""),
+                ):
                     self.artifacts.verify_artifact(digest)
+                preference = DEFAULT_PREFERENCE_CATALOG.get(preference_id)
+                if _bytes(preference.to_dict()) != _bytes(cached[2].to_dict()):
+                    raise F19Error("Cached F14 preference differs from the exact T10 catalog.")
+                match_content = self.artifacts.read_artifact(match_result_digest)
+                match_value = json.loads(match_content)
+                decision_content = self.artifacts.read_artifact(identity["decision_digest"])
+                decision_value = json.loads(decision_content)
+                if (
+                    not isinstance(match_value, dict)
+                    or _bytes(match_value) != match_content
+                    or match_value.get("decision_digest") != identity["decision_digest"]
+                    or match_value.get("fixture_id") != fixture_id
+                    or not isinstance(decision_value, dict)
+                    or _bytes(decision_value) != decision_content
+                    or decision_value.get("fixture_id") != fixture_id
+                ):
+                    raise F19Error("Cached F16/F14 fixtures differ from the exact lineage.")
+                decision_rows = decision_value.get("preference_results")
+                stored_preference = (
+                    next(
+                        (
+                            row["vetting"]["preference"]
+                            for row in decision_rows
+                            if isinstance(row, dict)
+                            and isinstance(row.get("vetting"), dict)
+                            and row["vetting"].get("preference", {}).get("preference_id")
+                            == preference_id
+                        ),
+                        None,
+                    )
+                    if isinstance(decision_rows, list)
+                    else None
+                )
+                if stored_preference is None or _bytes(stored_preference) != _bytes(
+                    preference.to_dict()
+                ):
+                    raise F19Error("Cached F14 preference differs from its exact decision.")
             except ArtifactError as error:
                 raise F19Error(
                     "Cached F16/F14 settlement lineage failed artifact verification."
                 ) from error
+            except F19Error:
+                raise
+            except (AttributeError, KeyError, TypeError, ValueError) as error:
+                raise F19Error("Cached F16/F14 settlement lineage is malformed.") from error
             return cached
-        manifest = F16MatchweekProcessor(self.store).replay_manifest(manifest_digest)
+
+        try:
+            manifest = F16MatchweekProcessor(self.store).replay_manifest(manifest_digest)
+        except (ArtifactError, F16Error, ValueError) as error:
+            raise F19Error(
+                "Settlement requires exact replay of the selected F16 manifest."
+            ) from error
+        if manifest.to_dict() != manifest_value:
+            raise F19Error("F16 replay differs from its exact protected manifest bytes.")
         match = next(
             (
                 row
@@ -332,6 +532,7 @@ class SettlementRepository:
             raise F19Error("F14 preference contract differs from the exact T10 catalog.")
         result = (
             {
+                **causal_identity,
                 "decision_digest": match.decision_digest,
                 "manifest_digest": manifest_digest,
                 "match_result_digest": match_result_digest,
@@ -340,6 +541,9 @@ class SettlementRepository:
             cast(str, decision_value["fixture_id"]),
             preference,
         )
+        cached = self._lineage_cache.get(cache_key)
+        if cached is not None and cached != result:
+            raise F19Error("Cached settlement lineage differs from the exact selected origin.")
         self._lineage_cache[cache_key] = result
         return result
 
@@ -362,7 +566,7 @@ class SettlementRepository:
     def _versions(self, identity: Mapping[str, str]) -> tuple[SettlementRecord, ...]:
         records: list[SettlementRecord] = []
         for metadata in self.store.artifact_catalog():
-            if metadata.media_type == SETTLEMENT_MEDIA_TYPE:
+            if metadata.media_type in {SETTLEMENT_MEDIA_TYPE, CAUSAL_SETTLEMENT_MEDIA_TYPE}:
                 record = self._replay(metadata.digest)
                 if _identity(record.to_dict()) == identity:
                     records.append(record)
@@ -377,12 +581,15 @@ class SettlementRepository:
 
 
 def _identity(value: Mapping[str, object]) -> dict[str, str]:
-    return {
+    identity = {
         "manifest_digest": cast(str, value["manifest_digest"]),
         "match_result_digest": cast(str, value["match_result_digest"]),
         "decision_digest": cast(str, value["decision_digest"]),
         "preference_id": cast(str, value["preference_id"]),
     }
+    if "selection_digest" in value:
+        identity.update({key: cast(str, value[key]) for key in _CAUSAL_IDENTITY_KEYS})
+    return identity
 
 
 def _state_for(grade: SettlementGrade) -> SettlementState:
