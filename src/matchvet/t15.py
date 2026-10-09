@@ -2298,13 +2298,38 @@ def _selection_strength(
 ) -> tuple[float | None, Mapping[str, float], tuple[str, ...]]:
     if config is None:
         return None, {}, ("SELECTION_STRENGTH_CONFIGURATION_MISSING",)
+    raw_components = {
+        component: _raw_component(component, candidate, metrics)
+        for component in SELECTION_COMPONENTS
+    }
+    return selection_strength_from_raw_components(raw_components, config)
+
+
+def selection_strength_from_raw_components(
+    raw_components: Mapping[str, float | None],
+    config: SelectionStrengthConfig,
+    *,
+    normalizers: Mapping[str, NormalizationSpec] | None = None,
+) -> tuple[float | None, Mapping[str, float], tuple[str, ...]]:
+    """Apply the unchanged T15 score formula to exact raw component values.
+
+    Successor support resolution may provide a preference-specific normalizer
+    map. Legacy callers omit it and keep using the PolicyVersion normalizers.
+    """
+
+    if not isinstance(config, SelectionStrengthConfig):
+        raise T15ValidationError("Selection Strength configuration is required.")
     components: dict[str, float] = {}
     reasons: list[str] = []
-    normalizers = cast(Mapping[str, NormalizationSpec], config.normalizers)
+    selected_normalizers = (
+        normalizers
+        if normalizers is not None
+        else cast(Mapping[str, NormalizationSpec], config.normalizers)
+    )
     transforms = cast(Mapping[str, TransformSpec], config.transforms)
     for component in SELECTION_COMPONENTS:
-        raw = _raw_component(component, candidate, metrics)
-        normalizer = normalizers.get(component)
+        raw = raw_components.get(component)
+        normalizer = selected_normalizers.get(component)
         transform = transforms.get(component)
         if raw is None or normalizer is None or transform is None:
             reasons.append(f"SELECTION_COMPONENT_UNRESOLVED:{component}")
@@ -2809,6 +2834,7 @@ __all__ = [
     "T15IntegrityError",
     "T15ValidationError",
     "TransformSpec",
+    "selection_strength_from_raw_components",
     "validate_policy_for_production",
     "vet_match",
     "vet_matchweek",
