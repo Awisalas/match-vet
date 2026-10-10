@@ -39,6 +39,14 @@ factual findings and labels its earlier no-issue decision historical.
 Real-source authorization is SEPARATE AND UNRESOLVED, and no qualified
 prospective #70 cohort exists.
 
+The [2026-10-10 source-use decision](../research/prospective-source-use-decision-2026-10-10.md)
+requires a versioned successor to `research-real-source-use-decision-v1` with
+an immutable source-use manifest. The current primary permission review does
+not clear the actual football source closure for prospective collection. No
+source-authorization mechanics issue is created while the human/provider rights
+evidence remains insufficient. Internal LF02/LF05 policies and historical F05
+permission labels cannot supply missing publisher/upstream permission.
+
 ## #85 implementation record
 
 - Added versioned CandidateInput support, exact protected gate-proof readers,
@@ -118,6 +126,11 @@ record below.
    Owner key/configuration and checkpoint continuity remain NOT OPERATIONAL;
    an owner-signed current approval and event-valid TUF admission remain NOT
    OPERATIONAL. Issue completion activates nothing.
+   Real-source authorization remains SEPARATE AND UNRESOLVED: obtain exact
+   current source-chain, access, raw/normalized retention and backup/replay rights
+   evidence before specifying source-authorization mechanics. The required V2
+   decision must bind an explicit immutable manifest of the selected graph's
+   source uses. No implementation issue or live source approval exists for it.
 3. After both prerequisites are approved and operational, run #86
    prospectively. Retain exact cutoff-valid inputs, immutable provenance, all
    denominator rows, and later source-backed outcomes. Keep unavailable,
@@ -293,3 +306,34 @@ migration.
   authorization; a new eligible unoccupied prospective Matchweek and its complete
   graph followed by the sole qualified witness and protected receipt. No qualified
   prospective #70 cohort exists. Fitting and promotion remain separate and blocked.
+
+## Latest source-use decision and current blockers, 2026-10-10
+
+- [Retained decision](../research/prospective-source-use-decision-2026-10-10.md)
+  and [current primary terms evidence](../research/real-source-permission-evidence-2026-10-10.md)
+  define the actual source classes and a minimal proposed
+  `research-real-source-use-decision-v2` bound to
+  `research-source-use-manifest-v1`. An exact selection digest can bind graph
+  identity but cannot retain permission evidence absent from the graph.
+- No source-authorization implementation issue is created. Human/provider rights
+  evidence is insufficient for the actual prospective football closure. Obtain
+  Football-Data's exact automated research/retention grant or a replacement;
+  clear the selected OpenFootball upstreams; establish each official publisher's
+  minimal-fact/citation database and backup/replay basis; classify actual
+  Open-Meteo use and satisfy attribution; review every selected contextual,
+  venue, history/calibration and later outcome source. Terms changes/withdrawals
+  block new uses while original decisions retain their historical meaning.
+- Current blockers: #87 mechanics COMPLETE; owner key/configuration/checkpoint
+  provisioning NOT OPERATIONAL; owner-signed current approval and event-valid
+  TUF admission NOT OPERATIONAL; real-source authorization SEPARATE AND
+  UNRESOLVED; qualified prospective #70 cohort DOES NOT EXIST.
+- LF02 attestations and LF05/LF13 manual observations remain separate from
+  Provider Attempts and Provider Health. No missing permission becomes approval,
+  no missing evidence becomes ABSENT, and no wrapper clears upstream rights.
+  Raw/normalized retention and private backup/replay are assessed separately.
+  Existing source-rights/F01/F06 contracts, production code and tests are unchanged.
+- Default production remains refusing. #70 remains OPEN with `needs-info`;
+  #86 and #87 remain CLOSED. No owner provisioning, provider activation,
+  authorization, acquisition, collection, PLAY, Product Promotion, F17/F18/F20
+  or #70/#37 fitting occurred. Delivery checks and the research commit SHA are
+  recorded below after push.
