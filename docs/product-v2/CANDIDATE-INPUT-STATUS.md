@@ -335,5 +335,11 @@ migration.
 - Default production remains refusing. #70 remains OPEN with `needs-info`;
   #86 and #87 remain CLOSED. No owner provisioning, provider activation,
   authorization, acquisition, collection, PLAY, Product Promotion, F17/F18/F20
-  or #70/#37 fitting occurred. Delivery checks and the research commit SHA are
-  recorded below after push.
+  or #70/#37 fitting occurred.
+- Research decision/evidence commit:
+  `19416e45eaed1a6677e4d47ee65888309de77c04`, pushed to `main`. No implementation
+  issue was created. Documentation links, fenced blocks, matrix columns,
+  successor/source/timing invariants, current blocker wording and
+  `git diff --check` passed. Verified #70 OPEN with `needs-info`, #86 CLOSED and
+  #87 CLOSED without `ready-for-agent`. No production code/test diff; no runtime
+  tests or full suite ran for these documentation-only changes.
