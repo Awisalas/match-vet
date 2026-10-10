@@ -1,6 +1,6 @@
 # CandidateInput blocker status
 
-Status date: 2026-10-09.
+Status date: 2026-10-10.
 
 ## Current state
 
@@ -14,12 +14,12 @@ cohorts unchanged.
 [#85](https://github.com/Awisalas/match-vet/issues/85) is CLOSED. Its versioned
 F13/F14/T15 consumer seam is implemented in commit
 `976beb8216d9174d20ff7184e289c09827e12061`. [#86](https://github.com/Awisalas/match-vet/issues/86)
-is OPEN with `ready-for-agent`. Its offline bootstrap implementation and
-testing are ready to proceed. No real case may qualify, and no live collection
-may run, until real-source use and the causal-witness profile are separately
-approved and operational. This readiness does not authorize either prerequisite
-or supply the missing #70 cohort. #86 implementation has not started. Issue #70
-remains OPEN with `needs-info`; implementing #85 does not resolve its
+is CLOSED. Its bounded offline bootstrap implementation is complete in commit
+`54951a6a5401fa2622028ac99035bde1c8634428`. No qualified prospective #70 cohort
+exists yet. Real prospective collection remains blocked until real-source use
+and the causal-witness profile are separately approved and operational; neither
+prerequisite was approved or activated in #86. Issue #70 remains OPEN with
+`needs-info`; implementing #85 and #86 does not resolve its outstanding
 chronological evidence or numerical/profile decisions.
 
 ## #85 implementation record
@@ -35,14 +35,18 @@ chronological evidence or numerical/profile decisions.
   V2 cohort; #86 live operation still requires separately approved and
   operational real-source use and causal-witness profile.
 
-## #86 readiness record
+## #86 historical readiness record (superseded; before implementation)
+
+This section preserves the readiness decision made before #86 implementation.
+The current state is recorded at the top of this file and in the implementation
+record below.
 
 - Dependencies #69, #71, #72, #80, #84, and #85 are CLOSED.
-- #86 is ready for offline bootstrap implementation and testing. No real case
-  qualifies and no live collection may run before real-source use and the
-  causal-witness profile are separately approved and operational.
-- #86 implementation has not started and does not supply the missing #70
-  cohort.
+- At the time, #86 was ready for offline bootstrap implementation and testing.
+  No real case qualified and no live collection could run before real-source
+  use and the causal-witness profile were separately approved and operational.
+- At the time, #86 implementation had not started and did not supply the
+  missing #70 cohort.
 - Readiness correction commit SHA:
   `198c96f83e04240fc077d3c5454e5c04613aa941`.
 
@@ -68,10 +72,10 @@ chronological evidence or numerical/profile decisions.
 
 - #85 implemented the versioned consumer and replay contract. It does not
   authorize a statistical fit or production PLAY.
-- #86 defines the later prospective evidence bootstrap. It must use the exact
-  corrected F06/F07 inputs and #80 selection witness before cutoff, then retain
-  CB01's separate post-cutoff, pre-kickoff witness and later source-backed F19
-  outcomes by exact digest.
+- #86 implemented the bounded prospective evidence bootstrap. It uses the
+  exact corrected F06/F07 inputs and #80 selection witness before cutoff, then
+  retains CB01's separate post-cutoff, pre-kickoff witness and later
+  source-backed F19 outcomes by exact digest.
 - Preserve every denominator row and its inclusion or exclusion reason. Do
   not backdate publication or retrieval times, refresh a selected graph, use
   legacy per-match records as corrected cases, or weaken UNKNOWN.
@@ -88,14 +92,15 @@ chronological evidence or numerical/profile decisions.
 1. #85's versioned CandidateInput support and joint T1 comparison contract is
    implemented in `976beb8216d9174d20ff7184e289c09827e12061`. Missing support
    remains UNKNOWN, and old readers retain their existing meanings.
-2. #86 may implement and test its offline bootstrap path. Separately approve and
-   operationalize real-source use and the causal-witness profile before any
-   case can qualify or live collection can run. This authorization remains
-   pending.
-3. Only after authorization, run #86 prospectively. Retain exact cutoff-valid
-   inputs, immutable provenance, all denominator rows, and later source-backed
-   outcomes. Keep unavailable, unattempted, UNKNOWN, failed, VOID, and
-   unsupported states visible.
+2. #86's offline bootstrap is implemented in
+   `54951a6a5401fa2622028ac99035bde1c8634428`. Real-source use and the
+   causal-witness profile still require separate approval and operational
+   readiness before any case can qualify or live collection can run.
+3. After both prerequisites are approved and operational, run #86
+   prospectively. Retain exact cutoff-valid inputs, immutable provenance, all
+   denominator rows, and later source-backed outcomes. Keep unavailable,
+   unattempted, UNKNOWN, failed, VOID, and unsupported states visible. No
+   qualified prospective #70 cohort exists yet.
 4. Freeze development, validation, and untouched final-evaluation manifests
    before assigning evidence roles.
 5. Resolve the empirical methods and profiles under #13 from eligible
@@ -120,18 +125,20 @@ Numerical and profile decisions therefore remain evidence-dependent.
 
 ## #86 capture-index representation gap (documented before storage change)
 
-F16 and #80 already retain and replay the complete selected graph and its
-pre-`T` causal witness. CB01 and F19 retain exact per-fixture/preference
-publication, enrollment, settlement, and correction artifacts. Those identities
-do not provide one immutable snapshot of the INCLUDED F06 membership × enabled
-preference denominator, the separate excluded-membership reasons, and the
-unattempted/failed/withdrawn/unsupported rows with their exact later CB01/F19
-attachment versions. `BootstrapRepository.inspect_denominator` is a
-reconstructed view over the current failure catalog and selected receipts; it
-has no content digest or append-only successor identity. F16 selection
-manifests end before CB01 and F19. A protected capture-index artifact is
-therefore required to freeze this aggregate and its exact replay lineage. This
-representation gap requires no SQLite migration.
+At the time this gap was documented, F16 and #80 already retained and replayed
+the complete selected graph and its pre-`T` causal witness. CB01 and F19 retain
+exact per-fixture/preference publication, enrollment, settlement, and correction
+artifacts. Those identities do not provide one immutable snapshot of the
+INCLUDED F06 membership × enabled preference denominator, the separate
+excluded-membership reasons, and the unattempted/failed/withdrawn/unsupported
+rows with their exact later CB01/F19 attachment versions.
+`BootstrapRepository.inspect_denominator` is a reconstructed view over the
+current failure catalog and selected receipts; it has no content digest or
+append-only successor identity. F16 selection manifests end before CB01 and
+F19. The analysis concluded that a protected capture-index artifact was
+required to freeze this aggregate and its exact replay lineage.
+The #86 implementation closed this representation gap without a SQLite
+migration.
 
 ## #86 implementation record
 
@@ -154,3 +161,13 @@ representation gap requires no SQLite migration.
 - Real prospective collection remains blocked until real-source use and the
   causal-witness profile are separately approved and operational for the exact
   capture. Neither prerequisite was approved or activated in this ticket.
+
+## Latest status-log step
+
+- On 2026-10-10, corrected the current-state and readiness wording to reflect
+  that #86 is CLOSED and its offline implementation is complete. The earlier
+  pre-implementation readiness record remains above as historical context.
+- Verified #70 remains OPEN with `needs-info`, #85 is CLOSED, and #86 is CLOSED.
+- The remaining live-operation blockers are separate approval and operational
+  readiness for real-source use and the causal-witness profile. No qualified
+  prospective #70 cohort exists yet.
