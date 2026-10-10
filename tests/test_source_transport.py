@@ -546,6 +546,180 @@ def test_captcha_and_waf_pages_are_technical_refusals(tmp_path: Path, body: byte
     assert provenance.retrieved_at_utc is not None
 
 
+@pytest.mark.parametrize(
+    "recaptcha_markup",
+    [
+        b'<div id="g-recaptcha" style="visibility:hidden"></div>'
+        b'<script>window.siteKey="recaptcha-public-site-key";</script>',
+        b'<script src="https://www.google.com/recaptcha/api.js?render=public-site-key"></script>'
+        b'<script>window.recaptchaSiteKey="public-site-key";</script>',
+    ],
+)
+def test_dormant_recaptcha_markup_does_not_refuse_an_accessible_http_page(
+    tmp_path: Path, recaptcha_markup: bytes
+) -> None:
+    url = "https://source.example/feed/fixtures.html"
+    body = (
+        b"<html>"
+        + recaptcha_markup
+        + b"<main><h1>Match schedule</h1><p>Home FC vs Away FC</p></main></html>"
+    )
+    transport = _Transport(_Response(body=body, headers={"Content-Type": "text/html"}))
+    downloader, _, _ = _build_downloader(tmp_path, url, transport)
+
+    source = downloader.fetch(
+        url,
+        cache_key="public-fixtures",
+        authorization_decision_digest="synthetic-current-authorization",
+    )
+
+    assert source.response_status == 200
+    assert source.content == body
+    assert source.from_cache is False
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"<html><main>Verify you are human to continue.</main></html>",
+        b"<html><main>Please complete the CAPTCHA to continue.</main></html>",
+        b"<html><main>Solve the captcha before continuing.</main></html>",
+        b"<html><main>Captcha required to view this schedule.</main></html>",
+    ],
+)
+def test_explicit_human_or_captcha_challenge_is_refused(tmp_path: Path, body: bytes) -> None:
+    from matchvet.ingestion import SourceRefused
+
+    url = "https://source.example/feed/challenge.html"
+    transport = _Transport(_Response(body=body))
+    downloader, _, _ = _build_downloader(tmp_path, url, transport)
+
+    with pytest.raises(SourceRefused) as failure:
+        downloader.fetch(
+            url,
+            cache_key="explicit-challenge",
+            authorization_decision_digest="synthetic-current-authorization",
+        )
+
+    assert failure.value.failure_classification == "TECHNICAL_REFUSAL"
+    assert len(transport.calls) == 1
+
+
+def test_forbidden_response_with_dormant_recaptcha_still_refuses(tmp_path: Path) -> None:
+    from matchvet.ingestion import SourceRefused
+
+    url = "https://source.example/feed/forbidden.html"
+    body = (
+        b'<html><div id="g-recaptcha" style="visibility:hidden"></div>'
+        b'<script>window.siteKey="recaptcha-public-site-key";</script>'
+        b"Public schedule content</html>"
+    )
+    transport = _Transport(_Response(403, body=body))
+    downloader, _, _ = _build_downloader(tmp_path, url, transport)
+
+    with pytest.raises(SourceRefused) as failure:
+        downloader.fetch(
+            url,
+            cache_key="forbidden-recaptcha",
+            authorization_decision_digest="synthetic-current-authorization",
+        )
+
+    assert failure.value.failure_classification == "ACCESS_REFUSED"
+    assert failure.value.http_status == 403
+    assert len(transport.calls) == 1
+
+
+def test_waf_header_refuses_an_otherwise_normal_http_page(tmp_path: Path) -> None:
+    from matchvet.ingestion import SourceRefused
+
+    url = "https://source.example/feed/waf.html"
+    transport = _Transport(
+        _Response(
+            headers={"X-WAF-Blocked": "true"},
+            body=b"<html><main>Public fixture content</main></html>",
+        )
+    )
+    downloader, _, _ = _build_downloader(tmp_path, url, transport)
+
+    with pytest.raises(SourceRefused) as failure:
+        downloader.fetch(
+            url,
+            cache_key="waf-header",
+            authorization_decision_digest="synthetic-current-authorization",
+        )
+
+    assert failure.value.failure_classification == "WAF_OR_ANTIBOT_REFUSAL"
+    assert len(transport.calls) == 1
+
+
+def test_www_authenticate_header_refuses_an_otherwise_normal_http_page(
+    tmp_path: Path,
+) -> None:
+    from matchvet.ingestion import SourceRefused
+
+    url = "https://source.example/feed/authenticated.html"
+    transport = _Transport(
+        _Response(
+            headers={"WWW-Authenticate": 'Bearer realm="fixtures"'},
+            body=b"<html><main>Public fixture content</main></html>",
+        )
+    )
+    downloader, _, _ = _build_downloader(tmp_path, url, transport)
+
+    with pytest.raises(SourceRefused) as failure:
+        downloader.fetch(
+            url,
+            cache_key="auth-challenge",
+            authorization_decision_digest="synthetic-current-authorization",
+        )
+
+    assert failure.value.failure_classification == "AUTHENTICATION_CHALLENGE"
+    assert len(transport.calls) == 1
+
+
+def test_login_redirect_refuses_before_contacting_login_target(tmp_path: Path) -> None:
+    from matchvet.ingestion import SourceRefused
+
+    url = "https://source.example/feed/fixtures.html"
+    transport = _Transport(_Response(302, headers={"Location": "/account/login"}, body=b""))
+    downloader, _, _ = _build_downloader(tmp_path, url, transport)
+
+    with pytest.raises(SourceRefused) as failure:
+        downloader.fetch(
+            url,
+            cache_key="login-redirect",
+            authorization_decision_digest="synthetic-current-authorization",
+        )
+
+    assert failure.value.failure_classification == "LOGIN_REDIRECT_REFUSED"
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("status", [402, 407, 451])
+def test_paywall_proxy_auth_and_legal_refusal_statuses_are_not_retried(
+    tmp_path: Path, status: int
+) -> None:
+    from matchvet.ingestion import SourceRefused
+
+    url = f"https://source.example/feed/refused-{status}.html"
+    transport = _Transport(_Response(status), _Response(body=b"must not retry"))
+    downloader, _, _ = _build_downloader(
+        tmp_path, url, transport, policy_overrides={"retry_count": 2}
+    )
+
+    with pytest.raises(SourceRefused) as failure:
+        downloader.fetch(
+            url,
+            cache_key=f"refused-{status}",
+            authorization_decision_digest="synthetic-current-authorization",
+        )
+
+    assert failure.value.http_status == status
+    assert failure.value.terminal is True
+    assert len(transport.calls) == 1
+
+
 def test_transient_failure_retries_once_then_succeeds_with_bounded_backoff(
     tmp_path: Path,
 ) -> None:

@@ -3250,9 +3250,11 @@ _TRANSIENT_ERRNOS = {
 }
 _TRANSIENT_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
 _REFUSAL_TEXT = (
-    "captcha",
     "verify you are human",
     "prove you are human",
+    "complete the captcha",
+    "captcha required",
+    "solve the captcha",
     "automated requests",
     "bot detected",
     "bot detection",
