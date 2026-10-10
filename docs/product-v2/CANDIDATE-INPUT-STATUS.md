@@ -82,12 +82,52 @@ league slices require qualified contracts. LF02/LF05 remain historical/emergency
 manual paths, not the intended primary prospective architecture. Optional
 weather/context may remain UNKNOWN/UNPERFORMED in honest diagnostic records.
 
+The [#91 source-contract review](../research/pro-league-source-contract-2026-10-10.md)
+rates the official Pro League calendar PARTIAL. Exact UTC kickoff, exhaustive
+current window/affirmative-empty evidence, freshness and automatic identity
+mapping remain unqualified. The seven-league table retains each family's next
+gap. Neither #91 closure condition is proven; #92 remains `needs-info`.
+
 Source policy is accepted, and #89 runtime mechanics are COMPLETE. Real source
 authority/configuration and checkpoint continuity are NOT PROVISIONED. Causal
 #87 mechanics are COMPLETE; owner key/configuration/checkpoint provisioning,
 owner-signed current approval and event-valid TUF admission remain NOT
 OPERATIONAL. A qualified prospective #70 cohort DOES NOT EXIST. No live run is
 authorized.
+
+## #91 research record
+
+- Pro League verdict: PARTIAL. Preferred official candidate:
+  `https://www.proleague.be/jpl-kalender!`, operated by Pro League NV. Fixtures,
+  revision notices and one completed result are evidenced in extracted public
+  pages. No exact automated source contract or hard candidate capability/refusal
+  failure is proven. No adapter, authority or production acquisition was activated.
+- Completeness, currentness and exact kickoff UTC remain unproven. The existing
+  LF05 registry digest was verified; its manual-only lineage does not authorize
+  automatic mapping. Stable source IDs and an automatic mapping revision remain
+  UNKNOWN. No canonical teams were created.
+- All seven official families remain PARTIAL. Premier League needs an exact
+  maintained feed/window contract; Bundesliga needs structured enumeration and
+  controlling updates; LFP and Serie A need exact public schemas, timing and
+  current coverage; LALIGA needs timezone and exhaustive rescheduled-window
+  semantics; Liga Portugal needs its export contract; Pro League needs the
+  exact schema, UTC basis, coverage/currentness and identity contract.
+- Football-Data documents FT results, but its `Time` timezone, exact final-status
+  semantics and an acquisition plan that avoids odds remain unqualified. No
+  CSV, odds or archive was acquired. Its rows cannot acquire COMPETITION authority.
+- Checks passed: local Markdown links, table/fence/spacing checks, the exact
+  registry digest and documented canonical targets, issue states/dependencies,
+  and `git diff --check`. Primary publication checks have the limitations retained
+  in the research record: two web fetch timeouts, lost direct-calendar metadata,
+  and a Football-Data DNS timeout before any HTTP request. No runtime tests were
+  needed for these documentation-only changes.
+- Research commit `ffe422f1f9abdc18922c2b843e6d36a7272f5fe5` is pushed to `main`.
+  #91 remains OPEN `needs-info`; #92 remains OPEN `needs-info` with #91 its only
+  open native blocker. #89/#90 are CLOSED.
+- Next blocker: qualify one supported public Pro League representation with
+  exact times, complete current requested-window/empty proof, status/revisions
+  and a source-scoped mapping contract. Neither close criterion A nor B is
+  satisfied. Default live acquisition remains disabled.
 
 ## #90 implementation record
 

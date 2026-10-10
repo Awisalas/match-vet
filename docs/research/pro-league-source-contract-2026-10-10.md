@@ -14,7 +14,7 @@ in this bounded review. That finding is not a claim that none exists.
 
 The specific observed blocker is the gap between a public calendar view and
 the unchanged F01 contract. An adapter specification cannot assert the missing
-facts. This review does not establish a publisher-wide hard technical refusal
+facts. This review does not establish a hard technical refusal of the candidate
 or prove that the underlying HTML/JavaScript lacks those fields. It therefore
 does not meet close criterion A, or by itself prove criterion B.
 
@@ -267,7 +267,8 @@ results remain the preferred candidate when those same facts can be qualified.
 ## Issue and dependency disposition
 
 #91 remains OPEN `needs-info`. #92 remains OPEN `needs-info`. This review has
-not proven close criterion A or a hard publisher-wide failure for criterion B.
+not proven close criterion A or a hard candidate capability/refusal failure for
+criterion B.
 The remaining #92 blocker is exact source-contract qualification in #91;
 #89 and #90 mechanics are complete but their closure does not prove a source.
 No runtime source or causal authority was provisioned. Default live acquisition

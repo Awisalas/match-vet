@@ -14,10 +14,10 @@ LF01/LF02/LF05 and the earlier F08 permission inventory below retain their histo
 
 | Current corrective ticket | State / boundary |
 | --- | --- |
-| [#89](https://github.com/Awisalas/match-vet/issues/89) internal risk admission and V2 manifest | OPEN ready-for-agent; preserve V1, private retention and separate external permission |
+| [#89](https://github.com/Awisalas/match-vet/issues/89) internal risk admission and V2 manifest | CLOSED in corrective commit `28661c5abe88ad6e1b63ca8a04e8ed5db7d9387c`; current authorization mechanics complete, real authority remains unprovisioned |
 | [#90](https://github.com/Awisalas/match-vet/issues/90) bounded public transport | CLOSED in `03d0d1a223256a7795bed3fcf187a07fd125253c`; offline bounded transport, adapters/live acquisition remain disabled |
-| [#91](https://github.com/Awisalas/match-vet/issues/91) exact source qualification | OPEN needs-info; real identity, lineage, timezone, coverage and freshness evidence |
-| [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | OPEN needs-info; exact source qualification and all-seven source-contract evidence still needed |
+| [#91](https://github.com/Awisalas/match-vet/issues/91) exact source qualification | OPEN needs-info; [Pro League PARTIAL and seven-league gaps retained](../research/pro-league-source-contract-2026-10-10.md); exact UTC, current window/empty proof, freshness and automatic mapping unqualified |
+| [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | OPEN needs-info; #91 remains the open source-contract blocker; no adapter readiness or activation |
 | [#93](https://github.com/Awisalas/match-vet/issues/93) retained FT-to-F13 projection | OPEN ready-for-agent; exact chronology and unchanged model support |
 | [#94](https://github.com/Awisalas/match-vet/issues/94) retained FT-to-F19 projection | OPEN ready-for-agent; post-kickoff evidence and unchanged settlement hierarchy |
 
