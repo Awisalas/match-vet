@@ -88,6 +88,46 @@ fixture membership. The inspected response is TECHNICALLY INSUFFICIENT for a
 complete current requested window, including cross-round moves. Currentness,
 replacement/status semantics and stable automatic mapping remain unqualified.
 The prior seven-league table is retained; no other league was researched again.
+[#95](https://github.com/Awisalas/match-vet/issues/95) adds the bounded
+[replacement JSON qualification](../research/pro-league-replacement-fixture-source-2026-10-10.md)
+below; it records another specific outcome B and leaves #92 unready.
+
+## #95 Belgium replacement-source qualification
+
+- New [#95](https://github.com/Awisalas/match-vet/issues/95) records outcome B,
+  INSUFFICIENT for the inspected complete-current F01 contract, in
+  [replacement-source evidence](../research/pro-league-replacement-fixture-source-2026-10-10.md).
+  The exact public JSON family is
+  `https://www.proleague.be/api/football_list/football_competition_match/variant_b`.
+  Explicitly delivered first-party code proves its path and parameters; a
+  no-credential edition sample and terminal-offset probe prove ordinary public access.
+- The sample has 15 fixtures, explicit UTC, 17 corroborated team UUIDs and a
+  filtered total of 277. The terminal offset returns no rows. These establish
+  neither full requested-window membership nor affirmative empty. Live/pending
+  and finished/warning fixtures occupy separate mutable status partitions.
+  Complete-current coverage, revision/omission/replacement semantics and automatic
+  identity persistence remain unqualified. No native publication time was invented.
+- The delivered start/end `football_module/football_calendar` events handler is
+  a distinct official lead with unqualified preset/schema/coverage. The smallest
+  practical source-selection recommendation is to qualify one reliable zero-cost
+  third-party Belgian source if no explicit official complete-current contract
+  can be supplied. Existing third-party leads are not qualified. Manual Belgium
+  remains temporary evidence and does not satisfy full automation.
+- Checks passed: original/new private digests and protected modes, corrupt-byte
+  rejection, contiguous asset-range reconstruction, exact locator provenance,
+  UTC/status and seven fixture comparisons, 17 new source-ID observations and all
+  18 canonical targets, unchanged LF05 mapping digest/lineage, documentation
+  links/anchors/tables/fences, issue dependency/state checks and `git diff --check`.
+  Nine bounded source requests inspected three linked JavaScript assets and two
+  JSON locators; no season/club crawl or cross-origin backend contact occurred.
+- Research delivery commit: `7b9098b87c64c26f2d0ec581f3acc8768e99de98`.
+  #95 CLOSED completed under B; the native edge marking it as a prerequisite for
+  #92 remains retained. #92 OPEN `needs-info`, without
+  `ready-for-agent`, until an exact complete-current Belgian contract is qualified.
+  #91 remains CLOSED under B, #90 CLOSED corrected, #70 OPEN `needs-info`.
+  No other league, adapter, real source authority, Store, provider activation,
+  causal provisioning, fitting, PLAY or promotion changed. Default live
+  acquisition remains disabled.
 
 ## #90 refusal-classifier correction
 
