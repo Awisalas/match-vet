@@ -89,6 +89,32 @@ complete current requested window, including cross-round moves. Currentness,
 replacement/status semantics and stable automatic mapping remain unqualified.
 The prior seven-league table is retained; no other league was researched again.
 
+## #90 refusal-classifier correction
+
+- Regression confirmed the bare `captcha` substring classified a synthetic HTTP
+  200 with hidden reCAPTCHA/site-key markup and usable page content as
+  `TECHNICAL_REFUSAL`. The retained Pro League response contains the same dormant
+  markup/configuration while returning the actual calendar payload.
+- Removed only the generic `captcha` token. Added explicit challenge phrases for
+  completing or solving a captcha and for captcha-required pages. Dormant script,
+  hidden-widget and site-key mentions alone pass. HTTP refusal statuses,
+  authentication/WAF headers, login redirects, explicit access-denial language,
+  and human/captcha challenge phrases still refuse.
+- Deterministic offline checks passed: `tests/test_source_transport.py` (59 passed)
+  and focused downloader compatibility cases in `tests/test_ingestion.py` (3
+  passed). Changed-file formatter and Ruff passed. Strict mypy passed for
+  `src/matchvet/ingestion.py`; `git diff --check` and Markdown/link/table checks
+  passed. No source authorization code changed; the transport test used the
+  existing synthetic current-authorization seam.
+- The corrected implementation and regression tests are committed in
+  `f8a602a1def0c9f51d741b6b868e1297478d383b` and pushed. #90 was reopened while
+  fixing the acceptance regression, then closed after the corrected test and
+  prior refusal cases passed. Its final state is CLOSED. #92 remains OPEN
+  `needs-info` and blocked on the replacement Pro League source contract in
+  [#91's Belgium evidence](../research/pro-league-calendar-raw-qualification-2026-10-10.md).
+- No live network, adapter, provider activation or real source authority was used.
+  Default production/live acquisition remains disabled.
+
 Source policy is accepted, and #89 runtime mechanics are COMPLETE. Real source
 authority/configuration and checkpoint continuity are NOT PROVISIONED. Causal
 #87 mechanics are COMPLETE; owner key/configuration/checkpoint provisioning,

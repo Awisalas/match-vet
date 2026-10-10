@@ -15,7 +15,7 @@ LF01/LF02/LF05 and the earlier F08 permission inventory below retain their histo
 | Current corrective ticket | State / boundary |
 | --- | --- |
 | [#89](https://github.com/Awisalas/match-vet/issues/89) internal risk admission and V2 manifest | CLOSED in corrective commit `28661c5abe88ad6e1b63ca8a04e8ed5db7d9387c`; current authorization mechanics complete, real authority remains unprovisioned |
-| [#90](https://github.com/Awisalas/match-vet/issues/90) bounded public transport | CLOSED in `03d0d1a223256a7795bed3fcf187a07fd125253c`; offline bounded transport, adapters/live acquisition remain disabled |
+| [#90](https://github.com/Awisalas/match-vet/issues/90) bounded public transport | CLOSED after classifier correction in `f8a602a1def0c9f51d741b6b868e1297478d383b`; dormant CAPTCHA markup no longer blocks usable pages, explicit challenges/refusals still refuse; live acquisition remains disabled |
 | [#91](https://github.com/Awisalas/match-vet/issues/91) exact source qualification | CLOSED under B in `288abd30716bbd1aca700220189387017e0639ea`; [raw default calendar is insufficient for current-window coverage](../research/pro-league-calendar-raw-qualification-2026-10-10.md); seven-league gaps retained |
 | [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | OPEN needs-info; replacement official partition/window contract, currentness/status and stable automatic mapping still unqualified despite closed native dependencies; no adapter readiness |
 | [#93](https://github.com/Awisalas/match-vet/issues/93) retained FT-to-F13 projection | OPEN ready-for-agent; exact chronology and unchanged model support |
