@@ -60,12 +60,14 @@ for schedules/current revisions/completeness, plus one existing Football-Data
 CSV family only if needed for recent FT history and later outcomes. No reviewed
 source set yet proves the complete all-seven automatic contract.
 
-[#89](https://github.com/Awisalas/match-vet/issues/89) source risk authorization,
-exact protected manifest V1 and source-use decision V2 are implemented and verified
-offline. [The authorization contract](../design/research-source-authorization.md)
-preserves released V1 replay and keeps external permission separate from internal
-risk acceptance. Default production refuses without independently installed source
-authority and current continuity. #90 bounded transport, #93 FT-to-F13 projection
+[#89](https://github.com/Awisalas/match-vet/issues/89) is reopened with
+`ready-for-agent` after the [adversarial review](../research/issue-89-adversarial-review-2026-10-10.md)
+of `40118a4635052ddbebb07509d2e6cab017e4185b`. Withdrawal during final validation
+can permit dispatch/admission; outcome authorization omits supplemental evidence
+and raw source dependencies. Its acceptance is no longer met. Released V1 replay
+and external permission meanings remain unchanged. Default production refuses
+without independently installed source authority and current continuity.
+#90 bounded transport, #93 FT-to-F13 projection
 and #94 FT-to-F19 projection are OPEN `ready-for-agent`. #91 exact source qualification
 and #92 first Pro League automatic schedule slice are OPEN `needs-info` until
 actual endpoint/coverage/freshness/identity evidence is sufficient. Follow-up
@@ -74,7 +76,7 @@ manual paths, not the intended primary prospective architecture. Optional
 weather/context may remain UNKNOWN/UNPERFORMED in honest diagnostic records.
 
 Source authorization remains SEPARATE AND NOT OPERATIONAL: internal policy is
-accepted and #89 runtime mechanics COMPLETE; source authority configuration,
+accepted and #89 runtime mechanics REQUIRE CORRECTION; source authority configuration,
 checkpoint continuity and exact selected-graph approval are NOT PROVISIONED.
 Causal #87 mechanics COMPLETE;
 owner key/configuration/checkpoint provisioning NOT OPERATIONAL;
@@ -488,7 +490,7 @@ and completed mechanics are recorded above and in the implementation record belo
   causal operational provisioning and exact runtime source authorization remain
   unprovisioned; no qualified prospective cohort or live run exists.
 
-## Latest implementation: private source authorization, #89, 2026-10-10
+## Historical implementation delivery: private source authorization, #89, 2026-10-10
 
 - Implementation commit: `40118a4635052ddbebb07509d2e6cab017e4185b`, pushed to
   `main`. #89 CLOSED as completed; `ready-for-agent` removed. This delivery
@@ -520,3 +522,25 @@ and completed mechanics are recorded above and in the implementation record belo
   FT-to-F19 outcomes. #91/#92 retain `needs-info`. Causal operational key,
   configuration, checkpoint continuity, owner approval and event-valid TUF
   admission remain unprovisioned. No qualified prospective #70 cohort exists.
+
+## Latest review: source authorization, #89, 2026-10-10
+
+- Reviewed `40118a4635052ddbebb07509d2e6cab017e4185b` against #89 and ADR 0006.
+  Two MAJOR findings reopen #89 with `ready-for-agent`: withdrawal during final
+  validation can permit dispatch or commit protected admission, and the outcome
+  manifest omits supplemental fact sources and applicable raw dependencies.
+- Retained [review evidence](../research/issue-89-adversarial-review-2026-10-10.md)
+  and deterministic offline reproductions. Production code is unchanged. No
+  separate corrective ticket expands #89's scope.
+- Checks: 45 existing source-authority tests passed; one new review test passed
+  and three strict expected failures reproduce the findings. Formatter, Ruff,
+  strict mypy for the new Python file, documentation/static checks and
+  `git diff --check` passed.
+- #90 may proceed with offline transport implementation. Its operational source
+  integration depends on corrected #89 acceptance. #90/#91/#92 readiness is
+  unchanged; #91/#92 remain `needs-info`. #70 remains OPEN `needs-info`, and
+  #86/#87 remain CLOSED.
+- Remaining blockers: #89 corrections, #90/#91/#92/#93/#94 and separate causal
+  operational key/configuration/checkpoint, owner approval and event-valid TUF
+  admission. Default production still REFUSES. No real source authority,
+  acquisition capability, live run, fit, PLAY or promotion was provisioned.
