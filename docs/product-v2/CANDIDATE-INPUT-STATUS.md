@@ -396,5 +396,9 @@ migration.
   checks passed: local Markdown links, fenced blocks, matrix columns, current
   blocker wording, static recency arithmetic and `git diff --check`. GitHub
   verified #70 OPEN with `needs-info`, #86 CLOSED and #87 CLOSED without
-  `ready-for-agent`. No production code/test changes or runtime tests. Research
-  delivery SHA will be recorded after committing this decision.
+  `ready-for-agent`. No production code/test changes or runtime tests.
+- Research decision/evidence commit:
+  `917aad3d08e2aa8ce4e22569c611465bc192b531`. Delivered with the status log to
+  `main`; no implementation issue was created. Next blocker: exact current
+  publisher/upstream rights evidence for the bounded proposed source closure,
+  alongside the separate unprovisioned causal operational prerequisites.
