@@ -6,15 +6,26 @@ Matchweek, research contextual evidence, or calculate a prediction.
 
 from __future__ import annotations
 
+import contextlib
 import csv
+import email.utils
+import errno
 import hashlib
+import http.client
 import io
+import ipaddress
 import json
+import math
 import os
 import platform
+import queue
 import re
+import socket
 import sqlite3
+import ssl
 import sys
+import threading
+import time as time_module
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -23,10 +34,8 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from typing import TYPE_CHECKING, Any, Protocol
+from urllib.parse import unquote, urljoin, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from matchvet.artifacts import ArtifactStore
@@ -92,6 +101,243 @@ class IngestionError(Exception):
     """Base class for bounded T06 acquisition failures."""
 
 
+@dataclass(frozen=True)
+class SourceTransportAttempt:
+    number: int
+    url: str
+    started_at_utc: str
+    completed_at_utc: str
+    elapsed_seconds: float
+    response_status: int | None
+    classification: str
+    bytes_received: int
+    response_digest: str | None = None
+    retry_after_seconds: float | None = None
+    retry_delay_seconds: float | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "number": self.number,
+            "url": self.url,
+            "started_at_utc": self.started_at_utc,
+            "completed_at_utc": self.completed_at_utc,
+            "elapsed_seconds": self.elapsed_seconds,
+            "response_status": self.response_status,
+            "classification": self.classification,
+            "bytes_received": self.bytes_received,
+            "response_digest": self.response_digest,
+            "retry_after_seconds": self.retry_after_seconds,
+            "retry_delay_seconds": self.retry_delay_seconds,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> SourceTransportAttempt:
+        if not isinstance(value, dict):
+            raise SourceIntegrityError("Retained transport attempt is not an object.")
+        fields = {
+            "number",
+            "url",
+            "started_at_utc",
+            "completed_at_utc",
+            "elapsed_seconds",
+            "response_status",
+            "classification",
+            "bytes_received",
+            "response_digest",
+            "retry_after_seconds",
+            "retry_delay_seconds",
+        }
+        if set(value) != fields:
+            raise SourceIntegrityError("Retained transport attempt has an unsupported shape.")
+        if (
+            type(value["number"]) is not int
+            or type(value["bytes_received"]) is not int
+            or not isinstance(value["url"], str)
+            or not isinstance(value["started_at_utc"], str)
+            or not isinstance(value["completed_at_utc"], str)
+            or not isinstance(value["classification"], str)
+            or not isinstance(value["elapsed_seconds"], (int, float))
+            or (value["response_status"] is not None and type(value["response_status"]) is not int)
+            or (
+                value["response_digest"] is not None
+                and not isinstance(value["response_digest"], str)
+            )
+        ):
+            raise SourceIntegrityError("Retained transport attempt has invalid field values.")
+        return cls(
+            value["number"],
+            value["url"],
+            value["started_at_utc"],
+            value["completed_at_utc"],
+            float(value["elapsed_seconds"]),
+            value["response_status"],
+            value["classification"],
+            value["bytes_received"],
+            value["response_digest"],
+            _optional_float(value["retry_after_seconds"]),
+            _optional_float(value["retry_delay_seconds"]),
+        )
+
+
+@dataclass(frozen=True)
+class SourceRedirect:
+    from_url: str
+    to_url: str
+    response_status: int
+    validated: bool
+    refusal_reason: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "from_url": self.from_url,
+            "to_url": self.to_url,
+            "response_status": self.response_status,
+            "validated": self.validated,
+            "refusal_reason": self.refusal_reason,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> SourceRedirect:
+        if (
+            not isinstance(value, dict)
+            or set(value)
+            != {"from_url", "to_url", "response_status", "validated", "refusal_reason"}
+            or not isinstance(value.get("from_url"), str)
+            or not isinstance(value.get("to_url"), str)
+            or type(value.get("response_status")) is not int
+            or not isinstance(value.get("validated"), bool)
+            or (
+                value.get("refusal_reason") is not None
+                and not isinstance(value.get("refusal_reason"), str)
+            )
+        ):
+            raise SourceIntegrityError("Retained transport redirect has an unsupported shape.")
+        return cls(
+            value["from_url"],
+            value["to_url"],
+            value["response_status"],
+            value["validated"],
+            value["refusal_reason"],
+        )
+
+
+@dataclass(frozen=True)
+class SourceTransportProvenance:
+    requested_url: str
+    final_url: str | None
+    redirects: tuple[SourceRedirect, ...]
+    retrieved_at_utc: str | None
+    response_status: int | None
+    response_digest: str | None
+    content_digest: str | None
+    content_byte_count: int
+    network_byte_count: int
+    request_count: int
+    failure_classification: str | None
+    retry_count: int
+    elapsed_seconds: float
+    attempts: tuple[SourceTransportAttempt, ...]
+
+    @property
+    def redirect_chain(self) -> tuple[str, ...]:
+        return tuple(hop.to_url for hop in self.redirects)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "requested_url": self.requested_url,
+            "final_url": self.final_url,
+            "redirects": [hop.to_dict() for hop in self.redirects],
+            "retrieved_at_utc": self.retrieved_at_utc,
+            "response_status": self.response_status,
+            "response_digest": self.response_digest,
+            "content_digest": self.content_digest,
+            "content_byte_count": self.content_byte_count,
+            "network_byte_count": self.network_byte_count,
+            "request_count": self.request_count,
+            "failure_classification": self.failure_classification,
+            "retry_count": self.retry_count,
+            "elapsed_seconds": self.elapsed_seconds,
+            "attempts": [attempt.to_dict() for attempt in self.attempts],
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> SourceTransportProvenance:
+        fields = {
+            "requested_url",
+            "final_url",
+            "redirects",
+            "retrieved_at_utc",
+            "response_status",
+            "response_digest",
+            "content_digest",
+            "content_byte_count",
+            "network_byte_count",
+            "request_count",
+            "failure_classification",
+            "retry_count",
+            "elapsed_seconds",
+            "attempts",
+        }
+        if not isinstance(value, dict) or set(value) != fields:
+            raise SourceIntegrityError("Retained transport provenance has an unsupported shape.")
+        if (
+            not isinstance(value.get("requested_url"), str)
+            or (value.get("final_url") is not None and not isinstance(value.get("final_url"), str))
+            or (
+                value.get("retrieved_at_utc") is not None
+                and not isinstance(value.get("retrieved_at_utc"), str)
+            )
+            or (
+                value.get("response_status") is not None
+                and type(value.get("response_status")) is not int
+            )
+            or (
+                value.get("response_digest") is not None
+                and not isinstance(value.get("response_digest"), str)
+            )
+            or (
+                value.get("content_digest") is not None
+                and not isinstance(value.get("content_digest"), str)
+            )
+            or type(value.get("content_byte_count")) is not int
+            or type(value.get("network_byte_count")) is not int
+            or type(value.get("request_count")) is not int
+            or (
+                value.get("failure_classification") is not None
+                and not isinstance(value.get("failure_classification"), str)
+            )
+            or type(value.get("retry_count")) is not int
+            or not isinstance(value.get("elapsed_seconds"), (int, float))
+            or not isinstance(value.get("redirects"), list)
+            or not isinstance(value.get("attempts"), list)
+        ):
+            raise SourceIntegrityError("Retained transport provenance has invalid field values.")
+        return cls(
+            value["requested_url"],
+            value["final_url"],
+            tuple(SourceRedirect.from_dict(item) for item in value["redirects"]),
+            value["retrieved_at_utc"],
+            value["response_status"],
+            value["response_digest"],
+            value["content_digest"],
+            value["content_byte_count"],
+            value["network_byte_count"],
+            value["request_count"],
+            value["failure_classification"],
+            value["retry_count"],
+            float(value["elapsed_seconds"]),
+            tuple(SourceTransportAttempt.from_dict(item) for item in value["attempts"]),
+        )
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    if not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise SourceIntegrityError("Retained transport timing is invalid.")
+    return float(value)
+
+
 class SourceParseError(IngestionError):
     """The source document cannot be structurally parsed."""
 
@@ -103,11 +349,181 @@ class SourcePolicyError(IngestionError):
 class SourceUnavailable(IngestionError):
     """An approved source could not be retrieved."""
 
-    def __init__(self, message: str, *, http_status: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        http_status: int | None = None,
+        failure_classification: str = "UNAVAILABLE",
+        transport_provenance: SourceTransportProvenance | None = None,
+        terminal: bool = False,
+    ) -> None:
         super().__init__(message)
         if http_status is not None and not 100 <= http_status <= 599:
             raise ValueError("SourceUnavailable HTTP status must be between 100 and 599.")
         self.http_status = http_status
+        self.failure_classification = failure_classification
+        self.transport_provenance = transport_provenance
+        self.terminal = terminal
+
+    def __str__(self) -> str:
+        message = super().__str__()
+        if self.transport_provenance is None:
+            return message
+        record = _canonical_json(self.transport_provenance.to_dict()).decode("utf-8")
+        return f"{message} transport={record}"
+
+
+class SourceRefused(SourceUnavailable):
+    """A source denied access or the current authorization does not permit dispatch."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        http_status: int | None = None,
+        failure_classification: str = "TECHNICAL_REFUSAL",
+        transport_provenance: SourceTransportProvenance | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            http_status=http_status,
+            failure_classification=failure_classification,
+            transport_provenance=transport_provenance,
+            terminal=True,
+        )
+
+
+class SourceDeferred(SourceUnavailable):
+    """A provider limit cannot be honored within the configured elapsed budget."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        http_status: int | None = None,
+        transport_provenance: SourceTransportProvenance | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            http_status=http_status,
+            failure_classification="DEFERRED",
+            transport_provenance=transport_provenance,
+            terminal=True,
+        )
+
+
+class SourceBudgetExceeded(SourceUnavailable):
+    """A configured transport request, byte, timeout or redirect bound was reached."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        failure_classification: str,
+        http_status: int | None = None,
+        transport_provenance: SourceTransportProvenance | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            http_status=http_status,
+            failure_classification=failure_classification,
+            transport_provenance=transport_provenance,
+            terminal=True,
+        )
+
+
+class SourceIntegrityError(IngestionError):
+    """Retained source bytes or cache metadata failed exact integrity checks."""
+
+
+@dataclass(frozen=True)
+class SourceTransportEndpoint:
+    host: str
+    path_prefix: str
+
+    def __post_init__(self) -> None:
+        host = self.host.casefold().rstrip(".")
+        if (
+            not host
+            or "/" in host
+            or not self.path_prefix.startswith("/")
+            or ".." in self.path_prefix.split("/")
+        ):
+            raise ValueError("Source transport endpoints need a public host and absolute path.")
+        object.__setattr__(self, "host", host)
+
+
+@dataclass(frozen=True)
+class SourceTransportPolicy:
+    allowed_endpoints: tuple[SourceTransportEndpoint, ...] = (
+        SourceTransportEndpoint("www.football-data.co.uk", "/mmz4281/"),
+        SourceTransportEndpoint("football-data.co.uk", "/mmz4281/"),
+        SourceTransportEndpoint("raw.githubusercontent.com", "/openfootball/"),
+    )
+    allowed_cross_host_redirects: tuple[tuple[str, str], ...] = ()
+    max_request_count: int = 64
+    max_total_bytes: int = 32 * 1024 * 1024
+    per_request_timeout_seconds: float = 30.0
+    total_elapsed_budget_seconds: float = 120.0
+    minimum_pacing_interval_seconds: float = 1.0
+    retry_count: int = 2
+    base_backoff_seconds: float = 0.5
+    maximum_backoff_seconds: float = 10.0
+    redirect_count: int = 3
+
+    def __post_init__(self) -> None:
+        if not self.allowed_endpoints:
+            raise ValueError("At least one public source endpoint must be configured.")
+        if min(self.max_request_count, self.max_total_bytes) <= 0:
+            raise ValueError("Source transport request and byte limits must be positive.")
+        if self.retry_count < 0 or self.redirect_count < 0:
+            raise ValueError("Source transport retry and redirect limits cannot be negative.")
+        durations = (
+            self.per_request_timeout_seconds,
+            self.total_elapsed_budget_seconds,
+            self.minimum_pacing_interval_seconds,
+            self.base_backoff_seconds,
+            self.maximum_backoff_seconds,
+        )
+        if any(not math.isfinite(value) or value < 0 for value in durations):
+            raise ValueError("Source transport time limits must be finite and nonnegative.")
+        if min(self.per_request_timeout_seconds, self.total_elapsed_budget_seconds) <= 0:
+            raise ValueError("Source transport timeout and elapsed budget must be positive.")
+        pairs = tuple(
+            (source.casefold().rstrip("."), target.casefold().rstrip("."))
+            for source, target in self.allowed_cross_host_redirects
+        )
+        object.__setattr__(self, "allowed_cross_host_redirects", pairs)
+
+
+class CurrentSourceAuthorization(Protocol):
+    def require_current(self, decision_digest: str) -> dict[str, Any]: ...
+
+
+class SourceHttpResponse(Protocol):
+    @property
+    def status(self) -> int: ...
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
+
+    def read(self, size: int = -1) -> bytes: ...
+
+    def set_timeout(self, timeout_seconds: float) -> None: ...
+
+    def close(self) -> None: ...
+
+
+class SourceHttpTransport(Protocol):
+    def request(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+        resolved_ips: tuple[str, ...],
+    ) -> SourceHttpResponse: ...
 
 
 @dataclass(frozen=True)
@@ -938,6 +1354,7 @@ class SourceCaptureInput:
     response_status: int = 200
     content_type: str | None = None
     cache_key: str | None = None
+    transport_provenance: SourceTransportProvenance | None = None
 
 
 @dataclass(frozen=True)
@@ -955,6 +1372,7 @@ class SourceCaptureRecord:
     redistributable: bool
     observed_terms: str
     terms_reference: str
+    transport_provenance_json: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1236,6 +1654,25 @@ class FixtureHistoryImporter:
         captured_at = _canonical_utc(capture.retrieved_at_utc)
         source_id = deterministic_identifier("source", source_rights.source_key)
         digest = sha256_bytes(content)
+        transport = capture.transport_provenance
+        if transport is not None and (
+            transport.requested_url != capture.source_url
+            or transport.retrieved_at_utc != captured_at
+            or transport.response_status != capture.response_status
+            or transport.content_digest != digest
+            or transport.content_byte_count != len(content)
+        ):
+            raise SourceIntegrityError(
+                "Capture transport provenance differs from exact response bytes."
+            )
+        rights_metadata: dict[str, object] = {
+            "allowed_use": source_rights.allowed_use,
+            "redistributable": source_rights.redistributable,
+            "retention_status": source_rights.retention_status,
+            "source_kind": dataset.source_kind.value,
+        }
+        if transport is not None:
+            rights_metadata["transport"] = transport.to_dict()
         cache_key = capture.cache_key or (
             f"{source_rights.source_key}:{dataset.league.key}:{dataset.season}:{capture.source_url}"
         )
@@ -1320,14 +1757,7 @@ class FixtureHistoryImporter:
                     source_rights.retention_status,
                     capture.observed_terms,
                     source_rights.terms_reference,
-                    _canonical_json(
-                        {
-                            "allowed_use": source_rights.allowed_use,
-                            "redistributable": source_rights.redistributable,
-                            "retention_status": source_rights.retention_status,
-                            "source_kind": dataset.source_kind.value,
-                        }
-                    ).decode("utf-8"),
+                    _canonical_json(rights_metadata).decode("utf-8"),
                     "matchvet-t06-v1",
                     captured_at,
                 ),
@@ -1586,30 +2016,47 @@ class FixtureHistoryImporter:
             SELECT c.capture_id, c.source_id, s.source_key, c.locator,
                    c.retrieved_at_utc, c.content_sha256, c.byte_length,
                    c.artifact_digest, s.allowed_use, c.retention_status,
-                   s.redistributable, c.observed_terms, c.terms_reference
+                   s.redistributable, c.observed_terms, c.terms_reference, c.rights_json
             FROM source_captures AS c
             JOIN source_identities AS s ON s.source_id = c.source_id
             ORDER BY c.retrieved_at_utc, c.capture_id
             """
         ).fetchall()
-        return tuple(
-            SourceCaptureRecord(
-                capture_id=str(row[0]),
-                source_id=str(row[1]),
-                source_key=str(row[2]),
-                locator=str(row[3]),
-                retrieved_at_utc=str(row[4]),
-                content_sha256=str(row[5]),
-                byte_length=int(row[6]),
-                artifact_digest=str(row[7]),
-                allowed_use=str(row[8]),
-                retention_status=str(row[9]),
-                redistributable=bool(row[10]),
-                observed_terms=str(row[11]),
-                terms_reference=str(row[12]),
+        records: list[SourceCaptureRecord] = []
+        for row in rows:
+            transport_json = None
+            rights_json = str(row[13])
+            if '"transport":' in rights_json:
+                try:
+                    rights = json.loads(rights_json)
+                except (ValueError, TypeError) as error:
+                    raise SourceIntegrityError(
+                        "Source capture rights metadata is malformed."
+                    ) from error
+            else:
+                rights = None
+            if isinstance(rights, dict) and "transport" in rights:
+                provenance = SourceTransportProvenance.from_dict(rights["transport"])
+                transport_json = _canonical_json(provenance.to_dict()).decode("utf-8")
+            records.append(
+                SourceCaptureRecord(
+                    capture_id=str(row[0]),
+                    source_id=str(row[1]),
+                    source_key=str(row[2]),
+                    locator=str(row[3]),
+                    retrieved_at_utc=str(row[4]),
+                    content_sha256=str(row[5]),
+                    byte_length=int(row[6]),
+                    artifact_digest=str(row[7]),
+                    allowed_use=str(row[8]),
+                    retention_status=str(row[9]),
+                    redistributable=bool(row[10]),
+                    observed_terms=str(row[11]),
+                    terms_reference=str(row[12]),
+                    transport_provenance_json=transport_json,
+                )
             )
-            for row in rows
-        )
+        return tuple(records)
 
     def source_assertions(self) -> tuple[SourceAssertionRecord, ...]:
         connection = self._store._connection_for_repository()
@@ -2631,6 +3078,7 @@ class DownloadedSource:
     content_type: str
     from_cache: bool
     bytes_downloaded: int
+    transport_provenance: SourceTransportProvenance | None = None
 
 
 class SourceFetcher(Protocol):
@@ -2669,12 +3117,222 @@ class StaticSourceFetcher:
         )
 
 
-class ResumableSourceDownloader:
-    """Download only approved direct sources with private cache and range resume."""
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, host: str, addresses: tuple[str, ...], *, timeout: float) -> None:
+        context = ssl.create_default_context()
+        super().__init__(host, port=443, timeout=timeout, context=context)
+        self._tls_context = context
+        self._addresses = addresses
+        self._connect_timeout = timeout
 
-    _ALLOWED_HOSTS = frozenset(
-        {"www.football-data.co.uk", "football-data.co.uk", "raw.githubusercontent.com"}
+    def connect(self) -> None:
+        if not self._addresses:
+            raise OSError("No validated public address is available for the source host.")
+        deadline = time_module.monotonic() + self._connect_timeout
+        address = self._addresses[0]
+        remaining = deadline - time_module.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Source connection exceeded its request timeout.")
+        ip = ipaddress.ip_address(address)
+        family = socket.AF_INET if ip.version == 4 else socket.AF_INET6
+        sockaddr: tuple[object, ...] = (
+            (address, self.port) if ip.version == 4 else (address, self.port, 0, 0)
+        )
+        connection = socket.socket(family, socket.SOCK_STREAM)
+        connection.settimeout(remaining)
+        try:
+            connection.connect(sockaddr)
+            remaining = deadline - time_module.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Source connection exceeded its request timeout.")
+            connection.settimeout(remaining)
+            self.sock = self._tls_context.wrap_socket(connection, server_hostname=self.host)
+        except OSError:
+            connection.close()
+            raise
+
+
+class _PinnedHTTPResponse:
+    def __init__(self, connection: _PinnedHTTPSConnection, response: http.client.HTTPResponse):
+        self.connection = connection
+        self.response = response
+        self.status = response.status
+        self.headers = {key.casefold(): value for key, value in response.getheaders()}
+
+    def read(self, size: int = -1) -> bytes:
+        return self.response.read(size)
+
+    def set_timeout(self, timeout_seconds: float) -> None:
+        if self.connection.sock is not None:
+            self.connection.sock.settimeout(timeout_seconds)
+
+    def close(self) -> None:
+        self.response.close()
+        self.connection.close()
+
+
+class _PinnedHTTPSTransport:
+    def request(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+        resolved_ips: tuple[str, ...],
+    ) -> SourceHttpResponse:
+        parsed = urlsplit(url)
+        connection = _PinnedHTTPSConnection(
+            parsed.hostname or "", resolved_ips, timeout=timeout_seconds
+        )
+        path = parsed.path or "/"
+        try:
+            connection.request(
+                "GET",
+                path,
+                headers={**headers, "Connection": "close", "Accept-Encoding": "identity"},
+            )
+            return _PinnedHTTPResponse(connection, connection.getresponse())
+        except Exception:
+            connection.close()
+            raise
+
+
+class _IncompleteSourceBody(OSError):
+    def __init__(self, message: str, *, bytes_received: int) -> None:
+        super().__init__(errno.ECONNRESET, message)
+        self.bytes_received = bytes_received
+
+
+def _resolve_public_source_ips(host: str, *, timeout_seconds: float = 30.0) -> tuple[str, ...]:
+    result: queue.Queue[tuple[str, ...] | Exception] = queue.Queue(maxsize=1)
+
+    def resolve() -> None:
+        try:
+            records = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+            addresses = tuple(sorted({str(record[4][0]) for record in records}))
+            result.put(addresses)
+        except Exception as error:
+            result.put(error)
+
+    worker = threading.Thread(target=resolve, name="matchvet-source-dns", daemon=True)
+    worker.start()
+    worker.join(timeout_seconds)
+    if worker.is_alive():
+        raise TimeoutError("Public source DNS resolution exceeded its request timeout.")
+    outcome = result.get_nowait()
+    if isinstance(outcome, Exception):
+        raise outcome
+    return _validate_public_ips(outcome)
+
+
+def _validate_public_ips(addresses: tuple[str, ...]) -> tuple[str, ...]:
+    if not addresses:
+        raise SourcePolicyError("The approved source host has no DNS addresses.")
+    try:
+        parsed = tuple((ipaddress.ip_address(address), address) for address in set(addresses))
+    except ValueError as error:
+        raise SourcePolicyError("The approved source host has an invalid DNS address.") from error
+    if not all(address.is_global for address, _original in parsed):
+        raise SourcePolicyError("The approved source host resolves to a nonpublic address.")
+    return tuple(
+        original
+        for _address, original in sorted(parsed, key=lambda pair: (pair[0].version, int(pair[0])))
     )
+
+
+_TRANSIENT_ERRNOS = {
+    errno.ECONNABORTED,
+    errno.ECONNREFUSED,
+    errno.ECONNRESET,
+    errno.EHOSTUNREACH,
+    errno.ENETUNREACH,
+    errno.ETIMEDOUT,
+}
+_TRANSIENT_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+_REFUSAL_TEXT = (
+    "captcha",
+    "verify you are human",
+    "prove you are human",
+    "automated requests",
+    "bot detected",
+    "bot detection",
+    "unusual traffic",
+    "access denied",
+    "request blocked",
+    "blocked by security",
+    "web application firewall",
+    "cloudflare ray id",
+    "authentication required",
+    "login required",
+    "sign in to continue",
+    "subscribe to continue",
+    "subscription required",
+    "paywall",
+    "you have been banned",
+    "your ip has been banned",
+    "account suspended",
+    "access permanently blocked",
+)
+
+
+def _refusal_reason(
+    status: int,
+    headers: Mapping[str, str],
+    body: bytes = b"",
+    target_url: str | None = None,
+) -> str | None:
+    if status in {401, 402, 403, 407, 451}:
+        return {
+            401: "AUTHENTICATION_REFUSED",
+            402: "PAYWALL_REFUSED",
+            403: "ACCESS_REFUSED",
+            407: "PROXY_AUTHENTICATION_REFUSED",
+            451: "ACCESS_REFUSED",
+        }[status]
+    if any(key.casefold() == "www-authenticate" for key in headers):
+        return "AUTHENTICATION_CHALLENGE"
+    if any(
+        key.casefold() in {"cf-mitigated", "x-sucuri-block", "x-waf-blocked"} for key in headers
+    ):
+        return "WAF_OR_ANTIBOT_REFUSAL"
+    if target_url is not None:
+        path_parts = {item.casefold() for item in urlsplit(target_url).path.split("/") if item}
+        if path_parts & {"login", "signin", "sign-in", "auth", "authenticate"}:
+            return "LOGIN_REDIRECT_REFUSED"
+    text = body[:512_000].decode("utf-8", errors="ignore").casefold()
+    if any(phrase in text for phrase in _REFUSAL_TEXT):
+        return "TECHNICAL_REFUSAL"
+    return None
+
+
+def _is_transient_exception(error: Exception) -> bool:
+    if isinstance(error, (TimeoutError, socket.timeout, http.client.RemoteDisconnected)):
+        return True
+    if isinstance(error, socket.gaierror):
+        return error.errno == socket.EAI_AGAIN
+    if isinstance(error, http.client.IncompleteRead):
+        return True
+    return isinstance(error, OSError) and error.errno in _TRANSIENT_ERRNOS
+
+
+def _retry_after_seconds(value: str | None, now: datetime) -> float | None:
+    if value is None:
+        return None
+    try:
+        seconds = float(int(value.strip()))
+    except ValueError:
+        try:
+            parsed = email.utils.parsedate_to_datetime(value)
+        except TypeError, ValueError, OverflowError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        seconds = (parsed.astimezone(UTC) - now.astimezone(UTC)).total_seconds()
+    return max(0.0, seconds)
+
+
+class ResumableSourceDownloader:
+    """Fetch scoped public sources with current authority, bounded transport and private replay."""
 
     def __init__(
         self,
@@ -2685,13 +3343,26 @@ class ResumableSourceDownloader:
         timeout_seconds: float = 30.0,
         cache_ttl_seconds: int = 6 * 60 * 60,
         cache_storage_cap_bytes: int = SETTLED_RESOURCE_BUDGET.managed_storage_cap_bytes,
+        policy: SourceTransportPolicy | None = None,
+        authorization_repository: CurrentSourceAuthorization | None = None,
+        http_transport: SourceHttpTransport | None = None,
+        resolve_public_ips: Callable[[str], tuple[str, ...]] | None = None,
+        monotonic: Callable[[], float] = time_module.monotonic,
+        utcnow: Callable[[], datetime] = lambda: datetime.now(UTC),
+        sleep: Callable[[float], None] = time_module.sleep,
     ) -> None:
-        selected_network_cap = network_cap_bytes or SETTLED_RESOURCE_BUDGET.routine_network_bytes
+        selected_network_cap = (
+            network_cap_bytes
+            if network_cap_bytes is not None
+            else SETTLED_RESOURCE_BUDGET.routine_network_bytes
+        )
         if (
             min(max_source_bytes, selected_network_cap, cache_ttl_seconds, cache_storage_cap_bytes)
             <= 0
         ):
             raise ValueError("Downloader limits must be positive.")
+        if timeout_seconds <= 0 or not math.isfinite(timeout_seconds):
+            raise ValueError("Downloader timeout must be finite and positive.")
         self.private_root = private_root.resolve()
         self.cache_root = self.private_root / "cache" / "t06"
         self.cache_root.mkdir(parents=True, exist_ok=True)
@@ -2702,7 +3373,16 @@ class ResumableSourceDownloader:
         self.network_cap_bytes = selected_network_cap
         self._network_cap_explicit = network_cap_bytes is not None
         self.timeout_seconds = timeout_seconds
+        self.policy = policy or SourceTransportPolicy(per_request_timeout_seconds=timeout_seconds)
+        self.authorization_repository = authorization_repository
+        self.http_transport = http_transport or _PinnedHTTPSTransport()
+        self._resolve_public_ips = resolve_public_ips
+        self._monotonic = monotonic
+        self._utcnow = utcnow
+        self._sleep = sleep
         self.network_bytes = 0
+        self.network_requests = 0
+        self._last_request_started_at: float | None = None
 
     def configure_for_plan(self, *, historical: bool) -> None:
         if self._network_cap_explicit:
@@ -2713,112 +3393,1529 @@ class ResumableSourceDownloader:
             else SETTLED_RESOURCE_BUDGET.routine_network_bytes
         )
 
-    def fetch(self, url: str, *, cache_key: str, refresh: bool = False) -> DownloadedSource:
+    def fetch(
+        self,
+        url: str,
+        *,
+        cache_key: str,
+        refresh: bool = False,
+        authorization_decision_digest: str | None = None,
+    ) -> DownloadedSource:
         self._validate_url(url)
-        cache_stem = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()
-        data_path = self.cache_root / f"{cache_stem}.data"
-        meta_path = self.cache_root / f"{cache_stem}.json"
-        cached = self._read_cached(data_path, meta_path, refresh)
-        if cached is not None:
+        data_path, meta_path, part_path = self._paths(cache_key)
+        cached = self._read_cache(data_path, meta_path, expected_url=url)
+        if cached is not None and not refresh and self._cache_is_fresh(cached):
             return cached
-        part_path = self.cache_root / f"{cache_stem}.part"
-        offset = part_path.stat().st_size if part_path.exists() else 0
-        headers = {
-            "User-Agent": "MatchVet-T06/1.0",
-            "Accept": "application/json,text/plain;q=0.9,text/csv;q=0.8",
-        }
-        if offset:
-            headers["Range"] = f"bytes={offset}-"
-        request = Request(url, headers=headers, method="GET")
-        try:
-            response = urlopen(request, timeout=self.timeout_seconds)
-        except HTTPError as error:
-            raise SourceUnavailable(
-                f"Approved source retrieval failed for {url}: {error}",
-                http_status=error.code,
-            ) from error
-        except (URLError, OSError) as error:
-            raise SourceUnavailable(
-                f"Approved source retrieval failed for {url}: {error}"
-            ) from error
-        try:
-            geturl = getattr(response, "geturl", None)
-            final_url = str(geturl()) if callable(geturl) else url
-            self._validate_url(final_url)
-        except Exception:
-            response.close()
-            raise
-        status = int(getattr(response, "status", response.getcode()))
-        content_type = str(response.headers.get("Content-Type", "application/octet-stream")).split(
-            ";", maxsplit=1
-        )[0]
-        if status not in {200, 206}:
-            response.close()
-            raise SourceUnavailable(
-                f"Approved source returned HTTP {status} for {url}.", http_status=status
+
+        start = self._monotonic()
+        attempts: list[SourceTransportAttempt] = []
+        redirects: list[SourceRedirect] = []
+        if self.authorization_repository is None or not authorization_decision_digest:
+            raise self._refused(
+                url,
+                start,
+                attempts,
+                redirects,
+                "A separately supplied current source authorization is required before live fetch.",
+                "AUTHORIZATION_REQUIRED",
             )
-        append = offset > 0 and status == 206
-        bytes_downloaded = 0
-        cache_bytes = self._cache_size() - (offset if not append else 0)
         try:
-            mode = "ab" if append else "wb"
-            with part_path.open(mode) as target:
-                os.chmod(part_path, 0o600)
-                while True:
-                    chunk = response.read(64 * 1024)
-                    if not chunk:
-                        break
-                    bytes_downloaded += len(chunk)
-                    if bytes_downloaded + (offset if append else 0) > self.max_source_bytes:
-                        raise SourceUnavailable(
-                            f"Source exceeded the {self.max_source_bytes}-byte limit.",
-                            http_status=status,
-                        )
-                    if self.network_bytes + bytes_downloaded > self.network_cap_bytes:
-                        raise SourceUnavailable(
-                            "Historical download session exceeded its network cap.",
-                            http_status=status,
-                        )
-                    if cache_bytes + len(chunk) > self.cache_storage_cap_bytes:
-                        raise SourceUnavailable(
-                            "Private T06 cache would exceed its managed-storage budget.",
-                            http_status=status,
-                        )
-                    target.write(chunk)
-                    cache_bytes += len(chunk)
-                target.flush()
-                os.fsync(target.fileno())
-        except SourceUnavailable:
-            raise
-        except OSError as error:
-            raise SourceUnavailable(
-                f"Approved source transfer failed for {url}: {error}", http_status=status
+            auth_entry = self._current_authorized_entry(url, authorization_decision_digest)
+        except Exception as error:
+            raise self._refused(
+                url,
+                start,
+                attempts,
+                redirects,
+                "Current source authorization is invalid or withdrawn; live fetch refused.",
+                "AUTHORIZATION_INVALID",
             ) from error
-        finally:
-            response.close()
-        self.network_bytes += bytes_downloaded
-        os.replace(part_path, data_path)
-        content = data_path.read_bytes()
-        retrieved_at = _utc_now_text()
-        metadata = {
-            "content_sha256": sha256_bytes(content),
-            "content_type": content_type,
-            "retrieved_at_utc": retrieved_at,
-            "response_status": status,
-            "url": url,
-        }
-        meta_tmp = meta_path.with_suffix(".tmp")
-        meta_tmp.write_text(_canonical_json(metadata).decode("utf-8"), encoding="utf-8")
-        os.chmod(meta_tmp, 0o600)
-        descriptor = os.open(meta_tmp, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        os.replace(meta_tmp, meta_path)
-        return DownloadedSource(
-            content, retrieved_at, status, content_type, False, bytes_downloaded
+
+        offset = part_path.stat().st_size if part_path.exists() else 0
+        if offset > self.max_source_bytes:
+            raise SourceIntegrityError("Retained partial source exceeds its byte bound.")
+        current_url = url
+        current_ips: tuple[str, ...] | None = None
+        visited = {url}
+        request_count = 0
+        operation_bytes = 0
+        retry_count = 0
+        final_content_type = "application/octet-stream"
+
+        while True:
+            self._require_elapsed(start, attempts, redirects, current_url)
+            entry_limits = self._authorization_limits(auth_entry)
+            self._require_request_budget(
+                start,
+                attempts,
+                redirects,
+                current_url,
+                request_count,
+                operation_bytes,
+                entry_limits,
+            )
+            self._pace(start, attempts, redirects, current_url)
+            try:
+                auth_entry = self._current_authorized_entry(url, authorization_decision_digest)
+            except Exception as error:
+                raise self._refused(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "Current source authorization changed before destination validation.",
+                    "AUTHORIZATION_INVALID",
+                ) from error
+            if current_ips is None:
+                try:
+                    current_ips = self._resolve_destination(
+                        urlsplit(current_url).hostname or "",
+                        start,
+                        attempts,
+                        redirects,
+                        current_url,
+                        entry_limits,
+                    )
+                except SourcePolicyError as error:
+                    raise self._refused(
+                        url,
+                        start,
+                        attempts,
+                        redirects,
+                        str(error),
+                        "NONPUBLIC_DESTINATION",
+                    ) from error
+                except OSError as error:
+                    transient = _is_transient_exception(error)
+                    attempt = self._make_attempt(
+                        len(attempts) + 1,
+                        current_url,
+                        self._monotonic(),
+                        self._utc_text(),
+                        None,
+                        "DNS_TEMPORARY" if transient else "DNS_FAILURE",
+                        0,
+                    )
+                    attempts.append(attempt)
+                    if transient and retry_count < self.policy.retry_count:
+                        if not self._retry_capacity(request_count, operation_bytes, entry_limits):
+                            raise self._budget_failure(
+                                url,
+                                start,
+                                attempts,
+                                redirects,
+                                "REQUEST_BUDGET_EXHAUSTED",
+                            ) from error
+                        delay = self._backoff(retry_count)
+                        retry_count += 1
+                        attempts[-1] = replace(attempt, retry_delay_seconds=delay)
+                        self._sleep_with_budget(delay, start, attempts, redirects, current_url)
+                        continue
+                    raise self._unavailable(
+                        url,
+                        start,
+                        attempts,
+                        redirects,
+                        "Public source DNS resolution failed.",
+                        "DNS_FAILURE",
+                    ) from error
+
+            try:
+                auth_entry = self._current_authorized_entry(url, authorization_decision_digest)
+            except Exception as error:
+                raise self._refused(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "Current source authorization changed before HTTP dispatch.",
+                    "AUTHORIZATION_INVALID",
+                ) from error
+            entry_limits = self._authorization_limits(auth_entry)
+            remaining = self._remaining(start)
+            timeout = min(
+                self.policy.per_request_timeout_seconds,
+                self.timeout_seconds,
+                float(entry_limits["timeout_seconds"]),
+                remaining,
+            )
+            if timeout <= 0:
+                raise self._budget_failure(
+                    url, start, attempts, redirects, "TOTAL_ELAPSED_BUDGET_EXHAUSTED"
+                )
+            request_headers = {
+                "User-Agent": "MatchVet-T06/1.0",
+                "Accept": "application/json,text/plain;q=0.9,text/csv;q=0.8",
+            }
+            if offset:
+                request_headers["Range"] = f"bytes={offset}-"
+            request_started = self._monotonic()
+            request_started_at = self._utc_text()
+            request_deadline = request_started + timeout
+            request_count += 1
+            self.network_requests += 1
+            self._last_request_started_at = request_started
+            try:
+                response = self.http_transport.request(
+                    current_url,
+                    headers=request_headers,
+                    timeout_seconds=timeout,
+                    resolved_ips=current_ips,
+                )
+            except Exception as error:
+                transient = _is_transient_exception(error)
+                classification = (
+                    "REQUEST_TIMEOUT"
+                    if isinstance(error, (TimeoutError, socket.timeout))
+                    else "TRANSIENT_TRANSPORT"
+                    if transient
+                    else "TRANSPORT_FAILURE"
+                )
+                attempt = self._make_attempt(
+                    len(attempts) + 1,
+                    current_url,
+                    request_started,
+                    request_started_at,
+                    None,
+                    classification,
+                    0,
+                )
+                attempts.append(attempt)
+                if transient and retry_count < self.policy.retry_count:
+                    if not self._retry_capacity(request_count, operation_bytes, entry_limits):
+                        raise self._budget_failure(
+                            url,
+                            start,
+                            attempts,
+                            redirects,
+                            "REQUEST_BUDGET_EXHAUSTED",
+                        ) from error
+                    delay = self._backoff(retry_count)
+                    retry_count += 1
+                    attempts[-1] = replace(attempt, retry_delay_seconds=delay)
+                    self._sleep_with_budget(delay, start, attempts, redirects, current_url)
+                    continue
+                raise self._unavailable(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    f"Public source transport failed: {error}",
+                    "RETRY_EXHAUSTED" if transient and retry_count > 0 else classification,
+                ) from error
+
+            status = int(response.status)
+            if self._remaining(start) <= 0:
+                response.close()
+                attempts.append(
+                    self._make_attempt(
+                        len(attempts) + 1,
+                        current_url,
+                        request_started,
+                        request_started_at,
+                        status,
+                        "TOTAL_ELAPSED_BUDGET_EXHAUSTED",
+                        0,
+                    )
+                )
+                raise self._budget_failure(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "TOTAL_ELAPSED_BUDGET_EXHAUSTED",
+                    status,
+                )
+            response_headers = {key.casefold(): value for key, value in response.headers.items()}
+            late_redirect_target = None
+            if status in {301, 302, 303, 307, 308}:
+                location = response_headers.get("location")
+                if location:
+                    late_redirect_target = urljoin(current_url, location)
+            refusal = _refusal_reason(status, response_headers, target_url=late_redirect_target)
+            if refusal is not None:
+                response.close()
+                if late_redirect_target is not None:
+                    redirects.append(
+                        SourceRedirect(current_url, late_redirect_target, status, False, refusal)
+                    )
+                attempts.append(
+                    self._make_attempt(
+                        len(attempts) + 1,
+                        current_url,
+                        request_started,
+                        request_started_at,
+                        status,
+                        refusal,
+                        0,
+                    )
+                )
+                raise self._refused(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "Public source returned a technical access refusal.",
+                    refusal,
+                    http_status=status,
+                )
+            if self._monotonic() >= request_deadline:
+                response.close()
+                retry_after = _retry_after_seconds(
+                    response_headers.get("retry-after"), self._utcnow()
+                )
+                attempts.append(
+                    self._make_attempt(
+                        len(attempts) + 1,
+                        current_url,
+                        request_started,
+                        request_started_at,
+                        status,
+                        "REQUEST_TIMEOUT",
+                        0,
+                        retry_after_seconds=retry_after,
+                    )
+                )
+                if retry_count < self.policy.retry_count:
+                    if not self._retry_capacity(request_count, operation_bytes, entry_limits):
+                        raise self._budget_failure(
+                            url,
+                            start,
+                            attempts,
+                            redirects,
+                            self._retry_limit_classification(
+                                request_count, operation_bytes, entry_limits
+                            ),
+                            status,
+                        )
+                    try:
+                        delay = self._retry_delay(retry_count, retry_after, start)
+                    except SourceDeferred as error:
+                        raise self._deferred_failure(
+                            url, start, attempts, redirects, str(error), status
+                        ) from error
+                    retry_count += 1
+                    attempts[-1] = replace(attempts[-1], retry_delay_seconds=delay)
+                    self._sleep_with_budget(delay, start, attempts, redirects, current_url)
+                    continue
+                raise self._unavailable(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "Public source response exceeded its per-request timeout.",
+                    "REQUEST_TIMEOUT",
+                    http_status=status,
+                )
+            content_type = response_headers.get("content-type", "application/octet-stream").split(
+                ";", maxsplit=1
+            )[0]
+            final_content_type = content_type
+
+            if status in {301, 302, 303, 307, 308}:
+                location = response_headers.get("location")
+                response.close()
+                if not location:
+                    attempts.append(
+                        self._make_attempt(
+                            len(attempts) + 1,
+                            current_url,
+                            request_started,
+                            request_started_at,
+                            status,
+                            "REDIRECT_MISSING_LOCATION",
+                            0,
+                        )
+                    )
+                    raise self._unavailable(
+                        url,
+                        start,
+                        attempts,
+                        redirects,
+                        "Public source redirect omitted its target.",
+                        "REDIRECT_MISSING_LOCATION",
+                        http_status=status,
+                    )
+                target_url = urljoin(current_url, location)
+                try:
+                    auth_entry = self._current_authorized_entry(url, authorization_decision_digest)
+                except Exception as error:
+                    redirects.append(
+                        SourceRedirect(
+                            current_url,
+                            target_url,
+                            status,
+                            False,
+                            "Current source authorization changed before redirect validation.",
+                        )
+                    )
+                    attempts.append(
+                        self._make_attempt(
+                            len(attempts) + 1,
+                            current_url,
+                            request_started,
+                            request_started_at,
+                            status,
+                            "AUTHORIZATION_INVALID",
+                            0,
+                        )
+                    )
+                    raise self._refused(
+                        url,
+                        start,
+                        attempts,
+                        redirects,
+                        "Current source authorization changed before redirect validation.",
+                        "AUTHORIZATION_INVALID",
+                        http_status=status,
+                    ) from error
+                try:
+                    self._validate_url(target_url)
+                    source_host = urlsplit(current_url).hostname or ""
+                    target_host = urlsplit(target_url).hostname or ""
+                    if (
+                        source_host.casefold() != target_host.casefold()
+                        and (source_host.casefold(), target_host.casefold())
+                        not in self.policy.allowed_cross_host_redirects
+                    ):
+                        raise SourcePolicyError("Cross-host source redirect is not approved.")
+                    target_ips = self._resolve_destination(
+                        target_host,
+                        start,
+                        attempts,
+                        redirects,
+                        target_url,
+                        self._authorization_limits(auth_entry),
+                    )
+                    if target_url in visited:
+                        raise SourcePolicyError("Source redirect loop detected.")
+                except (SourcePolicyError, OSError, ValueError) as error:
+                    redirects.append(
+                        SourceRedirect(current_url, target_url, status, False, str(error))
+                    )
+                    attempts.append(
+                        self._make_attempt(
+                            len(attempts) + 1,
+                            current_url,
+                            request_started,
+                            request_started_at,
+                            status,
+                            "REDIRECT_REFUSED",
+                            0,
+                        )
+                    )
+                    raise self._refused(
+                        url,
+                        start,
+                        attempts,
+                        redirects,
+                        "Public source redirect target was refused before contact.",
+                        "REDIRECT_REFUSED",
+                        http_status=status,
+                    ) from error
+                if len(redirects) >= self.policy.redirect_count:
+                    redirects.append(SourceRedirect(current_url, target_url, status, True))
+                    attempts.append(
+                        self._make_attempt(
+                            len(attempts) + 1,
+                            current_url,
+                            request_started,
+                            request_started_at,
+                            status,
+                            "REDIRECT_LIMIT_EXHAUSTED",
+                            0,
+                        )
+                    )
+                    raise self._budget_failure(
+                        url, start, attempts, redirects, "REDIRECT_LIMIT_EXHAUSTED", status
+                    )
+                refusal = _refusal_reason(status, response_headers, target_url=target_url)
+                if refusal is not None:
+                    redirects.append(
+                        SourceRedirect(current_url, target_url, status, False, refusal)
+                    )
+                    attempts.append(
+                        self._make_attempt(
+                            len(attempts) + 1,
+                            current_url,
+                            request_started,
+                            request_started_at,
+                            status,
+                            refusal,
+                            0,
+                        )
+                    )
+                    raise self._refused(
+                        url,
+                        start,
+                        attempts,
+                        redirects,
+                        "Public source redirected to an authentication or access challenge.",
+                        refusal,
+                        http_status=status,
+                    )
+                redirects.append(SourceRedirect(current_url, target_url, status, True))
+                attempts.append(
+                    self._make_attempt(
+                        len(attempts) + 1,
+                        current_url,
+                        request_started,
+                        request_started_at,
+                        status,
+                        "REDIRECT",
+                        0,
+                    )
+                )
+                visited.add(target_url)
+                current_url = target_url
+                current_ips = target_ips
+                offset = 0
+                if part_path.exists():
+                    part_path.write_bytes(b"")
+                continue
+
+            refusal = _refusal_reason(status, response_headers)
+            if refusal is not None:
+                response.close()
+                attempts.append(
+                    self._make_attempt(
+                        len(attempts) + 1,
+                        current_url,
+                        request_started,
+                        request_started_at,
+                        status,
+                        refusal,
+                        0,
+                    )
+                )
+                self._discard_partial(part_path)
+                raise self._refused(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    f"Public source refused access with HTTP {status}.",
+                    refusal,
+                    http_status=status,
+                )
+
+            if status not in {200, 206}:
+                network_bytes_before_sample = self.network_bytes
+                try:
+                    sample, used = self._read_response_sample(
+                        response,
+                        start,
+                        operation_bytes,
+                        entry_limits,
+                        request_deadline,
+                        64 * 1024,
+                    )
+                except Exception as error:
+                    response.close()
+                    received = max(0, self.network_bytes - network_bytes_before_sample)
+                    operation_bytes += received
+                    transient = _is_transient_exception(error)
+                    classification = (
+                        "REQUEST_TIMEOUT"
+                        if isinstance(error, (TimeoutError, socket.timeout))
+                        else "TRANSIENT_ERROR_BODY_FAILURE"
+                        if transient
+                        else "ERROR_BODY_FAILURE"
+                    )
+                    retry_after = _retry_after_seconds(
+                        response_headers.get("retry-after"), self._utcnow()
+                    )
+                    attempts.append(
+                        self._make_attempt(
+                            len(attempts) + 1,
+                            current_url,
+                            request_started,
+                            request_started_at,
+                            status,
+                            classification,
+                            received,
+                            retry_after_seconds=retry_after,
+                        )
+                    )
+                    if transient and retry_count < self.policy.retry_count:
+                        if not self._retry_capacity(request_count, operation_bytes, entry_limits):
+                            raise self._budget_failure(
+                                url,
+                                start,
+                                attempts,
+                                redirects,
+                                self._retry_limit_classification(
+                                    request_count, operation_bytes, entry_limits
+                                ),
+                                status,
+                            ) from error
+                        try:
+                            sample_retry_delay = self._retry_delay(retry_count, retry_after, start)
+                        except SourceDeferred as deferred:
+                            raise self._deferred_failure(
+                                url,
+                                start,
+                                attempts,
+                                redirects,
+                                str(deferred),
+                                status,
+                            ) from deferred
+                        retry_count += 1
+                        attempts[-1] = replace(attempts[-1], retry_delay_seconds=sample_retry_delay)
+                        self._sleep_with_budget(
+                            sample_retry_delay, start, attempts, redirects, current_url
+                        )
+                        continue
+                    raise self._unavailable(
+                        url,
+                        start,
+                        attempts,
+                        redirects,
+                        f"Public source error response body failed: {error}",
+                        classification,
+                        http_status=status,
+                    ) from error
+                operation_bytes += used
+                refusal = _refusal_reason(status, response_headers, sample)
+                retry_after = _retry_after_seconds(
+                    response_headers.get("retry-after"), self._utcnow()
+                )
+                response.close()
+                classification = refusal or ("RATE_LIMIT" if status == 429 else f"HTTP_{status}")
+                transient = status in _TRANSIENT_HTTP_STATUSES and refusal is None
+                retry_delay: float | None = None
+                attempt = self._make_attempt(
+                    len(attempts) + 1,
+                    current_url,
+                    request_started,
+                    request_started_at,
+                    status,
+                    classification,
+                    used,
+                    response_digest=sha256_bytes(sample),
+                    retry_after_seconds=retry_after,
+                )
+                attempts.append(attempt)
+                if refusal is not None:
+                    self._discard_partial(part_path)
+                    raise self._refused(
+                        url,
+                        start,
+                        attempts,
+                        redirects,
+                        "Public source returned a technical access refusal.",
+                        refusal,
+                        http_status=status,
+                    )
+                if transient and retry_count < self.policy.retry_count:
+                    if not self._retry_capacity(request_count, operation_bytes, entry_limits):
+                        raise self._budget_failure(
+                            url,
+                            start,
+                            attempts,
+                            redirects,
+                            self._retry_limit_classification(
+                                request_count, operation_bytes, entry_limits
+                            ),
+                            status,
+                        )
+                    try:
+                        retry_delay = self._retry_delay(retry_count, retry_after, start)
+                    except SourceDeferred as error:
+                        raise self._deferred_failure(
+                            url,
+                            start,
+                            attempts,
+                            redirects,
+                            str(error),
+                            status,
+                        ) from error
+                    retry_count += 1
+                    attempts[-1] = replace(attempts[-1], retry_delay_seconds=retry_delay)
+                    self._sleep_with_budget(retry_delay, start, attempts, redirects, current_url)
+                    continue
+                raise self._unavailable(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    f"Public source returned HTTP {status}.",
+                    "RETRY_EXHAUSTED" if transient and retry_count > 0 else classification,
+                    http_status=status,
+                )
+
+            network_bytes_before_response = self.network_bytes
+            try:
+                _body_size, attempt_bytes, append = self._receive_body(
+                    response,
+                    status=status,
+                    response_headers=response_headers,
+                    part_path=part_path,
+                    offset=offset,
+                    start=start,
+                    operation_bytes=operation_bytes,
+                    entry_limits=entry_limits,
+                    attempts=attempts,
+                    redirects=redirects,
+                    current_url=current_url,
+                    request_deadline=request_deadline,
+                )
+            except SourceBudgetExceeded as error:
+                response.close()
+                received = max(0, self.network_bytes - network_bytes_before_response)
+                attempts.append(
+                    self._make_attempt(
+                        len(attempts) + 1,
+                        current_url,
+                        request_started,
+                        request_started_at,
+                        status,
+                        error.failure_classification,
+                        received,
+                        response_digest=self._response_digest_from_partial(part_path, received),
+                    )
+                )
+                raise self._budget_failure(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    error.failure_classification,
+                    status,
+                ) from error
+            except SourceIntegrityError:
+                response.close()
+                raise
+            except Exception as error:
+                response.close()
+                received = (
+                    error.bytes_received
+                    if isinstance(error, _IncompleteSourceBody)
+                    else max(0, self.network_bytes - network_bytes_before_response)
+                )
+                operation_bytes += received
+                transient = _is_transient_exception(error)
+                classification = (
+                    "REQUEST_TIMEOUT"
+                    if isinstance(error, (TimeoutError, socket.timeout))
+                    else "TRANSIENT_BODY_FAILURE"
+                    if transient
+                    else "BODY_FAILURE"
+                )
+                attempts.append(
+                    self._make_attempt(
+                        len(attempts) + 1,
+                        current_url,
+                        request_started,
+                        request_started_at,
+                        status,
+                        classification,
+                        received,
+                        response_digest=self._response_digest_from_partial(part_path, received),
+                    )
+                )
+                if transient and retry_count < self.policy.retry_count:
+                    if not self._retry_capacity(request_count, operation_bytes, entry_limits):
+                        raise self._budget_failure(
+                            url,
+                            start,
+                            attempts,
+                            redirects,
+                            self._retry_limit_classification(
+                                request_count, operation_bytes, entry_limits
+                            ),
+                            status,
+                        ) from error
+                    delay = self._backoff(retry_count)
+                    retry_count += 1
+                    attempts[-1] = replace(attempts[-1], retry_delay_seconds=delay)
+                    self._sleep_with_budget(delay, start, attempts, redirects, current_url)
+                    offset = part_path.stat().st_size if part_path.exists() else 0
+                    continue
+                raise self._unavailable(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    f"Public source response body failed: {error}",
+                    "RETRY_EXHAUSTED" if transient and retry_count > 0 else classification,
+                    http_status=status,
+                ) from error
+            else:
+                response.close()
+
+            operation_bytes += attempt_bytes
+            content = part_path.read_bytes()
+            response_body = content[-attempt_bytes:] if attempt_bytes else b""
+            refusal = _refusal_reason(status, response_headers, content)
+            attempt_classification = refusal or "SUCCESS"
+            attempts.append(
+                self._make_attempt(
+                    len(attempts) + 1,
+                    current_url,
+                    request_started,
+                    request_started_at,
+                    status,
+                    attempt_classification,
+                    attempt_bytes,
+                    response_digest=sha256_bytes(response_body),
+                )
+            )
+            if refusal is not None:
+                self._discard_partial(part_path)
+                raise self._refused(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "Public source response contained a CAPTCHA, WAF, paywall or access challenge.",
+                    refusal,
+                    http_status=status,
+                )
+            if not append:
+                offset = 0
+            retrieved_at = self._utc_text()
+            try:
+                self._current_authorized_entry(url, authorization_decision_digest)
+            except Exception as error:
+                self._discard_partial(part_path)
+                raise self._refused(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "Current source authorization changed before cache admission.",
+                    "AUTHORIZATION_INVALID",
+                    http_status=status,
+                ) from error
+            provenance = self._provenance(
+                url,
+                current_url,
+                redirects,
+                retrieved_at,
+                status,
+                sha256_bytes(content[-attempt_bytes:]),
+                len(content),
+                operation_bytes,
+                None,
+                retry_count,
+                start,
+                attempts,
+                content_digest=sha256_bytes(content),
+            )
+            if self._cache_size() + len(_canonical_json(provenance.to_dict())) + 512 > (
+                self.cache_storage_cap_bytes
+            ):
+                raise self._budget_failure(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "CACHE_STORAGE_BUDGET_EXHAUSTED",
+                    status,
+                )
+            os.replace(part_path, data_path)
+            metadata = {
+                "cache_schema": 2,
+                "content_sha256": sha256_bytes(content),
+                "content_type": final_content_type,
+                "retrieved_at_utc": retrieved_at,
+                "response_status": status,
+                "url": url,
+                "transport": provenance.to_dict(),
+            }
+            self._write_cache_metadata(meta_path, metadata)
+            return DownloadedSource(
+                content,
+                retrieved_at,
+                status,
+                final_content_type,
+                False,
+                operation_bytes,
+                provenance,
+            )
+
+    def inspect_cache(self, cache_key: str) -> DownloadedSource | None:
+        """Read retained cache bytes and provenance without a live refresh."""
+        data_path, meta_path, _part_path = self._paths(cache_key)
+        return self._read_cache(data_path, meta_path)
+
+    def _paths(self, cache_key: str) -> tuple[Path, Path, Path]:
+        cache_stem = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()
+        return (
+            self.cache_root / f"{cache_stem}.data",
+            self.cache_root / f"{cache_stem}.json",
+            self.cache_root / f"{cache_stem}.part",
         )
+
+    def _cache_is_fresh(self, cached: DownloadedSource) -> bool:
+        try:
+            retrieved = datetime.fromisoformat(cached.retrieved_at_utc)
+        except ValueError as error:
+            raise SourceIntegrityError(
+                "Retained source cache has an invalid retrieval time."
+            ) from error
+        if retrieved.utcoffset() is None:
+            raise SourceIntegrityError("Retained source cache time lacks a UTC offset.")
+        age = (self._utcnow().astimezone(UTC) - retrieved.astimezone(UTC)).total_seconds()
+        if age < 0:
+            raise SourceIntegrityError("Retained source cache retrieval time is in the future.")
+        return age <= self.cache_ttl_seconds
+
+    def _read_cache(
+        self, data_path: Path, meta_path: Path, *, expected_url: str | None = None
+    ) -> DownloadedSource | None:
+        data_exists, meta_exists = data_path.is_file(), meta_path.is_file()
+        if not data_exists and not meta_exists:
+            return None
+        if not data_exists or not meta_exists:
+            raise SourceIntegrityError("Retained source cache data and metadata do not match.")
+        try:
+            raw_bytes = meta_path.read_bytes()
+            raw: object = json.loads(raw_bytes)
+            content = data_path.read_bytes()
+        except (OSError, ValueError, UnicodeDecodeError) as error:
+            raise SourceIntegrityError(
+                "Retained source cache could not be read exactly."
+            ) from error
+        if not isinstance(raw, dict) or _canonical_json(raw) != raw_bytes:
+            raise SourceIntegrityError("Retained source cache metadata is not canonical JSON.")
+        required = {"content_sha256", "content_type", "retrieved_at_utc", "response_status", "url"}
+        allowed = required | {"cache_schema", "transport"}
+        if not required.issubset(raw) or set(raw) - allowed:
+            raise SourceIntegrityError("Retained source cache metadata has an unsupported shape.")
+        cache_schema = raw.get("cache_schema")
+        if ("cache_schema" in raw and cache_schema != 2) or (
+            cache_schema == 2 and ("transport" not in raw or raw["transport"] is None)
+        ):
+            raise SourceIntegrityError("Retained source cache metadata has an unsupported shape.")
+        digest = raw.get("content_sha256")
+        requested_url = raw.get("url")
+        retrieved = raw.get("retrieved_at_utc")
+        content_type = raw.get("content_type")
+        status = raw.get("response_status")
+        if (
+            not isinstance(digest, str)
+            or digest != sha256_bytes(content)
+            or not isinstance(requested_url, str)
+            or not isinstance(retrieved, str)
+            or not isinstance(content_type, str)
+            or type(status) is not int
+            or status not in {200, 206}
+        ):
+            raise SourceIntegrityError("Retained source cache digest or metadata is invalid.")
+        self._validate_url(requested_url)
+        if expected_url is not None and expected_url != requested_url:
+            raise SourceIntegrityError("Retained source cache belongs to a different request URL.")
+        try:
+            datetime.fromisoformat(retrieved)
+        except ValueError as error:
+            raise SourceIntegrityError(
+                "Retained source cache has an invalid retrieval time."
+            ) from error
+        provenance = None
+        raw_provenance = raw.get("transport")
+        if raw_provenance is not None:
+            provenance = SourceTransportProvenance.from_dict(raw_provenance)
+            if (
+                provenance.requested_url != requested_url
+                or provenance.response_status != status
+                or provenance.content_digest != digest
+                or provenance.content_byte_count != len(content)
+                or provenance.retrieved_at_utc != retrieved
+            ):
+                raise SourceIntegrityError("Cache provenance differs from retained response bytes.")
+        return DownloadedSource(content, retrieved, status, content_type, True, 0, provenance)
+
+    def _current_authorized_entry(self, requested_url: str, decision_digest: str) -> dict[str, Any]:
+        if self.authorization_repository is None:
+            raise SourcePolicyError("No current source authorization repository was supplied.")
+        manifest = self.authorization_repository.require_current(decision_digest)
+        if (
+            manifest.get("contract") != "research-source-use-manifest-v1"
+            or manifest.get("purpose") != "RESEARCH_ONLY"
+            or manifest.get("issue") != 70
+            or manifest.get("stage") != "ACQUISITION"
+            or not isinstance(manifest.get("entries"), list)
+            or len(manifest["entries"]) != 1
+            or not isinstance(manifest["entries"][0], dict)
+        ):
+            raise SourcePolicyError("Current source authority is not an exact acquisition intent.")
+        entry = manifest["entries"][0]
+        operations = entry.get("requested_operations")
+        if (
+            entry.get("endpoint") != requested_url
+            or entry.get("source_type")
+            not in {"AUTOMATED_API", "AUTOMATED_DATASET", "AUTOMATED_PUBLIC_PAGE"}
+            or entry.get("access_type") != "PUBLIC"
+            or not isinstance(operations, list)
+            or not {
+                "AUTOMATED_ACCESS",
+                "RAW_RETENTION",
+                "NORMALIZED_RETENTION",
+                "PRIVATE_BACKUP_RESTORE_REPLAY",
+                "DERIVED_STATISTICAL_USE",
+            }.issubset(operations)
+        ):
+            raise SourcePolicyError("Current source authorization does not cover this request.")
+        self._authorization_limits(entry)
+        return entry
+
+    @staticmethod
+    def _authorization_limits(entry: Mapping[str, object]) -> dict[str, int]:
+        value = entry.get("technical_limits")
+        if not isinstance(value, dict):
+            raise SourcePolicyError("Current source authorization lacks transport limits.")
+        request_limit = value.get("requests")
+        byte_limit = value.get("bytes")
+        timeout_limit = value.get("timeout_seconds")
+        if any(
+            type(limit) is not int or limit <= 0
+            for limit in (request_limit, byte_limit, timeout_limit)
+        ):
+            raise SourcePolicyError("Current source authorization has invalid transport limits.")
+        if value.get("bypass_access_controls") is not False:
+            raise SourcePolicyError("Current source authorization permits access-control bypass.")
+        assert isinstance(request_limit, int)
+        assert isinstance(byte_limit, int)
+        assert isinstance(timeout_limit, int)
+        return {
+            "requests": request_limit,
+            "bytes": byte_limit,
+            "timeout_seconds": timeout_limit,
+        }
+
+    def _resolve_destination(
+        self,
+        host: str,
+        start: float,
+        attempts: Sequence[SourceTransportAttempt],
+        redirects: Sequence[SourceRedirect],
+        url: str,
+        auth_limits: Mapping[str, int],
+    ) -> tuple[str, ...]:
+        if self._resolve_public_ips is None:
+            timeout = min(
+                self.policy.per_request_timeout_seconds,
+                self.timeout_seconds,
+                float(auth_limits["timeout_seconds"]),
+                self._remaining(start),
+            )
+            if timeout <= 0:
+                raise self._budget_failure(
+                    url,
+                    start,
+                    attempts,
+                    redirects,
+                    "TOTAL_ELAPSED_BUDGET_EXHAUSTED",
+                )
+            addresses = _resolve_public_source_ips(host, timeout_seconds=timeout)
+        else:
+            addresses = self._resolve_public_ips(host)
+        addresses = _validate_public_ips(addresses)
+        self._require_elapsed(start, attempts, redirects, url)
+        return addresses
+
+    def _validate_url(self, url: str) -> None:
+        try:
+            parsed = urlsplit(url)
+            hostname = (parsed.hostname or "").casefold().rstrip(".")
+            port = parsed.port
+        except ValueError as error:
+            raise SourcePolicyError(
+                "T06 permits only explicitly scoped public HTTPS endpoints."
+            ) from error
+        path = unquote(parsed.path)
+        valid_endpoint = any(
+            endpoint.host == hostname and path.startswith(endpoint.path_prefix)
+            for endpoint in self.policy.allowed_endpoints
+        )
+        if (
+            parsed.scheme != "https"
+            or not hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or port not in {None, 443}
+            or parsed.query
+            or parsed.fragment
+            or "\\" in path
+            or path != parsed.path
+            or any(segment in {".", ".."} for segment in path.split("/"))
+            or hostname in {"localhost", "localhost.localdomain"}
+            or hostname.endswith((".localhost", ".local", ".internal", ".test"))
+            or not valid_endpoint
+        ):
+            raise SourcePolicyError("T06 permits only explicitly scoped public HTTPS endpoints.")
+
+    def _require_request_budget(
+        self,
+        start: float,
+        attempts: list[SourceTransportAttempt],
+        redirects: list[SourceRedirect],
+        url: str,
+        request_count: int,
+        operation_bytes: int,
+        auth_limits: Mapping[str, int],
+    ) -> None:
+        if request_count >= min(self.policy.max_request_count, auth_limits["requests"]):
+            raise self._budget_failure(url, start, attempts, redirects, "REQUEST_BUDGET_EXHAUSTED")
+        if operation_bytes >= min(self.policy.max_total_bytes, auth_limits["bytes"]):
+            raise self._budget_failure(url, start, attempts, redirects, "BYTE_BUDGET_EXHAUSTED")
+        if self.network_requests >= self.policy.max_request_count:
+            raise self._budget_failure(url, start, attempts, redirects, "REQUEST_BUDGET_EXHAUSTED")
+        if self.network_bytes >= min(self.network_cap_bytes, self.policy.max_total_bytes):
+            raise self._budget_failure(url, start, attempts, redirects, "BYTE_BUDGET_EXHAUSTED")
+
+    def _pace(
+        self,
+        start: float,
+        attempts: list[SourceTransportAttempt],
+        redirects: list[SourceRedirect],
+        url: str,
+    ) -> None:
+        if self._last_request_started_at is None:
+            return
+        wait = (
+            self._last_request_started_at
+            + self.policy.minimum_pacing_interval_seconds
+            - self._monotonic()
+        )
+        if wait > 0:
+            self._sleep_with_budget(wait, start, attempts, redirects, url)
+
+    def _sleep_with_budget(
+        self,
+        delay: float,
+        start: float,
+        attempts: list[SourceTransportAttempt],
+        redirects: list[SourceRedirect],
+        url: str,
+    ) -> None:
+        if delay < 0 or delay >= self._remaining(start):
+            raise self._deferred_failure(
+                attempts[0].url if attempts else url,
+                start,
+                attempts,
+                redirects,
+                "Required provider wait exceeds the remaining transport time budget.",
+            )
+        if delay:
+            self._sleep(delay)
+        self._require_elapsed(start, attempts, redirects, url)
+
+    def _retry_delay(self, retry_count: int, retry_after: float | None, start: float) -> float:
+        delay = (
+            retry_after
+            if retry_after is not None
+            else min(
+                self.policy.base_backoff_seconds * (2**retry_count),
+                self.policy.maximum_backoff_seconds,
+            )
+        )
+        if delay > self.policy.maximum_backoff_seconds or delay >= self._remaining(start):
+            raise SourceDeferred("Provider Retry-After exceeds the configured remaining budget.")
+        return delay
+
+    def _retry_capacity(
+        self,
+        request_count: int,
+        operation_bytes: int,
+        auth_limits: Mapping[str, int],
+    ) -> bool:
+        return (
+            request_count < min(self.policy.max_request_count, auth_limits["requests"])
+            and self.network_requests < self.policy.max_request_count
+            and operation_bytes < min(self.policy.max_total_bytes, auth_limits["bytes"])
+            and self.network_bytes < min(self.network_cap_bytes, self.policy.max_total_bytes)
+        )
+
+    def _retry_limit_classification(
+        self,
+        request_count: int,
+        operation_bytes: int,
+        auth_limits: Mapping[str, int],
+    ) -> str:
+        if (
+            request_count >= min(self.policy.max_request_count, auth_limits["requests"])
+            or self.network_requests >= self.policy.max_request_count
+        ):
+            return "REQUEST_BUDGET_EXHAUSTED"
+        if operation_bytes >= min(
+            self.policy.max_total_bytes, auth_limits["bytes"]
+        ) or self.network_bytes >= min(self.network_cap_bytes, self.policy.max_total_bytes):
+            return "BYTE_BUDGET_EXHAUSTED"
+        return "REQUEST_BUDGET_EXHAUSTED"
+
+    def _deferred_failure(
+        self,
+        requested_url: str,
+        start: float,
+        attempts: Sequence[SourceTransportAttempt],
+        redirects: Sequence[SourceRedirect],
+        message: str,
+        http_status: int | None = None,
+    ) -> SourceDeferred:
+        last = attempts[-1] if attempts else None
+        provenance = self._provenance(
+            requested_url,
+            last.url if last else None,
+            redirects,
+            last.completed_at_utc if last and last.response_status is not None else None,
+            http_status if http_status is not None else (last.response_status if last else None),
+            last.response_digest if last else None,
+            last.bytes_received if last else 0,
+            sum(item.bytes_received for item in attempts),
+            "DEFERRED",
+            sum(item.retry_delay_seconds is not None for item in attempts),
+            start,
+            attempts,
+        )
+        return SourceDeferred(
+            message,
+            http_status=http_status,
+            transport_provenance=provenance,
+        )
+
+    def _backoff(self, retry_count: int) -> float:
+        delay: float = self.policy.base_backoff_seconds * (2**retry_count)
+        return (
+            self.policy.maximum_backoff_seconds
+            if delay > self.policy.maximum_backoff_seconds
+            else delay
+        )
+
+    def _receive_body(
+        self,
+        response: SourceHttpResponse,
+        *,
+        status: int,
+        response_headers: Mapping[str, str],
+        part_path: Path,
+        offset: int,
+        start: float,
+        operation_bytes: int,
+        entry_limits: Mapping[str, int],
+        attempts: Sequence[SourceTransportAttempt],
+        redirects: Sequence[SourceRedirect],
+        current_url: str,
+        request_deadline: float,
+    ) -> tuple[int, int, bool]:
+        append = offset > 0 and status == 206
+        content_range = response_headers.get("content-range")
+        expected_range_bytes: int | None = None
+        total_length: int | None = None
+        if status == 206:
+            match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", content_range or "")
+            if match is None:
+                raise SourceIntegrityError("HTTP 206 omitted a valid Content-Range header.")
+            range_start, range_end, total_length = map(int, match.groups())
+            if range_start != (offset if append else 0) or range_end < range_start:
+                raise SourceIntegrityError("HTTP 206 returned an unexpected byte range.")
+            expected_range_bytes = range_end - range_start + 1
+            if range_end + 1 != total_length:
+                raise SourceIntegrityError(
+                    "HTTP 206 did not contain the complete remaining source."
+                )
+        elif offset and status == 200:
+            append = False
+
+        content_length_text = response_headers.get("content-length")
+        content_length: int | None = None
+        if content_length_text is not None:
+            try:
+                content_length = int(content_length_text)
+            except ValueError as error:
+                raise SourceIntegrityError(
+                    "Source response has an invalid Content-Length."
+                ) from error
+            if content_length < 0:
+                raise SourceIntegrityError("Source response has a negative Content-Length.")
+        if expected_range_bytes is not None and content_length not in {None, expected_range_bytes}:
+            raise SourceIntegrityError("HTTP 206 Content-Length differs from Content-Range.")
+        current_size = offset if append else 0
+        byte_count = 0
+        if total_length is not None and total_length > self.max_source_bytes:
+            raise SourceBudgetExceeded(
+                f"Source exceeded the {self.max_source_bytes}-byte limit.",
+                failure_classification="SOURCE_BYTE_LIMIT_EXCEEDED",
+                http_status=status,
+            )
+        mode = "ab" if append else "wb"
+        with part_path.open(mode) as target:
+            os.chmod(part_path, 0o600)
+            while True:
+                remaining = min(
+                    self.max_source_bytes - current_size - byte_count,
+                    self.network_cap_bytes - self.network_bytes,
+                    self.policy.max_total_bytes - self.network_bytes,
+                    self.policy.max_total_bytes - operation_bytes - byte_count,
+                    entry_limits["bytes"] - operation_bytes - byte_count,
+                )
+                if remaining <= 0:
+                    if content_length is not None and byte_count == content_length:
+                        break
+                    raise SourceBudgetExceeded(
+                        "Source transport byte budget was exhausted before response completion.",
+                        failure_classification="BYTE_BUDGET_EXHAUSTED",
+                        http_status=status,
+                    )
+                self._require_elapsed(start, attempts, redirects, current_url)
+                timeout = min(request_deadline - self._monotonic(), self._remaining(start))
+                if timeout <= 0:
+                    raise TimeoutError("Source response exceeded its per-request timeout.")
+                response.set_timeout(timeout)
+                chunk = response.read(min(64 * 1024, remaining))
+                if not chunk:
+                    if self._monotonic() >= request_deadline:
+                        raise TimeoutError("Source response exceeded its per-request timeout.")
+                    break
+                byte_count += len(chunk)
+                self.network_bytes += len(chunk)
+                target.write(chunk)
+                if self._monotonic() >= request_deadline:
+                    raise TimeoutError("Source response exceeded its per-request timeout.")
+            target.flush()
+            os.fsync(target.fileno())
+        if content_length is not None and byte_count != content_length:
+            raise _IncompleteSourceBody(
+                "Source response ended before Content-Length bytes arrived.",
+                bytes_received=byte_count,
+            )
+        if expected_range_bytes is not None and byte_count != expected_range_bytes:
+            raise _IncompleteSourceBody(
+                "Source response ended before the complete byte range arrived.",
+                bytes_received=byte_count,
+            )
+        if total_length is not None and current_size + byte_count != total_length:
+            raise SourceIntegrityError("Source response byte total differs from Content-Range.")
+        return current_size + byte_count, byte_count, append
+
+    def _read_response_sample(
+        self,
+        response: SourceHttpResponse,
+        start: float,
+        operation_bytes: int,
+        entry_limits: Mapping[str, int],
+        request_deadline: float,
+        max_bytes: int,
+    ) -> tuple[bytes, int]:
+        available = min(
+            max_bytes,
+            self.policy.max_total_bytes - self.network_bytes,
+            self.network_cap_bytes - self.network_bytes,
+            entry_limits["bytes"] - operation_bytes,
+        )
+        if available <= 0:
+            return b"", 0
+        timeout = min(
+            self.policy.per_request_timeout_seconds,
+            self.timeout_seconds,
+            float(entry_limits["timeout_seconds"]),
+            self._remaining(start),
+            request_deadline - self._monotonic(),
+        )
+        if timeout <= 0:
+            raise TimeoutError("Source error response exceeded its per-request timeout.")
+        response.set_timeout(timeout)
+        sample = response.read(available)
+        self.network_bytes += len(sample)
+        if self._monotonic() >= request_deadline:
+            raise TimeoutError("Source error response exceeded its per-request timeout.")
+        return sample, len(sample)
+
+    def _make_attempt(
+        self,
+        number: int,
+        url: str,
+        started_at: float,
+        started_at_utc: str,
+        status: int | None,
+        classification: str,
+        bytes_received: int,
+        *,
+        response_digest: str | None = None,
+        retry_after_seconds: float | None = None,
+        retry_delay_seconds: float | None = None,
+    ) -> SourceTransportAttempt:
+        return SourceTransportAttempt(
+            number,
+            url,
+            started_at_utc,
+            self._utc_text(),
+            max(0.0, self._monotonic() - started_at),
+            status,
+            classification,
+            bytes_received,
+            response_digest,
+            retry_after_seconds,
+            retry_delay_seconds,
+        )
+
+    @staticmethod
+    def _response_digest_from_partial(part_path: Path, byte_count: int) -> str | None:
+        if byte_count <= 0 or not part_path.is_file():
+            return None
+        try:
+            partial = part_path.read_bytes()[-byte_count:]
+        except OSError:
+            return None
+        return sha256_bytes(partial)
+
+    def _provenance(
+        self,
+        requested_url: str,
+        final_url: str | None,
+        redirects: Sequence[SourceRedirect],
+        retrieved_at: str | None,
+        status: int | None,
+        response_digest: str | None,
+        content_byte_count: int,
+        network_byte_count: int,
+        failure: str | None,
+        retries: int,
+        start: float,
+        attempts: Sequence[SourceTransportAttempt],
+        *,
+        content_digest: str | None = None,
+    ) -> SourceTransportProvenance:
+        return SourceTransportProvenance(
+            requested_url,
+            final_url,
+            tuple(redirects),
+            retrieved_at,
+            status,
+            response_digest,
+            content_digest,
+            content_byte_count,
+            network_byte_count,
+            sum(not item.classification.startswith("DNS_") for item in attempts),
+            failure,
+            retries,
+            max(0.0, self._monotonic() - start),
+            tuple(attempts),
+        )
+
+    def _refused(
+        self,
+        url: str,
+        start: float,
+        attempts: Sequence[SourceTransportAttempt],
+        redirects: Sequence[SourceRedirect],
+        message: str,
+        classification: str,
+        *,
+        http_status: int | None = None,
+    ) -> SourceRefused:
+        last = attempts[-1] if attempts else None
+        provenance = self._provenance(
+            url,
+            last.url if last else None,
+            redirects,
+            last.completed_at_utc if last and last.response_status is not None else None,
+            http_status if http_status is not None else (last.response_status if last else None),
+            last.response_digest if last else None,
+            last.bytes_received if last else 0,
+            sum(item.bytes_received for item in attempts),
+            classification,
+            sum(item.retry_delay_seconds is not None for item in attempts),
+            start,
+            attempts,
+        )
+        return SourceRefused(
+            message,
+            http_status=http_status,
+            failure_classification=classification,
+            transport_provenance=provenance,
+        )
+
+    def _unavailable(
+        self,
+        url: str,
+        start: float,
+        attempts: Sequence[SourceTransportAttempt],
+        redirects: Sequence[SourceRedirect],
+        message: str,
+        classification: str,
+        *,
+        http_status: int | None = None,
+    ) -> SourceUnavailable:
+        last = attempts[-1] if attempts else None
+        provenance = self._provenance(
+            url,
+            last.url if last else None,
+            redirects,
+            last.completed_at_utc if last and last.response_status is not None else None,
+            http_status if http_status is not None else (last.response_status if last else None),
+            last.response_digest if last else None,
+            last.bytes_received if last else 0,
+            sum(item.bytes_received for item in attempts),
+            classification,
+            sum(item.retry_delay_seconds is not None for item in attempts),
+            start,
+            attempts,
+        )
+        return SourceUnavailable(
+            message,
+            http_status=http_status,
+            failure_classification=classification,
+            transport_provenance=provenance,
+        )
+
+    def _budget_failure(
+        self,
+        url: str,
+        start: float,
+        attempts: Sequence[SourceTransportAttempt],
+        redirects: Sequence[SourceRedirect],
+        classification: str,
+        http_status: int | None = None,
+    ) -> SourceBudgetExceeded:
+        last = attempts[-1] if attempts else None
+        provenance = self._provenance(
+            url,
+            last.url if last else None,
+            redirects,
+            last.completed_at_utc if last and last.response_status is not None else None,
+            http_status if http_status is not None else (last.response_status if last else None),
+            last.response_digest if last else None,
+            last.bytes_received if last else 0,
+            sum(item.bytes_received for item in attempts),
+            classification,
+            sum(item.retry_delay_seconds is not None for item in attempts),
+            start,
+            attempts,
+        )
+        return SourceBudgetExceeded(
+            "Public source transport reached a configured bound.",
+            http_status=http_status,
+            failure_classification=classification,
+            transport_provenance=provenance,
+        )
+
+    def _require_elapsed(
+        self,
+        start: float,
+        attempts: Sequence[SourceTransportAttempt],
+        redirects: Sequence[SourceRedirect],
+        url: str,
+    ) -> None:
+        if self._remaining(start) <= 0:
+            raise self._budget_failure(
+                url, start, attempts, redirects, "TOTAL_ELAPSED_BUDGET_EXHAUSTED"
+            )
+
+    def _remaining(self, start: float) -> float:
+        return self.policy.total_elapsed_budget_seconds - (self._monotonic() - start)
+
+    def _utc_text(self) -> str:
+        value = self._utcnow()
+        if value.utcoffset() is None:
+            raise ValueError("Transport wall clock must return an aware datetime.")
+        return value.astimezone(UTC).isoformat()
+
+    def _discard_partial(self, part_path: Path) -> None:
+        with contextlib.suppress(FileNotFoundError):
+            part_path.unlink()
 
     def _cache_size(self) -> int:
         try:
@@ -2826,40 +4923,17 @@ class ResumableSourceDownloader:
         except OSError:
             return self.cache_storage_cap_bytes
 
-    def _validate_url(self, url: str) -> None:
-        parsed = urlparse(url)
-        if parsed.scheme != "https" or parsed.hostname not in self._ALLOWED_HOSTS:
-            raise SourcePolicyError("T06 permits only approved HTTPS source hosts.")
-
-    def _read_cached(
-        self, data_path: Path, meta_path: Path, refresh: bool
-    ) -> DownloadedSource | None:
-        if refresh or not data_path.is_file() or not meta_path.is_file():
-            return None
+    def _write_cache_metadata(self, meta_path: Path, metadata: Mapping[str, object]) -> None:
+        raw = _canonical_json(dict(metadata))
+        meta_tmp = meta_path.with_suffix(".tmp")
+        meta_tmp.write_bytes(raw)
+        os.chmod(meta_tmp, 0o600)
+        descriptor = os.open(meta_tmp, os.O_RDONLY)
         try:
-            raw: object = json.loads(meta_path.read_text(encoding="utf-8"))
-            content = data_path.read_bytes()
-            if not isinstance(raw, dict):
-                return None
-            retrieved = raw.get("retrieved_at_utc")
-            digest = raw.get("content_sha256")
-            if not isinstance(retrieved, str) or not isinstance(digest, str):
-                return None
-            age = datetime.now(UTC) - datetime.fromisoformat(retrieved)
-            if age.total_seconds() > self.cache_ttl_seconds:
-                return None
-            if digest != sha256_bytes(content):
-                return None
-            return DownloadedSource(
-                content,
-                retrieved,
-                int(raw.get("response_status", 200)),
-                str(raw.get("content_type", "application/octet-stream")),
-                True,
-                0,
-            )
-        except OSError, ValueError, TypeError:
-            return None
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.replace(meta_tmp, meta_path)
 
 
 @dataclass(frozen=True)
@@ -3024,6 +5098,8 @@ class FixtureHistoryAcquirer:
                         refresh=refresh,
                     )
                 except SourceUnavailable as primary_error:
+                    if primary_error.terminal:
+                        raise
                     if (
                         plan.matchweek_friday is not None
                         and season == plan.current_season
@@ -3052,6 +5128,8 @@ class FixtureHistoryAcquirer:
                             refresh=refresh,
                         )
                     except SourceUnavailable as fallback_error:
+                        if fallback_error.terminal:
+                            raise
                         issues.append(
                             AcquisitionIssue(
                                 SourceKind.OPENFOOTBALL,
@@ -3076,6 +5154,7 @@ class FixtureHistoryAcquirer:
                             content_type=downloaded.content_type,
                             observed_terms="OpenFootball CC0",
                             cache_key=f"openfootball:{league.key}:{season}",
+                            transport_provenance=downloaded.transport_provenance,
                         ),
                         scheduled_rows_known_only=season == plan.current_season,
                     )
@@ -3116,6 +5195,7 @@ class FixtureHistoryAcquirer:
                             "Football-Data.co.uk restricted private local noncommercial use"
                         ),
                         cache_key=f"football-data:{league.key}:{season}",
+                        transport_provenance=downloaded.transport_provenance,
                     ),
                     scheduled_rows_known_only=season == plan.current_season,
                 )
@@ -3135,6 +5215,8 @@ class FixtureHistoryAcquirer:
                         refresh=plan.refresh_current,
                     )
                 except SourceUnavailable as fallback_error:
+                    if fallback_error.terminal:
+                        raise
                     issues.append(
                         AcquisitionIssue(
                             SourceKind.OPENFOOTBALL,
@@ -3176,6 +5258,7 @@ class FixtureHistoryAcquirer:
                         content_type=downloaded_fallback.content_type,
                         observed_terms="OpenFootball CC0",
                         cache_key=f"openfootball:{league.key}:{plan.current_season}",
+                        transport_provenance=downloaded_fallback.transport_provenance,
                     ),
                     scheduled_rows_known_only=True,
                 )
@@ -3231,6 +5314,8 @@ class FixtureHistoryAcquirer:
                 source_url, cache_key=cache_key, refresh=plan.refresh_current
             )
         except SourceUnavailable as error:
+            if error.terminal:
+                raise
             attempt = _scheduled_provider_attempt(
                 scope_id=scope_id,
                 provider_id=provider_id,
@@ -3249,6 +5334,7 @@ class FixtureHistoryAcquirer:
             content_type=downloaded.content_type,
             observed_terms="OpenFootball CC0",
             cache_key=cache_key,
+            transport_provenance=downloaded.transport_provenance,
         )
         try:
             dataset = parser.parse(downloaded.content, league=league, season=plan.current_season)

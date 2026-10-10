@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -92,6 +94,104 @@ E0,21/08/2026,20:00,Arsenal,Coventry,3,0,H,2,0,H,T Bramall,1.88,0.2,20,4,6,1,10,
 E0,22/08/2026,15:00,Leeds,West Ham,,,,,,,,,,,,,,,,,,,,,
 E0,23/08/2026,15:00,Arsenal,Newcastle,,,,,,,,,,,,,,,,,bad,2,,,,,,
 """
+
+
+class _DownloaderResponse:
+    def __init__(self, status: int, headers: Mapping[str, str], content: bytes) -> None:
+        self.status = status
+        self.headers = {key.casefold(): value for key, value in headers.items()}
+        self.content = content
+        self.closed = False
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            result, self.content = self.content, b""
+            return result
+        result, self.content = self.content[:size], self.content[size:]
+        return result
+
+    def set_timeout(self, timeout_seconds: float) -> None:
+        del timeout_seconds
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _DownloaderTransport:
+    def __init__(self, responses: tuple[_DownloaderResponse, ...]) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict[str, object]] = []
+
+    def request(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+        resolved_ips: tuple[str, ...],
+    ) -> _DownloaderResponse:
+        self.calls.append(
+            {
+                "url": url,
+                "headers": dict(headers),
+                "timeout_seconds": timeout_seconds,
+                "resolved_ips": resolved_ips,
+            }
+        )
+        if not self.responses:
+            raise AssertionError("Unexpected source transport request")
+        return self.responses.pop(0)
+
+
+class _DownloaderAuthorization:
+    def __init__(self, endpoint: str) -> None:
+        self.endpoint = endpoint
+
+    def require_current(self, decision_digest: str) -> dict[str, Any]:
+        assert decision_digest == "synthetic-current"
+        return {
+            "contract": "research-source-use-manifest-v1",
+            "purpose": "RESEARCH_ONLY",
+            "issue": 70,
+            "stage": "ACQUISITION",
+            "entries": [
+                {
+                    "endpoint": self.endpoint,
+                    "source_type": "AUTOMATED_API",
+                    "access_type": "PUBLIC",
+                    "requested_operations": [
+                        "AUTOMATED_ACCESS",
+                        "RAW_RETENTION",
+                        "NORMALIZED_RETENTION",
+                        "PRIVATE_BACKUP_RESTORE_REPLAY",
+                        "DERIVED_STATISTICAL_USE",
+                    ],
+                    "technical_limits": {
+                        "requests": 8,
+                        "bytes": 1024,
+                        "timeout_seconds": 5,
+                        "bypass_access_controls": False,
+                    },
+                }
+            ],
+        }
+
+
+def _authorized_downloader(
+    private_root: Path,
+    url: str,
+    transport: _DownloaderTransport,
+    **limits: object,
+) -> Any:
+    from matchvet.ingestion import ResumableSourceDownloader
+
+    return ResumableSourceDownloader(
+        private_root,
+        authorization_repository=_DownloaderAuthorization(url),
+        http_transport=transport,
+        resolve_public_ips=lambda _host: ("93.184.216.34",),
+        **limits,
+    )
 
 
 def test_target_league_set_and_primary_url_cover_exactly_seven_leagues() -> None:
@@ -1491,46 +1591,28 @@ def test_duplicate_rows_are_counted_without_duplicate_assertions(tmp_path: Path)
 
 
 def test_downloader_resumes_private_partial_cache_and_never_calls_unapproved_hosts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    from urllib.request import Request
+    from matchvet.ingestion import SourcePolicyError
 
-    from matchvet import ingestion
-    from matchvet.ingestion import ResumableSourceDownloader, SourcePolicyError
-
-    class FakeResponse:
-        status = 206
-
-        def __init__(self) -> None:
-            self.headers = {"Content-Type": "text/csv; charset=utf-8"}
-            self._content = b"def"
-            self._offset = 0
-            self.closed = False
-
-        def getcode(self) -> int:
-            return self.status
-
-        def read(self, size: int = -1) -> bytes:
-            del size
-            if self._offset:
-                return b""
-            self._offset = len(self._content)
-            return self._content
-
-        def close(self) -> None:
-            self.closed = True
-
-    calls: list[str | None] = []
-
-    def fake_urlopen(request: object, timeout: float) -> FakeResponse:
-        assert isinstance(request, Request)
-        assert timeout == 1.0
-        calls.append(request.get_header("Range"))
-        return FakeResponse()
-
-    monkeypatch.setattr(ingestion, "urlopen", fake_urlopen)
-    downloader = ResumableSourceDownloader(
-        tmp_path, max_source_bytes=16, network_cap_bytes=16, timeout_seconds=1.0
+    url = "https://www.football-data.co.uk/mmz4281/2627/E0.csv"
+    response = _DownloaderResponse(
+        206,
+        {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Range": "bytes 3-5/6",
+            "Content-Length": "3",
+        },
+        b"def",
+    )
+    transport = _DownloaderTransport((response,))
+    downloader = _authorized_downloader(
+        tmp_path,
+        url,
+        transport,
+        max_source_bytes=16,
+        network_cap_bytes=16,
+        timeout_seconds=1.0,
     )
     cache_key = "resume-key"
     stem = hashlib.sha256(cache_key.encode()).hexdigest()
@@ -1538,115 +1620,98 @@ def test_downloader_resumes_private_partial_cache_and_never_calls_unapproved_hos
     part_path.write_bytes(b"abc")
 
     downloaded = downloader.fetch(
-        "https://www.football-data.co.uk/mmz4281/2627/E0.csv", cache_key=cache_key
+        url, cache_key=cache_key, authorization_decision_digest="synthetic-current"
     )
-    cached = downloader.fetch(
-        "https://www.football-data.co.uk/mmz4281/2627/E0.csv", cache_key=cache_key
-    )
+    cached = downloader.fetch(url, cache_key=cache_key)
 
     assert downloaded.content == b"abcdef"
     assert downloaded.bytes_downloaded == 3
     assert downloaded.content_type == "text/csv"
     assert cached.from_cache is True
-    assert calls == ["bytes=3-"]
+    assert transport.calls[0]["headers"]["Range"] == "bytes=3-"
+    assert len(transport.calls) == 1
     assert downloader.network_bytes == 3
     with pytest.raises(SourcePolicyError):
         downloader.fetch("https://example.test/private.csv", cache_key="blocked")
 
 
 def test_downloader_preserves_http_error_status_for_provider_attempts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    from http.client import HTTPMessage
-    from urllib.error import HTTPError
-    from urllib.request import Request
-
-    from matchvet import ingestion
-    from matchvet.ingestion import ResumableSourceDownloader, SourceUnavailable
+    from matchvet.ingestion import SourceTransportPolicy, SourceUnavailable
 
     url = "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/en.1.json"
-
-    def fail_with_http_status(request: object, timeout: float) -> None:
-        assert isinstance(request, Request)
-        assert timeout == 1.0
-        raise HTTPError(request.full_url, 503, "Service unavailable", HTTPMessage(), None)
-
-    monkeypatch.setattr(ingestion, "urlopen", fail_with_http_status)
-    downloader = ResumableSourceDownloader(tmp_path, timeout_seconds=1.0)
+    transport = _DownloaderTransport((_DownloaderResponse(503, {}, b""),))
+    downloader = _authorized_downloader(
+        tmp_path,
+        url,
+        transport,
+        timeout_seconds=1.0,
+        policy=SourceTransportPolicy(retry_count=0),
+    )
 
     with pytest.raises(SourceUnavailable) as unavailable:
-        downloader.fetch(url, cache_key="schedule")
+        downloader.fetch(
+            url,
+            cache_key="schedule",
+            authorization_decision_digest="synthetic-current",
+        )
 
     assert unavailable.value.http_status == 503
 
 
 def test_downloader_preserves_response_status_when_body_exceeds_source_limit(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    from matchvet import ingestion
-    from matchvet.ingestion import ResumableSourceDownloader, SourceUnavailable
+    from matchvet.ingestion import SourceBudgetExceeded
 
-    class OversizedResponse:
-        status = 200
-
-        def __init__(self) -> None:
-            self.headers = {"Content-Type": "text/plain"}
-
-        def getcode(self) -> int:
-            return self.status
-
-        def read(self, size: int = -1) -> bytes:
-            del size
-            return b"too large"
-
-        def close(self) -> None:
-            return
-
-    monkeypatch.setattr(ingestion, "urlopen", lambda request, timeout: OversizedResponse())
-    downloader = ResumableSourceDownloader(
+    url = "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/en.1.json"
+    transport = _DownloaderTransport(
+        (_DownloaderResponse(200, {"Content-Length": "9"}, b"too large"),)
+    )
+    downloader = _authorized_downloader(
         tmp_path,
+        url,
+        transport,
         max_source_bytes=4,
         network_cap_bytes=100,
         timeout_seconds=1.0,
     )
 
-    with pytest.raises(SourceUnavailable) as unavailable:
+    with pytest.raises(SourceBudgetExceeded) as unavailable:
         downloader.fetch(
-            "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/en.1.json",
+            url,
             cache_key="oversized",
+            authorization_decision_digest="synthetic-current",
         )
 
     assert unavailable.value.http_status == 200
 
 
 def test_downloader_rejects_a_redirect_to_an_unapproved_host(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    from matchvet import ingestion
-    from matchvet.ingestion import ResumableSourceDownloader, SourcePolicyError
+    from matchvet.ingestion import SourceRefused
 
-    class RedirectedResponse:
-        status = 200
-
-        def __init__(self) -> None:
-            self.headers = {"Content-Type": "text/csv"}
-
-        def getcode(self) -> int:
-            return self.status
-
-        def geturl(self) -> str:
-            return "https://example.test/rejected.csv"
-
-        def close(self) -> None:
-            return None
-
-    monkeypatch.setattr(ingestion, "urlopen", lambda request, timeout: RedirectedResponse())
-    downloader = ResumableSourceDownloader(tmp_path)
-
-    with pytest.raises(SourcePolicyError):
-        downloader.fetch(
-            "https://www.football-data.co.uk/mmz4281/2627/E0.csv", cache_key="redirect"
+    url = "https://www.football-data.co.uk/mmz4281/2627/E0.csv"
+    transport = _DownloaderTransport(
+        (
+            _DownloaderResponse(
+                302,
+                {"Location": "https://example.test/rejected.csv"},
+                b"",
+            ),
         )
+    )
+    downloader = _authorized_downloader(tmp_path, url, transport)
+
+    with pytest.raises(SourceRefused):
+        downloader.fetch(
+            url,
+            cache_key="redirect",
+            authorization_decision_digest="synthetic-current",
+        )
+    assert len(transport.calls) == 1
 
 
 def test_downloader_selects_routine_or_explicit_historical_network_budget(
