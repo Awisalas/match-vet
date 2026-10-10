@@ -473,3 +473,9 @@ no historical UNKNOWN became publisher approval.
   blockers; git diff --check. No runtime tests or full suite were run for this
   decision-only change. #70 retains needs-info; #86/#87 CLOSED; #88 CLOSED
   NOT_PLANNED without ready-for-human. No real source was acquired.
+- Decision/policy/status commit: `01948d538537d6ac08d4cac3a2521bc5daabcb49`. This delivery
+  record links its SHA; both commits are delivered to main. Current technical
+  blockers are #89–#94, with #91/#92 awaiting actual source-contract evidence.
+  Publisher permission outreach #88 is superseded, not successful. Separate
+  causal operational provisioning and exact runtime source authorization remain
+  unprovisioned; no qualified prospective cohort or live run exists.
