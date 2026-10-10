@@ -30,13 +30,14 @@ conformity and affirmative current nonrevocation remain UNKNOWN. Replay retains
 `HISTORICAL_RETAINED_TRUST_ONLY`. This decision grants no runtime activation,
 real-source authorization, fitting, evidence roles, production PLAY, or promotion.
 
-Readiness remains BLOCKED. [#87](https://github.com/Awisalas/match-vet/issues/87)
-specifies authenticated owner activation/withdrawal/restore continuity, admission
-of a fresh exact TUF bundle, and exact profile/policy/pin binding. These mechanics
-and owner provisioning are not operational. The original retained metadata is
-expired; the [audit](../research/causal-profile-activation-audit-2026-10-10.md)
-retains its factual findings and labels its earlier no-issue decision historical.
-Real-source authorization is still a separate unresolved gate.
+Readiness remains BLOCKED for operational reasons. #87 mechanics are COMPLETE,
+but owner key/configuration and checkpoint continuity are NOT OPERATIONAL. An
+owner-signed current approval and event-valid TUF admission are also NOT
+OPERATIONAL. The original retained metadata is expired; the
+[audit](../research/causal-profile-activation-audit-2026-10-10.md) retains its
+factual findings and labels its earlier no-issue decision historical.
+Real-source authorization is SEPARATE AND UNRESOLVED, and no qualified
+prospective #70 cohort exists.
 
 ## #85 implementation record
 
@@ -113,10 +114,10 @@ record below.
    causal-witness profile still require separate approval and operational
    readiness before any case can qualify or live collection can run. ADR 0005
    settles the conditional causal trust-premise choice for RESEARCH_ONLY only.
-   #87 must implement authenticated owner history/restore continuity and fresh
-   exact metadata admission bound to the unchanged profile/policy/pins. The
-   owner must then separately provision authenticated current approval and
-   continuity; issue completion alone activates nothing.
+   #87 mechanics are complete in `3fe2d5f949e3e865fcf7deb5c9a7856a99c27ffc`.
+   Owner key/configuration and checkpoint continuity remain NOT OPERATIONAL;
+   an owner-signed current approval and event-valid TUF admission remain NOT
+   OPERATIONAL. Issue completion activates nothing.
 3. After both prerequisites are approved and operational, run #86
    prospectively. Retain exact cutoff-valid inputs, immutable provenance, all
    denominator rows, and later source-backed outcomes. Keep unavailable,
@@ -218,7 +219,7 @@ migration.
   qualified prospective #70 cohort exists. #70 remains OPEN with `needs-info`;
   #86 remains CLOSED. No production code, activation, or collection changed.
 
-## Latest completed step: RESEARCH_ONLY causal trust-premise decision
+## Historical step: RESEARCH_ONLY causal trust-premise decision (superseded)
 
 - On 2026-10-10, explicit user confirmation selected Option A. Accepted
   [ADR 0005](../adr/0005-research-only-causal-witness-trust-premises.md) amends
@@ -233,21 +234,23 @@ migration.
   both options across chronology, failure, integrity, feasibility, complexity,
   corpus accumulation, and later promotion. Affirmative deployment/current-status
   evidence remains UNKNOWN; it was not made a V1 collection prerequisite.
-- Created [#87](https://github.com/Awisalas/match-vet/issues/87), OPEN with
+- Created [#87](https://github.com/Awisalas/match-vet/issues/87), then OPEN with
   `ready-for-agent`, for authenticated causal-profile activation/withdrawal and
   restore continuity, exact fresh TUF admission, and unchanged profile/policy/pin
-  binding. The issue allows deterministic offline implementation only; production
-  owner provisioning, activation, and collection remain separate operator steps.
+  binding. This records the pre-implementation state only; #87 is now CLOSED and
+  its mechanics are complete. Production owner provisioning, activation, and
+  collection remain separate operator steps.
 - Decision commit: `f3fb7657d7f36fc49096695b976fdf29d450feaf`.
 - Checks: local Markdown links and fenced blocks, decision/comparison coverage,
   issue-to-retained-pin consistency, historical/current-state wording, and
   `git diff --check` passed. Verified GitHub #70 OPEN with `needs-info`, #86
   CLOSED, and #87 OPEN. No production code or tests changed or ran.
-- Exact remaining causal-operation blockers: #87 mechanics are unimplemented;
-  no independently authenticated owner key/current checkpoint and signed
-  activation/withdrawal/restore history are provisioned; no fresh exact TUF bundle
-  is admitted under that owner authority; and no operational approval binds the
-  exact profile, policy, pins, deployment/history, interval, and accepted premises.
+- Exact remaining causal-operation blockers at that historical point: no
+  independently authenticated owner key/current checkpoint and signed
+  activation/withdrawal/restore history were provisioned; no fresh exact TUF
+  bundle was admitted under that owner authority; and no operational approval
+  bound the exact profile, policy, pins, deployment/history, interval, and
+  accepted premises.
   The original timestamp799 bundle is expired. Neither this ADR nor issue
   completion supplies runtime approval.
 - Real-source authorization and operational readiness remain a separate blocker.
