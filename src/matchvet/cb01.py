@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import json
 import re
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -156,6 +158,27 @@ class BootstrapRepository:
         self.store = store
         self.artifacts = ArtifactStore(store)
         self.witness: WitnessBackend = witness_backend or SigstoreWitnessBackend()
+        self._operation_guard: Callable[[], object] | None = None
+
+    @contextmanager
+    def _guarded_operation(self, guard: Callable[[], object]) -> Iterator[None]:
+        """Apply a separate source-use guard to dispatch and protected insertion."""
+        previous_artifacts, previous_guard = self.artifacts, self._operation_guard
+
+        def combined() -> None:
+            if previous_guard is not None:
+                previous_guard()
+            if previous_artifacts._write_guard is not None:
+                previous_artifacts._write_guard()
+            guard()
+
+        self.artifacts = ArtifactStore(self.store, write_guard=combined)
+        self._operation_guard = combined
+        try:
+            combined()
+            yield
+        finally:
+            self.artifacts, self._operation_guard = previous_artifacts, previous_guard
 
     def enroll_fixture(
         self,
@@ -228,6 +251,8 @@ class BootstrapRepository:
             )
             return self._drive_attempt(batch_digest, attempt_digest, allow_send=True)
 
+        if self._operation_guard is not None:
+            self._operation_guard()
         try:
             trust = self.witness.refresh_trust(policy_body)
             self._retain_trust(trust)
@@ -712,6 +737,8 @@ class BootstrapRepository:
             return self._result(
                 batch_digest, attempt_digest, None, None, (failure,), "INCOMPLETE", ()
             )
+        if self._operation_guard is not None:
+            self._operation_guard()
         try:
             transport = self.witness.submit_request(request_der, policy)
         except OSError, RuntimeError, TimeoutError, ValueError:

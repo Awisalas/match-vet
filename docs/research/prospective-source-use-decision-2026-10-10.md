@@ -13,8 +13,9 @@ all source-quality, completeness and chronology gates remain binding.
 The [automated closure decision](automated-prospective-source-closure-2026-10-10.md)
 is current. V1 remains insufficient: preserve its replay and introduce the
 proposed V2 decision/immutable manifest with distinct internal risk basis and
-external permission. Policy is settled for specifying mechanics; source authorization mechanics
-remain unimplemented and causal owner provisioning remains unprovisioned.
+external permission. [Source authorization mechanics](../design/research-source-authorization.md)
+are implemented and verified offline under #89. Production source authority and
+causal owner provisioning remain unprovisioned; no live collection is authorized.
 No live run or Product Promotion is authorized.
 
 ## Historical permission-first analysis (superseded)

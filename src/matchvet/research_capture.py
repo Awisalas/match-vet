@@ -33,11 +33,18 @@ from matchvet.matchweek_membership_repository import (
     MatchweekMembershipRepository,
 )
 from matchvet.matchweek_research import MatchweekResearchError, MatchweekResearchRepository
+from matchvet.source_authorization import SourceAuthorizationRepository, replay_decision
+from matchvet.source_manifest import (
+    DECISION_CONTRACT,
+    SourceAuthorizationError,
+    verify_manifest,
+)
 from matchvet.store import Store
 from matchvet.t15 import PolicyStatus, PolicyVersion
 
 CAPTURE_INDEX_MEDIA_TYPE = "application/vnd.matchvet.research-capture-index.v1+json"
 CAPTURE_SCHEMA_VERSION = 1
+CAPTURE_V2_MEDIA_TYPE = "application/vnd.matchvet.research-capture-index.v2+json"
 SOURCE_USE_DECISION_CONTRACT = "research-real-source-use-decision-v1"
 
 
@@ -88,7 +95,7 @@ class SourceUseDecision:
 
 
 class SourceUseAuthorizer(Protocol):
-    """Trusted runtime boundary for exact, operational real-source authorization."""
+    """Released V1 interface retained for compatibility; grants no current authority."""
 
     def authorize_real_source_use(
         self,
@@ -98,7 +105,7 @@ class SourceUseAuthorizer(Protocol):
         profile_digest: str,
         scope_ids: tuple[str, ...],
     ) -> SourceUseDecision:
-        """Return a retained approval/withdrawal decision for this exact capture."""
+        """Return a legacy retained decision for historical consumers."""
 
 
 @dataclass(frozen=True)
@@ -137,6 +144,7 @@ class ResearchCaptureRepository:
         *,
         prior_index_digest: str | None = None,
         enroll: bool = False,
+        source_manifest_digest: str | None = None,
     ) -> CaptureIndex:
         """Build an offline index or append one gated, bounded CB01 enrollment pass.
 
@@ -156,9 +164,10 @@ class ResearchCaptureRepository:
         prior_value = prior.to_dict()
         if prior_value["selection"]["digest"] != selection_digest:
             raise CaptureError("Capture continuation must name the prior exact selection.")
-        decision = self._source_use_decision(prior_value)
+        decision = self._source_use_decision(prior_value, source_manifest_digest)
         if decision.state is SourceUseState.WITHDRAWN:
             value = self._successor_value(prior_value, prior_index_digest)
+            value["schema_version"], value["contract"] = 2, "research-capture-index-v2"
             value["source_use"] = self._source_use_value(decision)
             value["capture_state"] = CaptureState.WITHDRAWN.value
             for row in value["denominator_rows"]:
@@ -184,7 +193,9 @@ class ResearchCaptureRepository:
             )
 
         value = self._successor_value(prior_value, prior_index_digest)
+        value["schema_version"], value["contract"] = 2, "research-capture-index-v2"
         value["source_use"] = self._source_use_value(decision)
+        source_authority = SourceAuthorizationRepository(self.store)
         for membership_id in sorted(
             {
                 row["membership_id"]
@@ -198,16 +209,19 @@ class ResearchCaptureRepository:
             if all(row["cb01"]["batch_digest"] is not None for row in member_rows):
                 continue
             first = member_rows[0]
-            result = self.bootstrap.enroll_fixture(
-                FixtureEnrollmentInput(
-                    freeze_id=value["freeze"]["freeze_id"],
-                    membership_id=membership_id,
-                    cutoff_id=first["lineage"]["f07_cutoff_id"],
-                    profile_digest=value["profile"]["digest"],
-                    f16_manifest_digest=value["graph"]["f16_manifest_digest"],
-                    selection_digest=selection_digest,
+            with self.bootstrap._guarded_operation(
+                lambda: source_authority.require_current(decision.decision_digest)
+            ):
+                result = self.bootstrap.enroll_fixture(
+                    FixtureEnrollmentInput(
+                        freeze_id=value["freeze"]["freeze_id"],
+                        membership_id=membership_id,
+                        cutoff_id=first["lineage"]["f07_cutoff_id"],
+                        profile_digest=value["profile"]["digest"],
+                        f16_manifest_digest=value["graph"]["f16_manifest_digest"],
+                        selection_digest=selection_digest,
+                    )
                 )
-            )
             self._apply_batch_result(value, member_rows, result)
         row_states = {row["capture_state"] for row in value["denominator_rows"]}
         value["capture_state"] = (
@@ -217,7 +231,7 @@ class ResearchCaptureRepository:
             if row_states == {CaptureState.ENROLLED.value}
             else CaptureState.INCOMPLETE.value
         )
-        return self._publish(value)
+        return self._publish(value, source_decision_digest=decision.decision_digest)
 
     def attach_outcome(
         self,
@@ -228,6 +242,7 @@ class ResearchCaptureRepository:
         settlement_digest: str,
         exact_fact_evidence: tuple[str, ...] | None = None,
         predecessor_attachment_digest: str | None = None,
+        source_manifest_digest: str | None = None,
     ) -> CaptureIndex:
         """Append one exact F19 version to its exact CB01 enrollment and index."""
         if settlement_digest == "latest":
@@ -262,6 +277,10 @@ class ResearchCaptureRepository:
             ),
         )
 
+        source_decision = self._outcome_source_decision(
+            value, settlement_digest, source_manifest_digest
+        )
+
         history = row["outcome_history"]
         if not isinstance(history, list):
             raise CaptureError("Capture index outcome history is malformed.")
@@ -274,12 +293,16 @@ class ResearchCaptureRepository:
             raise CaptureError("Outcome correction requires the exact last attached predecessor.")
 
         try:
-            outcome_digest, fact_digest = self.bootstrap.attach_outcome(
-                enrollment_digest,
-                settlement_digest,
-                exact_fact_evidence,
-                predecessor_attachment_digest,
-            )
+            source_authority = SourceAuthorizationRepository(self.store)
+            with self.bootstrap._guarded_operation(
+                lambda: source_authority.require_current(source_decision.decision_digest)
+            ):
+                outcome_digest, fact_digest = self.bootstrap.attach_outcome(
+                    enrollment_digest,
+                    settlement_digest,
+                    exact_fact_evidence,
+                    predecessor_attachment_digest,
+                )
         except (CB01Error, F19Error) as error:
             raise CaptureError("Exact CB01/F19 outcome attachment failed replay.") from error
         row["outcome_history"].append(
@@ -294,7 +317,12 @@ class ResearchCaptureRepository:
         )
         row["outcome_state"] = "PRESENT"
         value["capture_state"] = "OUTCOMES_ATTACHED"
-        return self._publish(self._successor_value(value, index_digest))
+        value["schema_version"], value["contract"] = 2, "research-capture-index-v2"
+        row["outcome_history"][-1]["source_use"] = self._source_use_value(source_decision)
+        return self._publish(
+            self._successor_value(value, index_digest),
+            source_decision_digest=source_decision.decision_digest,
+        )
 
     def replay(self, index_digest: str) -> CaptureIndex:
         """Replay one explicitly named protected index and all exact listed lineage."""
@@ -305,9 +333,10 @@ class ResearchCaptureRepository:
             raise CaptureError("Capture-index predecessor chain contains a cycle.")
         seen.add(index_digest)
         metadata = self.store.artifact_metadata(index_digest)
-        if metadata is None or (metadata.media_type, metadata.retention_class) != (
-            CAPTURE_INDEX_MEDIA_TYPE,
-            "PROTECTED",
+        if (
+            metadata is None
+            or metadata.retention_class != "PROTECTED"
+            or metadata.media_type not in {CAPTURE_INDEX_MEDIA_TYPE, CAPTURE_V2_MEDIA_TYPE}
         ):
             raise CaptureError("Exact protected capture index is unavailable.")
         content = self.artifacts.read_artifact(index_digest)
@@ -319,12 +348,17 @@ class ResearchCaptureRepository:
             not isinstance(value, dict)
             or canonical_json(value).encode("utf-8") != content
             or _digest(content) != index_digest
-            or value.get("schema_version") != CAPTURE_SCHEMA_VERSION
-            or value.get("contract") != "research-capture-index-v1"
+            or (value.get("schema_version"), value.get("contract"), metadata.media_type)
+            not in {
+                (1, "research-capture-index-v1", CAPTURE_INDEX_MEDIA_TYPE),
+                (2, "research-capture-index-v2", CAPTURE_V2_MEDIA_TYPE),
+            }
         ):
             raise CaptureError("Capture index is noncanonical or has an unsupported identity.")
 
         expected = self._base_value(value["selection"]["digest"])
+        if value["schema_version"] == 2:
+            expected["schema_version"], expected["contract"] = 2, "research-capture-index-v2"
         _same_base_identity(value, expected)
         predecessor = value.get("predecessor_digest")
         if predecessor is not None:
@@ -338,6 +372,36 @@ class ResearchCaptureRepository:
                     )
             if len(value["denominator_rows"]) != len(prior["denominator_rows"]):
                 raise CaptureError("Capture index successor changed its full denominator size.")
+            if value["schema_version"] == 2:
+                prior_rows = {
+                    (row["membership_id"], row["preference_id"]): row
+                    for row in prior["denominator_rows"]
+                }
+                new_outcomes = False
+                for row in value["denominator_rows"]:
+                    old = prior_rows[(row["membership_id"], row["preference_id"])][
+                        "outcome_history"
+                    ]
+                    history = row["outcome_history"]
+                    if history[: len(old)] != old:
+                        raise CaptureError("V2 capture rewrites retained outcome/source history.")
+                    for item in history[len(old) :]:
+                        new_outcomes = True
+                        if item.get("source_use", {}).get("contract") != DECISION_CONTRACT:
+                            raise CaptureError(
+                                "New V2 outcomes require separate source authorization."
+                            )
+                if (
+                    not new_outcomes
+                    and value.get("source_use", {}).get("contract") != DECISION_CONTRACT
+                ):
+                    raise CaptureError(
+                        "V2 continuation requires retained selected-graph source authorization."
+                    )
+        elif value["schema_version"] == 2:
+            raise CaptureError(
+                "V2 source-use continuation requires its exact immutable predecessor."
+            )
 
         self._verify_rows(value)
         if value.get("source_use") is not None:
@@ -349,14 +413,21 @@ class ResearchCaptureRepository:
             decision_digest = source_use.get("decision_digest")
             if not isinstance(decision_digest, str):
                 raise CaptureError("Capture index source-use artifact identity is malformed.")
-            decision = _read_protected_json(self.store, decision_digest)
-            expected_decision = _source_use_binding(
-                value,
-                state=source_use["state"],
-                reason_codes=source_use.get("reason_codes"),
-            )
-            if decision != expected_decision:
-                raise CaptureError("Exact source-use decision does not bind this capture index.")
+            if source_use.get("contract") == DECISION_CONTRACT:
+                if value["schema_version"] != 2:
+                    raise CaptureError("V1 capture index cannot contain a V2 source-use decision.")
+                self._verify_v2_source_use(value, source_use, stage="SELECTED_GRAPH")
+            else:
+                decision = _read_protected_json(self.store, decision_digest)
+                expected_decision = _source_use_binding(
+                    value,
+                    state=source_use["state"],
+                    reason_codes=source_use.get("reason_codes"),
+                )
+                if decision != expected_decision:
+                    raise CaptureError(
+                        "Exact source-use decision does not bind this capture index."
+                    )
         return CaptureIndex(content)
 
     def _base_value(self, selection_digest: str) -> dict[str, Any]:
@@ -668,34 +739,106 @@ class ResearchCaptureRepository:
         ) as error:
             raise CaptureError("Exact selected graph failed capture-index construction.") from error
 
-    def _source_use_decision(self, value: Mapping[str, Any]) -> SourceUseDecision:
-        if self.source_authorizer is None:
-            raise CaptureError("Real-source authorization is absent; live collection is refused.")
-        freeze = value["freeze"]
-        selection = value["selection"]
-        profile = value["profile"]
-        decision = self.source_authorizer.authorize_real_source_use(
-            freeze_digest=freeze["digest"],
-            selection_digest=selection["digest"],
-            profile_digest=profile["digest"],
-            scope_ids=tuple(freeze["scope_ids"]),
-        )
-        body = _read_protected_json(self.store, decision.decision_digest)
-        if body != _source_use_binding(
-            value,
-            state=SourceUseState(decision.state).value,
-            reason_codes=list(decision.reason_codes),
-        ):
-            raise CaptureError("Real-source authorization does not bind this exact selection.")
-        return decision
+    def _source_use_decision(
+        self,
+        value: Mapping[str, Any],
+        manifest_digest: str | None = None,
+    ) -> SourceUseDecision:
+        return self._current_v2_decision(value, manifest_digest, stage="SELECTED_GRAPH")
 
-    @staticmethod
-    def _source_use_value(decision: SourceUseDecision) -> dict[str, Any]:
-        return {
+    def _outcome_source_decision(
+        self,
+        value: Mapping[str, Any],
+        settlement_digest: str,
+        manifest_digest: str | None,
+    ) -> SourceUseDecision:
+        return self._current_v2_decision(
+            value,
+            manifest_digest,
+            stage="OUTCOME",
+            settlement_digest=settlement_digest,
+        )
+
+    def _current_v2_decision(
+        self,
+        value: Mapping[str, Any],
+        manifest_digest: str | None,
+        *,
+        stage: str,
+        settlement_digest: str | None = None,
+    ) -> SourceUseDecision:
+        # Preserve the V1 constructor/reader, but caller objects cannot authorize new work.
+        if manifest_digest is None:
+            raise CaptureError(
+                "Real-source authorization is absent: an exact V2 source manifest is required."
+            )
+        try:
+            manifest = verify_manifest(self.store, manifest_digest)
+            if (
+                manifest["stage"] != stage
+                or manifest["selection_digest"] != value["selection"]["digest"]
+                or (
+                    stage == "OUTCOME"
+                    and manifest["projection"]["settlement_digest"] != settlement_digest
+                )
+            ):
+                raise CaptureError(
+                    "Source authorization does not bind this exact selection/outcome."
+                )
+            authority = SourceAuthorizationRepository(self.store)
+            decision_digest = authority.authorize(manifest_digest)
+            body = replay_decision(self.store, decision_digest)
+            if body["state"] not in {"APPROVED", "WITHDRAWN"}:
+                raise CaptureError("Current source decision refuses continuation.")
+            if body["state"] == "APPROVED":
+                authority.require_current(decision_digest)
+            return SourceUseDecision(body["state"], decision_digest, tuple(body["reason_codes"]))
+        except SourceAuthorizationError as error:
+            raise CaptureError(
+                "Current exact source authorization is unavailable; collection refused."
+            ) from error
+
+    def _source_use_value(self, decision: SourceUseDecision) -> dict[str, Any]:
+        value = {
             "decision_digest": decision.decision_digest,
             "reason_codes": list(decision.reason_codes),
             "state": SourceUseState(decision.state).value,
         }
+        body = _read_protected_json(self.store, decision.decision_digest)
+        if body.get("contract") == DECISION_CONTRACT:
+            value.update(contract=DECISION_CONTRACT, manifest_digest=body["manifest_digest"])
+        return value
+
+    def _verify_v2_source_use(
+        self,
+        value: Mapping[str, Any],
+        source_use: Mapping[str, Any],
+        *,
+        stage: str,
+        settlement_digest: str | None = None,
+    ) -> None:
+        try:
+            decision = replay_decision(self.store, source_use["decision_digest"])
+            manifest = verify_manifest(self.store, decision["manifest_digest"])
+            if (
+                source_use
+                != {
+                    "contract": DECISION_CONTRACT,
+                    "manifest_digest": decision["manifest_digest"],
+                    "decision_digest": source_use["decision_digest"],
+                    "state": decision["state"],
+                    "reason_codes": decision["reason_codes"],
+                }
+                or manifest["stage"] != stage
+                or manifest["selection_digest"] != value["selection"]["digest"]
+                or (
+                    stage == "OUTCOME"
+                    and manifest["projection"]["settlement_digest"] != settlement_digest
+                )
+            ):
+                raise CaptureError("V2 source-use decision differs from exact capture lineage.")
+        except (SourceAuthorizationError, KeyError, TypeError) as error:
+            raise CaptureError("Exact retained V2 source authorization failed replay.") from error
 
     def _apply_batch_result(
         self, value: dict[str, Any], rows: list[dict[str, Any]], result: BatchResult
@@ -1159,6 +1302,13 @@ class ResearchCaptureRepository:
                     "F06 controlling kickoff",
                 ),
             )
+            if item.get("source_use") is not None:
+                self._verify_v2_source_use(
+                    value,
+                    item["source_use"],
+                    stage="OUTCOME",
+                    settlement_digest=item["settlement_digest"],
+                )
             attachment = self._cb01_body(item["outcome_attachment_digest"], "OutcomeAttachment")
             fact = self._cb01_body(item["fact_attachment_digest"], "OutcomeFactAttachment")
             expected_settlement_predecessor = (
@@ -1227,10 +1377,27 @@ class ResearchCaptureRepository:
             raise CaptureError("Exact denominator row is malformed.")
         return cast(dict[str, Any], row)
 
-    def _publish(self, value: dict[str, Any]) -> CaptureIndex:
+    def _publish(
+        self,
+        value: dict[str, Any],
+        *,
+        source_decision_digest: str | None = None,
+    ) -> CaptureIndex:
         encoded = canonical_json(value).encode("utf-8")
-        record = self.artifacts.publish_artifact(
-            encoded, CAPTURE_INDEX_MEDIA_TYPE, retention_class="PROTECTED"
+        artifacts = (
+            self.artifacts
+            if source_decision_digest is None
+            else ArtifactStore(
+                self.store,
+                write_guard=lambda: SourceAuthorizationRepository(self.store).require_current(
+                    source_decision_digest
+                ),
+            )
+        )
+        record = artifacts.publish_artifact(
+            encoded,
+            CAPTURE_V2_MEDIA_TYPE if value["schema_version"] == 2 else CAPTURE_INDEX_MEDIA_TYPE,
+            retention_class="PROTECTED",
         )
         if record.digest != _digest(encoded):
             raise CaptureError("Capture index artifact digest changed during publication.")

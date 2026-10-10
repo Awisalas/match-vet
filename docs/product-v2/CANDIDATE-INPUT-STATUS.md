@@ -60,9 +60,13 @@ for schedules/current revisions/completeness, plus one existing Football-Data
 CSV family only if needed for recent FT history and later outcomes. No reviewed
 source set yet proves the complete all-seven automatic contract.
 
-Policy is settled for implementation, not live operation. #89 source risk
-admission/V2 manifest, #90 bounded transport, #93 FT-to-F13 projection and #94
-FT-to-F19 projection are OPEN `ready-for-agent`. #91 exact source qualification
+[#89](https://github.com/Awisalas/match-vet/issues/89) source risk authorization,
+exact protected manifest V1 and source-use decision V2 are implemented and verified
+offline. [The authorization contract](../design/research-source-authorization.md)
+preserves released V1 replay and keeps external permission separate from internal
+risk acceptance. Default production refuses without independently installed source
+authority and current continuity. #90 bounded transport, #93 FT-to-F13 projection
+and #94 FT-to-F19 projection are OPEN `ready-for-agent`. #91 exact source qualification
 and #92 first Pro League automatic schedule slice are OPEN `needs-info` until
 actual endpoint/coverage/freshness/identity evidence is sufficient. Follow-up
 league slices require qualified contracts. LF02/LF05 remain historical/emergency
@@ -70,8 +74,9 @@ manual paths, not the intended primary prospective architecture. Optional
 weather/context may remain UNKNOWN/UNPERFORMED in honest diagnostic records.
 
 Source authorization remains SEPARATE AND NOT OPERATIONAL: internal policy is
-accepted, its runtime mechanics/configuration and exact selected-graph manifest
-are not installed/authorized. Causal #87 mechanics COMPLETE;
+accepted and #89 runtime mechanics COMPLETE; source authority configuration,
+checkpoint continuity and exact selected-graph approval are NOT PROVISIONED.
+Causal #87 mechanics COMPLETE;
 owner key/configuration/checkpoint provisioning NOT OPERATIONAL;
 owner-signed current approval and event-valid TUF admission NOT OPERATIONAL;
 qualified prospective #70 cohort DOES NOT EXIST. No live run is authorized.
@@ -433,7 +438,10 @@ no historical UNKNOWN became publisher approval.
   #70 is blocked by this human outreach/evidence issue; no source authorization
   implementation issue was created.
 
-## Latest current decision and delivery: public-source automation risk, 2026-10-10
+## Historical policy delivery: public-source automation risk, 2026-10-10
+
+This records the policy delivery before #89 implementation. The current state
+and completed mechanics are recorded above and in the implementation record below.
 
 - Accepted [ADR 0006](../adr/0006-research-only-public-source-automation-risk.md):
   `PRODUCT_OWNER_AUTOMATION_RISK_ACCEPTED` for private RESEARCH_ONLY public
@@ -479,3 +487,33 @@ no historical UNKNOWN became publisher approval.
   Publisher permission outreach #88 is superseded, not successful. Separate
   causal operational provisioning and exact runtime source authorization remain
   unprovisioned; no qualified prospective cohort or live run exists.
+
+## Latest implementation: private source authorization, #89, 2026-10-10
+
+- Implemented canonical protected `research-source-use-manifest-v1` and
+  `research-real-source-use-decision-v2`, exact selected dependency verification,
+  separate outcome manifests and private prospective F01 eligibility sidecars.
+  Released V1 source-decision bytes/readers and F01/F04/F05/F06 meanings remain
+  unchanged. Historical PERMITTED labels remain historical policy classifications.
+- Added independently configured Ed25519 source authority, authenticated
+  append-only authorization/withdrawal/supersession and fresh independent
+  checkpoint continuity. Source authority remains separate from causal authority.
+  Uncertain continuity, conflicting classifications, withdrawal, expired reviews
+  and insufficient operations refuse current use; retained replay stays immutable.
+- Acquisition, CB01 dispatch and protected admission recheck current authority.
+  New risk captures remain private, protected and nonredistributable. Caller
+  authorizers, restored approvals and retained keys grant no present authority.
+- Default production REFUSES: source authority configuration, signed approvals
+  and independent checkpoint service are not provisioned. No provider adapter,
+  live fetch, #86 activation, fitting, PLAY or Product Promotion was introduced.
+- Checks passed: 283 focused offline tests (45 source authority, 14 selected-graph
+  and dispatch, eight capture/outcome, 213 F01/F04/F05/F06 and CB01 schema/trust,
+  and three causal-gate/CB01 replay/retry compatibility tests). Formatter, Ruff,
+  strict mypy for changed production modules and test helpers, documentation
+  links/fences, pinned ADR digest, exact V1 binding, unchanged released schemas
+  and `git diff --check` passed. Spec review findings were fixed and re-reviewed.
+- Open blockers: #90 bounded transport, #91 seven-scope source qualification,
+  #92 first automatic Pro League schedule slice, #93 FT-to-F13 history and #94
+  FT-to-F19 outcomes. #91/#92 retain `needs-info`. Causal operational key,
+  configuration, checkpoint continuity, owner approval and event-valid TUF
+  admission remain unprovisioned. No qualified prospective #70 cohort exists.

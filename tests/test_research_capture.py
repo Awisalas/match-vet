@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from issue84_support import (
@@ -22,6 +22,7 @@ from issue84_support import (
     synthetic_authority,
     synthetic_timestamp_response,
 )
+from source_authorization_support import SourceOwner, graph_manifest, outcome_manifest
 
 from matchvet.matchweek_research import FrozenMatchweekResearch, MatchweekResearchRepository
 from matchvet.research_capture import (
@@ -49,6 +50,11 @@ def forbid_network(monkeypatch: pytest.MonkeyPatch) -> None:
 def successor_week(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> SuccessorWeek:
+    capture_reuse_root = os.environ.get("MATCHVET_ISSUE89_REUSE_ROOT")
+    if capture_reuse_root is not None:
+        from source_authorization_support import reopen_capture_week
+
+        return reopen_capture_week(Path(capture_reuse_root))
     reuse_root = os.environ.get("MATCHVET_ISSUE86_REUSE_ROOT") or os.environ.get(
         "MATCHVET_ISSUE84_REUSE_ROOT"
     )
@@ -81,7 +87,7 @@ def successor_week(
         friday += timedelta(days=7)
     friday_text = friday.isoformat()
     with open_store(root / "store.sqlite3", private_root=root) as store:
-        rows_by_league = {
+        rows_by_league: dict[str, tuple[tuple[str, str, str, str], ...]] = {
             "serie_a": (
                 (friday_text, "20:00", "Issue86 placeholder home", "Issue86 placeholder away"),
             ),
@@ -367,7 +373,7 @@ def selected_case(
             raise AssertionError("Issue #86 tests requested another causal selection.")
         from matchvet.matchweek_membership import canonical_json
 
-        return json.loads(canonical_json(case.base_value))
+        return cast(dict[str, Any], json.loads(canonical_json(case.base_value)))
 
     monkeypatch.setattr(ResearchCaptureRepository, "_base_value", build_base)
     return case
@@ -602,7 +608,7 @@ def test_source_authorization_absence_refuses_before_cb01(
             for row in store.artifact_catalog()
             if row.media_type == MEDIA_TYPES["TimestampAttempt"]
         }
-        with pytest.raises(CaptureError, match="authorization is absent"):
+        with pytest.raises(CaptureError, match="exact V2 source manifest"):
             repository.capture_week(
                 selected_case.selection_digest,
                 prior_index_digest=index.digest,
@@ -618,31 +624,34 @@ def test_source_authorization_absence_refuses_before_cb01(
 
 def test_withdrawn_source_use_is_retained_without_attempting_cb01(
     selected_case: SelectedCase,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from matchvet.cb01_schema import MEDIA_TYPES
 
     with open_store(selected_case.root / "store.sqlite3", private_root=selected_case.root) as store:
         repository = ResearchCaptureRepository(store)
         index = repository.capture_week(selected_case.selection_digest)
-        authorizer = _source_authorizer(store, index.to_dict(), withdrawn=True)
+        manifest_digest = graph_manifest(store, selected_case.selection_digest)
+        owner = SourceOwner(selected_case.root.parent / "source-owner", store, monkeypatch)
+        owner.append(manifest_digest)
+        owner.withdraw(manifest_digest)
         before = {
             row.digest
             for row in store.artifact_catalog()
             if row.media_type == MEDIA_TYPES["TimestampAttempt"]
         }
-        repository.source_authorizer = authorizer
         withdrawn = repository.capture_week(
             selected_case.selection_digest,
             prior_index_digest=index.digest,
             enroll=True,
+            source_manifest_digest=manifest_digest,
         )
         value = repository.replay(withdrawn.digest).to_dict()
         assert value["predecessor_digest"] == index.digest
         assert value["source_use"]["state"] == "WITHDRAWN"
         assert all(row["capture_state"] == "WITHDRAWN" for row in value["denominator_rows"])
         assert all(
-            row["capture_reasons"] == ["TEST_SOURCE_USE_WITHDRAWN"]
-            for row in value["denominator_rows"]
+            row["capture_reasons"] == ["OWNER_WITHDRAWN"] for row in value["denominator_rows"]
         )
         after = {
             row.digest
@@ -650,7 +659,6 @@ def test_withdrawn_source_use_is_retained_without_attempting_cb01(
             if row.media_type == MEDIA_TYPES["TimestampAttempt"]
         }
         assert after == before
-        assert authorizer.calls[0]["scope_ids"] == tuple(value["freeze"]["scope_ids"])
 
 
 def test_causal_profile_absence_refuses_before_cb01(
@@ -663,7 +671,9 @@ def test_causal_profile_absence_refuses_before_cb01(
     with open_store(selected_case.root / "store.sqlite3", private_root=selected_case.root) as store:
         repository = ResearchCaptureRepository(store)
         index = repository.capture_week(selected_case.selection_digest)
-        repository.source_authorizer = _source_authorizer(store, index.to_dict())
+        manifest_digest = graph_manifest(store, selected_case.selection_digest)
+        owner = SourceOwner(selected_case.root.parent / "source-owner", store, monkeypatch)
+        owner.append(manifest_digest)
         before = {
             row.digest
             for row in store.artifact_catalog()
@@ -681,6 +691,7 @@ def test_causal_profile_absence_refuses_before_cb01(
                 selected_case.selection_digest,
                 prior_index_digest=index.digest,
                 enroll=True,
+                source_manifest_digest=manifest_digest,
             )
         after = {
             row.digest
@@ -767,11 +778,15 @@ def test_failed_cb01_attempt_keeps_exact_failure_rows(
         with pytest.raises(CaptureError, match="exact selected freeze or graph"):
             repository.replay(failed_index_artifact.digest)
         first_batch["lineage"]["causal_selection"]["selection_digest"] = exact_selection_digest
-        repository.source_authorizer = _source_authorizer(store, failed_index, withdrawn=True)
+        manifest_digest = graph_manifest(store, selected_case.selection_digest)
+        owner = SourceOwner(selected_case.root.parent / "source-owner", store, monkeypatch)
+        owner.append(manifest_digest)
+        owner.withdraw(manifest_digest)
         withdrawn_failed = repository.capture_week(
             selected_case.selection_digest,
             prior_index_digest=failed_index_artifact.digest,
             enroll=True,
+            source_manifest_digest=manifest_digest,
         )
         withdrawn_failed_value = repository.replay(withdrawn_failed.digest).to_dict()
         assert withdrawn_failed_value["capture_state"] == "WITHDRAWN"
@@ -883,6 +898,33 @@ def test_f19_outcome_versions_append_to_exact_row_and_preserve_times(
                 "state": "WIN",
             },
         }
+        # Retain exact offline settlement bytes for the separate outcome manifest.
+        from matchvet.artifacts import ArtifactStore
+        from matchvet.source_manifest import canonical
+
+        first_settlement = settlements.pop(first_digest)
+        corrected_settlement = settlements.pop(corrected_digest)
+        first_digest = (
+            ArtifactStore(store)
+            .publish_artifact(
+                canonical(first_settlement), "application/vnd.matchvet.synthetic-settlement+json"
+            )
+            .digest
+        )
+        corrected_settlement["predecessor_digest"] = first_digest
+        corrected_digest = (
+            ArtifactStore(store)
+            .publish_artifact(
+                canonical(corrected_settlement),
+                "application/vnd.matchvet.synthetic-settlement+json",
+            )
+            .digest
+        )
+        settlements = {first_digest: first_settlement, corrected_digest: corrected_settlement}
+        evidence_snapshots = {
+            first_digest: first_settlement["evidence"][0],
+            corrected_digest: corrected_settlement["evidence"][0],
+        }
         monkeypatch.setattr(
             repository,
             "replay",
@@ -951,11 +993,18 @@ def test_f19_outcome_versions_append_to_exact_row_and_preserve_times(
             )
         settlements[first_digest]["evidence"] = [evidence_snapshots[first_digest]]
 
+        owner = SourceOwner(selected_case.root.parent / "source-owner", store, monkeypatch)
+        first_source_manifest = outcome_manifest(
+            store, selected_case.selection_digest, first_digest
+        )
+        owner.append(first_source_manifest)
+
         first = repository.attach_outcome(
             current[0].digest,
             membership_id=row["membership_id"],
             preference_id=row["preference_id"],
             settlement_digest=first_digest,
+            source_manifest_digest=first_source_manifest,
         )
         original_first = first.to_bytes()
         first_history = first.to_dict()["denominator_rows"][0]["outcome_history"]
@@ -963,12 +1012,18 @@ def test_f19_outcome_versions_append_to_exact_row_and_preserve_times(
         assert first_history[0]["source_provenance"] == [evidence_snapshots[first_digest]]
         current[0] = first
 
+        corrected_source_manifest = outcome_manifest(
+            store, selected_case.selection_digest, corrected_digest
+        )
+        owner.append(corrected_source_manifest)
+
         second = repository.attach_outcome(
             current[0].digest,
             membership_id=row["membership_id"],
             preference_id=row["preference_id"],
             settlement_digest=corrected_digest,
             predecessor_attachment_digest=first_history[0]["outcome_attachment_digest"],
+            source_manifest_digest=corrected_source_manifest,
         )
         second_value = second.to_dict()
         history = second_value["denominator_rows"][0]["outcome_history"]
