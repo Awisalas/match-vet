@@ -60,28 +60,33 @@ for schedules/current revisions/completeness, plus one existing Football-Data
 CSV family only if needed for recent FT history and later outcomes. No reviewed
 source set yet proves the complete all-seven automatic contract.
 
-[#89](https://github.com/Awisalas/match-vet/issues/89) is reopened with
-`ready-for-agent` after the [adversarial review](../research/issue-89-adversarial-review-2026-10-10.md)
-of `40118a4635052ddbebb07509d2e6cab017e4185b`. Withdrawal during final validation
-can permit dispatch/admission; outcome authorization omits supplemental evidence
-and raw source dependencies. Its acceptance is no longer met. Released V1 replay
-and external permission meanings remain unchanged. Default production refuses
-without independently installed source authority and current continuity.
-#90 bounded transport, #93 FT-to-F13 projection
-and #94 FT-to-F19 projection are OPEN `ready-for-agent`. #91 exact source qualification
-and #92 first Pro League automatic schedule slice are OPEN `needs-info` until
+[#89](https://github.com/Awisalas/match-vet/issues/89) is CLOSED as completed.
+Its two accepted findings are fixed in corrective implementation commit
+`28661c5abe88ad6e1b63ca8a04e8ed5db7d9387c`. All 401 focused tests passed, and
+the three former expected failures now pass normally. The corrective delivery/status
+commit is `17096f7e19dccaaa2235f68b75434ded71f873f9`. The adversarial review and
+its findings remain below as historical context. Source authorization mechanics
+are complete. Default production still REFUSES because real source authority/
+configuration, checkpoint continuity and exact selected-graph approval are not
+provisioned.
+
+[#90](https://github.com/Awisalas/match-vet/issues/90) is OPEN `ready-for-agent`
+and next for offline bounded transport. [#93](https://github.com/Awisalas/match-vet/issues/93)
+FT-to-F13 projection and [#94](https://github.com/Awisalas/match-vet/issues/94)
+FT-to-F19 projection are OPEN `ready-for-agent`. [#91](https://github.com/Awisalas/match-vet/issues/91)
+exact source qualification and [#92](https://github.com/Awisalas/match-vet/issues/92)
+the first Pro League automatic schedule slice remain OPEN `needs-info` until
 actual endpoint/coverage/freshness/identity evidence is sufficient. Follow-up
 league slices require qualified contracts. LF02/LF05 remain historical/emergency
 manual paths, not the intended primary prospective architecture. Optional
 weather/context may remain UNKNOWN/UNPERFORMED in honest diagnostic records.
 
-Source authorization remains SEPARATE AND NOT OPERATIONAL: internal policy is
-accepted and #89 runtime mechanics REQUIRE CORRECTION; source authority configuration,
-checkpoint continuity and exact selected-graph approval are NOT PROVISIONED.
-Causal #87 mechanics COMPLETE;
-owner key/configuration/checkpoint provisioning NOT OPERATIONAL;
-owner-signed current approval and event-valid TUF admission NOT OPERATIONAL;
-qualified prospective #70 cohort DOES NOT EXIST. No live run is authorized.
+Source policy is accepted, and #89 runtime mechanics are COMPLETE. Real source
+authority/configuration and checkpoint continuity are NOT PROVISIONED. Causal
+#87 mechanics are COMPLETE; owner key/configuration/checkpoint provisioning,
+owner-signed current approval and event-valid TUF admission remain NOT
+OPERATIONAL. A qualified prospective #70 cohort DOES NOT EXIST. No live run is
+authorized.
 
 ## #85 implementation record
 
@@ -165,8 +170,10 @@ record below.
    Source-use policy is now settled by ADR 0006. Publisher permission is not
    required for its private risk-accepted public acquisition scope; external
    permission stays independently UNKNOWN/REFUSED unless evidence proves a grant.
-   Implement #89 internal authorization/exact V2 manifest, #90 bounded transport,
-   #93 retained FT-to-F13 history and #94 later outcome projection. Qualify exact
+   #89 internal authorization and exact V2 manifest are complete in corrective
+   implementation commit `28661c5abe88ad6e1b63ca8a04e8ed5db7d9387c`. Next,
+   implement #90 bounded transport, #93 retained FT-to-F13 history and #94 later
+   outcome projection. Qualify exact
    automated source contracts in #91 before #92's first Pro League schedule
    adapter, then deliver only genuinely specified additional league slices.
    Preserve all-seven F01/F06 coverage/currentness and canonical identities.
@@ -523,7 +530,11 @@ and completed mechanics are recorded above and in the implementation record belo
   configuration, checkpoint continuity, owner approval and event-valid TUF
   admission remain unprovisioned. No qualified prospective #70 cohort exists.
 
-## Latest review: source authorization, #89, 2026-10-10
+## Historical adversarial review: source authorization, #89, 2026-10-10
+
+This review records the findings and issue state at that time. The corrective
+implementation and restored acceptance are recorded in the current state above
+and in the latest delivery entry below.
 
 - Reviewed `40118a4635052ddbebb07509d2e6cab017e4185b` against #89 and ADR 0006.
   Two MAJOR findings reopen #89 with `ready-for-agent`: withdrawal during final
