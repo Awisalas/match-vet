@@ -3,7 +3,18 @@
 Research date: 2026-10-10. Issue: [#91](https://github.com/Awisalas/match-vet/issues/91).
 Implementation target: [#92](https://github.com/Awisalas/match-vet/issues/92).
 
-## Verdict
+## Current Belgium verdict
+
+The [bounded raw-calendar follow-up](pro-league-calendar-raw-qualification-2026-10-10.md)
+proves **B: TECHNICALLY INSUFFICIENT for the exact default-matchday response**.
+Embedded JSON supplies UTC times and structured fixture/team UUIDs, but only
+matchday 8 has fixture membership. The response does not supply the complete
+current-window/replacement protocol required by #92. #91 closes under criterion B
+with the replacement decision retained there; #92 remains OPEN `needs-info`.
+The initial review and seven-league table below retain their original dated
+findings. No other league was researched in the follow-up.
+
+## Initial review verdict
 
 **PARTIAL: #92 is not implementation-ready.** The preferred official candidate
 is the [Pro League JPL calendar](https://www.proleague.be/jpl-kalender!). Public
