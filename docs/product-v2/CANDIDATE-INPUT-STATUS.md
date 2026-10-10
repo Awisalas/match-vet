@@ -22,6 +22,13 @@ prerequisite was approved or activated in #86. Issue #70 remains OPEN with
 `needs-info`; implementing #85 and #86 does not resolve its outstanding
 chronological evidence or numerical/profile decisions.
 
+The latest [causal witness activation audit](../research/causal-profile-activation-audit-2026-10-10.md)
+records readiness as BLOCKED. Current policy and trust pins remain compatible
+with v1, but production approval, withdrawal, and restore continuity are not
+operational. The original retained metadata is expired, and deployment and
+current-status assurance remain UNKNOWN. No activation implementation issue was
+created. The audit grants no activation or real-source authorization.
+
 ## #85 implementation record
 
 - Added versioned CandidateInput support, exact protected gate-proof readers,
@@ -162,7 +169,7 @@ migration.
   causal-witness profile are separately approved and operational for the exact
   capture. Neither prerequisite was approved or activated in this ticket.
 
-## Latest status-log step
+## Earlier status-log correction, 2026-10-10
 
 - On 2026-10-10, corrected the current-state and readiness wording to reflect
   that #86 is CLOSED and its offline implementation is complete. The earlier
@@ -171,3 +178,28 @@ migration.
 - The remaining live-operation blockers are separate approval and operational
   readiness for real-source use and the causal-witness profile. No qualified
   prospective #70 cohort exists yet.
+
+## Latest completed step: causal witness activation audit
+
+- On 2026-10-10, retained the [classified research/decision record](../research/causal-profile-activation-audit-2026-10-10.md)
+  for `matchvet-sigstore-causal-event-v1`. Readiness remains BLOCKED.
+- Reviewed ADR 0003, both requested timing designs, the four causal modules,
+  retained #80/#81/#84 trust assets, tests and executed proof records, plus
+  current primary Sigstore policy/source/security/TUF evidence. GET-only
+  metadata authenticated as root15/timestamp804/snapshot166/targets14 with
+  unchanged TrustedRoot and certificate pins. No timestamp request was made.
+- Resulting implementation issue: none. The prerequisites are not all
+  SATISFIED. Normative policy support does not approve UNKNOWN deployment
+  conformity or establish current nonrevocation.
+- Research/decision commit: `60b728f553382063e86e4083cf84a9367878c4ed`.
+- Exact causal-operation blockers: no authenticated production acceptance of
+  the operator/key/policy and limited-assurance premises; no operational
+  activation/withdrawal owner or restore-safe authoritative history; and the
+  original retained timestamp799 metadata expired at
+  `2026-10-10T01:39:25Z`. An exact refreshed bundle must be admitted under
+  authenticated owner state. Actual unsmeared-UTC/accuracy conformity and
+  affirmative current nonrevocation remain UNKNOWN. V1 retains its declared
+  historical assurance and cannot satisfy a stricter current-status consumer.
+- Real-source authorization remains a separate unresolved prerequisite. No
+  qualified prospective #70 cohort exists. #70 remains OPEN with `needs-info`;
+  #86 remains CLOSED. No production code, activation, or collection changed.
