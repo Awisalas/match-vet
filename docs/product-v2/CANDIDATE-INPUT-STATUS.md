@@ -93,8 +93,57 @@ The prior seven-league table is retained; no other league was researched again.
 below; it records another specific outcome B and leaves #92 unready.
 The final bounded [#96 date-window review](../research/pro-league-date-window-calendar-qualification-2026-10-10.md)
 also closes under B. Further official Pro League probing stops here;
-[#97](https://github.com/Awisalas/match-vet/issues/97) now owns the next bounded
-free third-party contract qualification. #92 remains OPEN `needs-info`.
+[#97](https://github.com/Awisalas/match-vet/issues/97) also closes completed
+under B after [Football Charts documentation-first qualification](../research/football-charts-belgium-free-contract-2026-10-10.md).
+No fixture request was justified or made. #92 remains OPEN `needs-info` for
+an exact complete-current Belgian source contract, despite zero open native
+dependencies after #97 closes. No reviewed free replacement is qualified.
+
+## #97 Football Charts free-contract qualification
+
+- [#97](https://github.com/Awisalas/match-vet/issues/97) closes completed under B,
+  INSUFFICIENT before fixture contact. The [research evidence](../research/football-charts-belgium-free-contract-2026-10-10.md)
+  uses current primary developer/terms/Belgium pages, the explicitly linked API
+  root self-description and publisher MCP code pinned at
+  `f3291dd2d7ecb185f756221298e35c7016173a43`. The root is documentation only.
+  Fixture/result/team/match-detail/league-index data requests total zero; no key,
+  odds or bulk history was acquired.
+- Free/keyless all-league current/previous-season access is advertised. No
+  preview-only result cap is established, and complete real-world result
+  membership is not established either. A few-days fixture horizon and overnight
+  refresh do not prove full Friday–Tuesday coverage, affirmative empty,
+  moved-fixture handling or a complete-current/revision contract. No date-window,
+  season or pagination input is documented for the fixture tool. Match detail
+  describes `scheduled`/`ft`, but exact UTC, required postponed/cancelled/rescheduled
+  behavior and persistent identities remain UNKNOWN.
+- Free research use, attribution and no resale are explicit. The Terms of Sale
+  expressly scope paid products/API; paid completeness/retention clauses are
+  not automatically applied to free data. Free raw/normalized retention,
+  private backup/restore/replay, enduring derived-use permissions and free
+  applicability of the paid completeness disclaimer remain UNKNOWN. ADR 0006
+  accepts legal risk separately; it supplies no missing technical completeness.
+- All 18 existing canonical targets remain distinct and consistent, with unchanged
+  LF05 manual digest/lineage. Football Charts' display names do not establish an
+  automatic ID namespace. No automatic-source mapping revision or team was created.
+- Checks passed: primary freshness/locator review; four pinned public
+  documentation/code files, 42,604 decoded bytes, SHA-256/Git blob identities,
+  protected modes and corrupt-byte rejection; zero fixture request/byte
+  accounting, exact selectors/status schema, all 18 canonical targets and manual
+  authority, docs links/anchors/tables/fences, issue states/native dependencies
+  and `git diff --check`. Documentation metadata gaps were not invented as
+  fixture capture provenance. No production module or contract changed.
+- Research delivery commit: `fb2b7b7a9829dd9d96ebe0257012ec05c852d9d9`.
+  #97 CLOSED completed under B; #92 OPEN `needs-info`, without `ready-for-agent`,
+  despite all six native prerequisites now closed. Its body retains the exact
+  source-contract gate. Next blocker is a contract-first Belgian source/design
+  decision before more row probes. Keep manual Belgium only as the existing
+  temporary path; it does not satisfy full automation. No zero-cost source is
+  qualified, no paid dependency is selected, no new issue is created, and
+  official Pro League probing stays stopped. OpenFootAPI/API-Football are not
+  retried under unchanged primary terms.
+  #90/#91/#95/#96 remain CLOSED, #70 OPEN `needs-info`. Default live acquisition
+  stays disabled. No adapter, Store, source/causal provisioning, other-league
+  work, #93/#94, #86 collection, fitting, F17/F18/F20, PLAY or promotion changed.
 
 ## #96 final official date-window qualification
 
