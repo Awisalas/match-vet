@@ -544,3 +544,42 @@ and completed mechanics are recorded above and in the implementation record belo
   operational key/configuration/checkpoint, owner approval and event-valid TUF
   admission. Default production still REFUSES. No real source authority,
   acquisition capability, live run, fit, PLAY or promotion was provisioned.
+
+## Latest corrective delivery: source authorization, #89, 2026-10-10
+
+- Corrective implementation commit: `28661c5abe88ad6e1b63ca8a04e8ed5db7d9387c`, pushed to
+  `main`.
+  Both accepted MAJOR findings are fixed. #89 CLOSED as completed and
+  `ready-for-agent` removed. This delivery record adds the corrective SHA.
+- M1: deterministic retained validation precedes the final fresh independent
+  checkpoint. Withdrawal during validation refuses dispatch or rolls back
+  protected raw/normalized and CB01 insertion. Refused admission leaves no
+  catalogued artifact. The unavoidable interval before an external request
+  remains explicit; there is no external atomicity claim.
+- M2: OUTCOME binds exact settlement fact-evidence identities and applicable
+  retained raw `source_digest` dependencies with source classifications.
+  Attachment rejects changed evidence sets and raw identities. Supplements
+  refuse until an exact authorization representation exists. Offline historical
+  replay follows pinned identities without current authority, network, latest
+  lookup or unrelated catalog scans. Pre-T selection and released V1 remain unchanged.
+- Before edits: one review test passed and three strict expected failures
+  reproduced M1/M2. After correction: all nine review cases pass normally.
+  Focused validation has 401 distinct passes across source authority, protected
+  artifacts, CB01, T10/F19, capture replay and F01/F05/F06 compatibility.
+  One unrelated baseline failure remains in `test_cb01_sources`: its unchanged
+  `_support` invocation omits required `f14_digest`. This correction does not
+  broaden scope to that test defect.
+- Changed-file formatter/Ruff, strict mypy for four production modules and test
+  helpers, documentation links/fences, pinned ADR digest, unchanged V1 binding,
+  released schema/Store contracts, two-axis review and `git diff --check` passed.
+  Slow offline graph checks used an isolated retained fixture and temporary
+  memoization of pure immutable Provider Health codecs/metadata and construction
+  by complete inputs. Source manifests, raw verification and fresh authority
+  checks were never cached. No full suite was required.
+- #90 may proceed with offline bounded transport implementation. #90–#94 remain
+  technical blockers; #91/#92 still need actual source-contract evidence.
+  Real source authority/configuration and separate causal operational key,
+  configuration/checkpoint, owner approval and event-valid TUF admission remain
+  unprovisioned. #70 OPEN `needs-info`; no qualified prospective cohort exists.
+  #86/#87 CLOSED. Default production still REFUSES. No live acquisition, adapter,
+  fit, F17/F18/F20, PLAY or Product Promotion was performed or authorized.
