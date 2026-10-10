@@ -91,6 +91,50 @@ The prior seven-league table is retained; no other league was researched again.
 [#95](https://github.com/Awisalas/match-vet/issues/95) adds the bounded
 [replacement JSON qualification](../research/pro-league-replacement-fixture-source-2026-10-10.md)
 below; it records another specific outcome B and leaves #92 unready.
+The final bounded [#96 date-window review](../research/pro-league-date-window-calendar-qualification-2026-10-10.md)
+also closes under B. Further official Pro League probing stops here;
+[#97](https://github.com/Awisalas/match-vet/issues/97) now owns the next bounded
+free third-party contract qualification. #92 remains OPEN `needs-info`.
+
+## #96 final official date-window qualification
+
+- New [#96](https://github.com/Awisalas/match-vet/issues/96) closes completed
+  under B, INSUFFICIENT. The [retained evidence](../research/pro-league-date-window-calendar-qualification-2026-10-10.md)
+  traces GET `https://www.proleague.be/api/football_module/football_calendar`
+  from explicitly delivered first-party code and two exact linked assets.
+  Start/end and nested preset fields are proven, but the public JPL page supplies
+  no preset binding the miscellaneous-events service to the Belgian scope.
+  No fixture or empty-window request was made and no scope value was guessed.
+- F01 selected-window membership, boundary inclusion, deterministic exhaustion,
+  affirmative empty and complete-current/revision support remain UNKNOWN.
+  No exact retained moved-fixture before/after pair exists for this feed.
+  The offline formatter preserves the planned Friday–Tuesday UTC bounds;
+  it proves neither source boundary semantics nor returned-fixture UTC/status.
+  HTTP/cache/retrieval metadata was not used as fixture publication evidence.
+- All 18 existing canonical targets remain consistent and distinct; the LF05
+  manual mapping digest/lineage is unchanged. Zero calendar identities were
+  acquired. Its automatic namespace/persistent all-team mapping remains UNKNOWN;
+  no automatic mapping revision or team was created.
+- **Further official Pro League probing stops here.** The required next bounded
+  [#97](https://github.com/Awisalas/match-vet/issues/97) is OPEN `ready-for-agent`:
+  Football Charts documentation first, to resolve free-contract disclaimer
+  applicability, full-window horizon, complete-current/status and identity gaps
+  before any acquisition. It is unqualified. Fresh primary terms reject
+  OpenFootAPI and API-Football as F01 completeness authorities. Manual Belgium
+  remains temporary evidence and does not satisfy the automated architecture.
+- Checks passed: old/new private digest integrity and corruption rejection,
+  protected modes, exact locator/handler provenance, two public HTTPS requests
+  totaling 16,265 bytes within recorded budgets/pacing with no redirects/retries,
+  zero fixture requests, offline UTC/formatter assertions, all 18 canonical
+  targets/unchanged LF05 authority, fresh primary documentation, local
+  links/anchors/tables/fences, issue states/native dependencies and
+  `git diff --check`.
+- Research delivery commit: `0259d4bd2c0e32d71998923b3a73969df5bc878c`.
+  #96 CLOSED completed under B; #97 OPEN `ready-for-agent`, with its #96 edge
+  retained. #92 OPEN `needs-info`, without `ready-for-agent`, native blocked by
+  #97. #90/#91/#95 remain CLOSED, #70 OPEN `needs-info`. Default live acquisition
+  remains disabled; no adapter, production Store, source/causal authority,
+  other-league work, #93/#94, #86 collection, fitting, PLAY or promotion changed.
 
 ## #95 Belgium replacement-source qualification
 
