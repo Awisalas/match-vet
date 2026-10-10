@@ -75,18 +75,19 @@ bounded transport in commit `03d0d1a223256a7795bed3fcf187a07fd125253c`. No
 provider adapter or live acquisition was activated. [#93](https://github.com/Awisalas/match-vet/issues/93)
 FT-to-F13 projection and [#94](https://github.com/Awisalas/match-vet/issues/94)
 FT-to-F19 projection remain OPEN `ready-for-agent`. [#91](https://github.com/Awisalas/match-vet/issues/91)
-exact source qualification and [#92](https://github.com/Awisalas/match-vet/issues/92)
-the first Pro League automatic schedule slice remain OPEN `needs-info` until
-actual endpoint/coverage/freshness/identity evidence is sufficient. Follow-up
+is CLOSED under criterion B for the exact default Pro League calendar response.
+[#92](https://github.com/Awisalas/match-vet/issues/92), the first Pro League automatic
+schedule slice, remains OPEN `needs-info` until a replacement contract is qualified. Follow-up
 league slices require qualified contracts. LF02/LF05 remain historical/emergency
 manual paths, not the intended primary prospective architecture. Optional
 weather/context may remain UNKNOWN/UNPERFORMED in honest diagnostic records.
 
-The [#91 source-contract review](../research/pro-league-source-contract-2026-10-10.md)
-rates the official Pro League calendar PARTIAL. Exact UTC kickoff, exhaustive
-current window/affirmative-empty evidence, freshness and automatic identity
-mapping remain unqualified. The seven-league table retains each family's next
-gap. Neither #91 closure condition is proven; #92 remains `needs-info`.
+The [Belgium raw-calendar review](../research/pro-league-calendar-raw-qualification-2026-10-10.md)
+proves structured fixture/team UUIDs and exact UTC times, but only matchday 8
+fixture membership. The inspected response is TECHNICALLY INSUFFICIENT for a
+complete current requested window, including cross-round moves. Currentness,
+replacement/status semantics and stable automatic mapping remain unqualified.
+The prior seven-league table is retained; no other league was researched again.
 
 Source policy is accepted, and #89 runtime mechanics are COMPLETE. Real source
 authority/configuration and checkpoint continuity are NOT PROVISIONED. Causal
@@ -95,7 +96,38 @@ owner-signed current approval and event-valid TUF admission remain NOT
 OPERATIONAL. A qualified prospective #70 cohort DOES NOT EXIST. No live run is
 authorized.
 
-## #91 research record
+## #91 Belgium raw-calendar record
+
+- Belgium verdict B: TECHNICALLY INSUFFICIENT for the exact initial response from
+  `https://www.proleague.be/jpl-kalender!`. One bounded HTTP 200 response contains
+  253848 complete bytes, retrieved at `2026-10-10T15:12:49.042098+00:00`, SHA-256
+  `9813e53c40d2228195078dcac501b52f58a26b86d5da3e1a777212428dc2ccf3`.
+  Scratch retention was checked before contact; raw bytes remain private locally.
+- Embedded `__NEXT_DATA__` supplies nine matchday-8 fixtures, ordered home/away
+  team UUIDs, competition/season/edition IDs, explicit UTC `time` values and
+  `FullTime`/`SecondHalf`/`PreMatch` period types. Its 34-matchday catalogue does
+  not supply other partitions' fixtures, exhaustive UTC-window/empty semantics,
+  current replacement coverage or a postponed/cancelled status contract.
+- All 18 source UUID/name observations match distinct existing canonical targets.
+  Lifetime source-ID stability and automatic mapping authority remain UNKNOWN.
+  The unchanged LF05 digest/manual lineage was verified and not relabelled.
+- #90's unchanged body classifier flags reCAPTCHA markup/configuration in this
+  response. No actual challenge is asserted. Live inspection stopped without
+  evasion or classifier changes. No adapter, authority or provider was activated.
+- Replacement decision: qualify an explicitly exposed official Pro League
+  competition/edition partition/window payload or supported export with complete
+  current membership, cross-round revisions, exact UTC and stable identities.
+  Exact replacement locator remains UNKNOWN; no backend endpoint was guessed.
+- Checks passed: retained byte/digest/locator/time/budget integrity, corrupted-byte
+  rejection, offline JSON/UTC/identity checks, unchanged LF05 digest, documentation
+  links/structure, issue states/native dependencies and `git diff --check`.
+- Research commit `288abd30716bbd1aca700220189387017e0639ea` is pushed to `main`.
+  #91 is CLOSED under criterion B. #92 remains OPEN `needs-info`, without
+  `ready-for-agent`, despite its native dependencies now being closed.
+- Next blocker: the exact public official replacement source contract. Default
+  live acquisition remains disabled; operational authorization is unprovisioned.
+
+## #91 initial research record
 
 - Pro League verdict: PARTIAL. Preferred official candidate:
   `https://www.proleague.be/jpl-kalender!`, operated by Pro League NV. Fixtures,
