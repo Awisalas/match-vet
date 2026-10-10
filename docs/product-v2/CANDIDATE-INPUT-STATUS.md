@@ -490,6 +490,9 @@ and completed mechanics are recorded above and in the implementation record belo
 
 ## Latest implementation: private source authorization, #89, 2026-10-10
 
+- Implementation commit: `40118a4635052ddbebb07509d2e6cab017e4185b`, pushed to
+  `main`. #89 CLOSED as completed; `ready-for-agent` removed. This delivery
+  record adds the implementation SHA without changing runtime configuration.
 - Implemented canonical protected `research-source-use-manifest-v1` and
   `research-real-source-use-decision-v2`, exact selected dependency verification,
   separate outcome manifests and private prospective F01 eligibility sidecars.
