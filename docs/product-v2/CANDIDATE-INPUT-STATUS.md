@@ -47,6 +47,16 @@ source-authorization mechanics issue is created while the human/provider rights
 evidence remains insufficient. Internal LF02/LF05 policies and historical F05
 permission labels cannot supply missing publisher/upstream permission.
 
+The [minimum source-closure review](../research/minimum-prospective-source-closure-2026-10-10.md)
+returns **B: possible with explicit permissions, currently unapproved**. It
+does not require every configured source: a small recent official full-time
+result corpus can share schedule/publication grants; weather, specialist
+context and prior calibration can remain UNPERFORMED/UNKNOWN in diagnostic
+records. All seven completeness scopes and actual LF02 base acquisition remain
+mandatory. Current manual policies cover five leagues; Spanish/Portuguese
+feeds and selected mapping lineage still need clearance. No implementation
+issue is ready, and no zero-cost operational closure has been established.
+
 ## #85 implementation record
 
 - Added versioned CandidateInput support, exact protected gate-proof readers,
@@ -131,6 +141,11 @@ record below.
    evidence before specifying source-authorization mechanics. The required V2
    decision must bind an explicit immutable manifest of the selected graph's
    source uses. No implementation issue or live source approval exists for it.
+   For the smallest proposed graph, obtain the seven official publishers'
+   minimal-fact/citation retention and backup/replay basis; a recent full-time
+   result corpus can share one of those grants. Resolve actual Spanish/Portuguese
+   JSON/TXT and selected alias upstream rights under current adapters. Optional
+   Football-Data, weather and specialist sources are not universal blockers.
 3. After both prerequisites are approved and operational, run #86
    prospectively. Retain exact cutoff-valid inputs, immutable provenance, all
    denominator rows, and later source-backed outcomes. Keep unavailable,
@@ -315,14 +330,12 @@ migration.
   `research-real-source-use-decision-v2` bound to
   `research-source-use-manifest-v1`. An exact selection digest can bind graph
   identity but cannot retain permission evidence absent from the graph.
-- No source-authorization implementation issue is created. Human/provider rights
-  evidence is insufficient for the actual prospective football closure. Obtain
-  Football-Data's exact automated research/retention grant or a replacement;
-  clear the selected OpenFootball upstreams; establish each official publisher's
-  minimal-fact/citation database and backup/replay basis; classify actual
-  Open-Meteo use and satisfy attribution; review every selected contextual,
-  venue, history/calibration and later outcome source. Terms changes/withdrawals
-  block new uses while original decisions retain their historical meaning.
+- No source-authorization implementation issue is created. The original broad
+  source inventory is refined by the minimum-closure decision below. Obtain
+  permission only for actual acquisition and selected dependencies; Football-Data,
+  Open-Meteo, specialist context and calibration sources are optional for the
+  initial diagnostic graph. Terms changes/withdrawals block new uses while
+  original decisions retain their historical meaning.
 - Current blockers: #87 mechanics COMPLETE; owner key/configuration/checkpoint
   provisioning NOT OPERATIONAL; owner-signed current approval and event-valid
   TUF admission NOT OPERATIONAL; real-source authorization SEPARATE AND
@@ -343,3 +356,45 @@ migration.
   `git diff --check` passed. Verified #70 OPEN with `needs-info`, #86 CLOSED and
   #87 CLOSED without `ready-for-agent`. No production code/test diff; no runtime
   tests or full suite ran for these documentation-only changes.
+
+## Latest minimum source-closure decision and current blockers, 2026-10-10
+
+- [Dependency decision](../research/minimum-prospective-source-closure-2026-10-10.md)
+  and [current dataset licence evidence](../research/minimal-model-dataset-evidence-2026-10-10.md)
+  record **B**, not operational approval. Minimum practical inputs: seven-scope
+  official completeness/schedule facts, actual LF02 automatic base attempts,
+  selected canonical mappings, and one recent provenance-backed full-time goal
+  corpus. That corpus can reuse one official publisher's permission. Later F19
+  goal outcomes can share the same publishers' grants but remain post-kickoff
+  evidence, separate from pre-T prediction inputs.
+- Existing manual fixture policies cover Belgium, England, Germany, France and
+  Italy only. Spain/Portugal still need the current JSON/TXT adapter's real
+  acquisition and exact upstream clearance. No all-manual automatic-base
+  substitute, fake attempts, completeness weakening or ambiguous alias import
+  is allowed. Football-Data history is avoidable. No new adapter is implemented.
+- Weather, specialist context, halves/corners and prior calibration need not
+  become supported merely to retain complete RESEARCH_ONLY rejection records.
+  Preserve every enabled preference and UNKNOWN/UNPERFORMED/unavailable state.
+  No supported Primary, evaluation completeness or validated numerical profile
+  is inferred. Explicitly licensed reviewed history releases fail the current
+  recency floor; recent alternatives remain unresolved. A small cleared manual
+  corpus is a proposal, not a proven numerical/operational fit.
+- Remaining rights evidence: named operator/legal capacity; seven actual official
+  publisher minimal-fact/citation rights, normalized retention, private backup/
+  restore/replay and derived-input basis; OpenFootball maintainers' exact
+  Spanish/Portuguese feed and selected mapping upstream inventory plus applicable
+  upstream grants. Narrow sendable requests are retained; none was sent.
+  One extra dataset/provider grant is conditional on the manual-history route
+  failing, not an additional mandatory dependency. No implementation issue.
+- #87 mechanics COMPLETE; owner key/configuration/checkpoint provisioning NOT
+  OPERATIONAL; owner-signed current approval and event-valid TUF admission NOT
+  OPERATIONAL; real-source authorization SEPARATE AND UNRESOLVED; qualified
+  prospective #70 cohort DOES NOT EXIST. V2 decision/immutable manifest remains
+  required. Default production refuses. #70 OPEN with `needs-info`; #86/#87 CLOSED.
+- No acquisition, source approval, production provisioning, live collection,
+  F17/F18/F20, #70/#37 fitting, PLAY or Product Promotion occurred. Research
+  checks passed: local Markdown links, fenced blocks, matrix columns, current
+  blocker wording, static recency arithmetic and `git diff --check`. GitHub
+  verified #70 OPEN with `needs-info`, #86 CLOSED and #87 CLOSED without
+  `ready-for-agent`. No production code/test changes or runtime tests. Research
+  delivery SHA will be recorded after committing this decision.

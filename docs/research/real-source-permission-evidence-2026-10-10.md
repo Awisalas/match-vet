@@ -4,6 +4,12 @@ Decision support, reviewed 2026-10-10: permission evidence is insufficient for a
 
 Only primary licence/terms/policy documents were reviewed for present permissions. No football feed, official fixture page, credentials, provider activation, or collection was used. Review date means the document was inspected on that date; a publisher's effective date remains unknown unless displayed. URLs and clause identities below are research citations, not an immutable operational terms package or proof of rights-chain clearance. Current operational approval must retain exact review evidence by a permitted method.
 
+The later [minimum-closure review](minimum-prospective-source-closure-2026-10-10.md)
+separates mandatory inputs from optional configured sources. This is a permission
+inventory, not a requirement to obtain Football-Data, weather or contextual
+sources for every graph. Only sources that actually enter acquisition or the
+selected dependency closure require their applicable clearance.
+
 ## Existing paths and grants
 
 | Path | Present permission finding | Retention/replay and constraints | Status for new #70 use |

@@ -8,6 +8,17 @@ source permission, runtime authority, acquisition, or Product Promotion.
 
 ## Verdict
 
+The subsequent [minimum-closure investigation](minimum-prospective-source-closure-2026-10-10.md)
+refines the source inventory below: configured sources are not all mandatory.
+Verdict B remains unapproved. Seven-scope official completeness/schedule facts,
+the existing actual automatic base and selected mappings, and one small recent
+full-time result corpus are the practical minimum for usable raw goal research.
+The corpus can share official publication grants; Football-Data, weather,
+specialist context and prior calibration cases can be omitted from a diagnostic
+graph while unavailable/UNKNOWN results and every denominator row remain visible.
+Current manual fixture policies cover five leagues; Spanish/Portuguese current
+feeds still require upstream clearance. No implementation issue is ready.
+
 Require a versioned successor to `research-real-source-use-decision-v1`, binding
 an explicit immutable source-use manifest. Current evidence does not clear the
 actual seven-scope football paths for new prospective collection. Create no
