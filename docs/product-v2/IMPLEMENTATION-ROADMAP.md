@@ -15,9 +15,9 @@ LF01/LF02/LF05 and the earlier F08 permission inventory below retain their histo
 | Current corrective ticket | State / boundary |
 | --- | --- |
 | [#89](https://github.com/Awisalas/match-vet/issues/89) internal risk admission and V2 manifest | OPEN ready-for-agent; preserve V1, private retention and separate external permission |
-| [#90](https://github.com/Awisalas/match-vet/issues/90) bounded public transport | OPEN ready-for-agent; pre-contact redirect checks, rate limits and refusal |
+| [#90](https://github.com/Awisalas/match-vet/issues/90) bounded public transport | CLOSED in `03d0d1a223256a7795bed3fcf187a07fd125253c`; offline bounded transport, adapters/live acquisition remain disabled |
 | [#91](https://github.com/Awisalas/match-vet/issues/91) exact source qualification | OPEN needs-info; real identity, lineage, timezone, coverage and freshness evidence |
-| [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | OPEN needs-info; blocked by #89/#90/#91, no all-seven parser in this ticket |
+| [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | OPEN needs-info; exact source qualification and all-seven source-contract evidence still needed |
 | [#93](https://github.com/Awisalas/match-vet/issues/93) retained FT-to-F13 projection | OPEN ready-for-agent; exact chronology and unchanged model support |
 | [#94](https://github.com/Awisalas/match-vet/issues/94) retained FT-to-F19 projection | OPEN ready-for-agent; post-kickoff evidence and unchanged settlement hierarchy |
 

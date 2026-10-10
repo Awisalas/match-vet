@@ -70,10 +70,11 @@ are complete. Default production still REFUSES because real source authority/
 configuration, checkpoint continuity and exact selected-graph approval are not
 provisioned.
 
-[#90](https://github.com/Awisalas/match-vet/issues/90) is OPEN `ready-for-agent`
-and next for offline bounded transport. [#93](https://github.com/Awisalas/match-vet/issues/93)
+[#90](https://github.com/Awisalas/match-vet/issues/90) is CLOSED with offline
+bounded transport in commit `03d0d1a223256a7795bed3fcf187a07fd125253c`. No
+provider adapter or live acquisition was activated. [#93](https://github.com/Awisalas/match-vet/issues/93)
 FT-to-F13 projection and [#94](https://github.com/Awisalas/match-vet/issues/94)
-FT-to-F19 projection are OPEN `ready-for-agent`. [#91](https://github.com/Awisalas/match-vet/issues/91)
+FT-to-F19 projection remain OPEN `ready-for-agent`. [#91](https://github.com/Awisalas/match-vet/issues/91)
 exact source qualification and [#92](https://github.com/Awisalas/match-vet/issues/92)
 the first Pro League automatic schedule slice remain OPEN `needs-info` until
 actual endpoint/coverage/freshness/identity evidence is sufficient. Follow-up
@@ -87,6 +88,34 @@ authority/configuration and checkpoint continuity are NOT PROVISIONED. Causal
 owner-signed current approval and event-valid TUF admission remain NOT
 OPERATIONAL. A qualified prospective #70 cohort DOES NOT EXIST. No live run is
 authorized.
+
+## #90 implementation record
+
+- Added bounded HTTPS transport policy to the existing resumable downloader.
+  Initial and redirected destinations require explicit public endpoint scope;
+  redirects are checked before contact and retain their history. Request,
+  response-byte, elapsed-time, pacing, retry, backoff and redirect budgets are
+  explicit. Refusal and access-control signals terminate acquisition.
+- Operational fetch rechecks separately supplied current #89 authorization.
+  Unconfigured production still refuses. No provider adapter or live acquisition
+  was enabled. Retained captures include exact transport provenance; schema-2
+  cache replay requires that provenance, validates digests, and performs no live
+  refresh. Legacy retained caches remain replayable.
+- Corrected HTTP-date `Retry-After` handling to preserve fractional waits, so
+  retries cannot run early. Transport makes no fixture completeness,
+  freshness, publication-time or ABSENT determination.
+- Offline checks passed: 46 transport tests, five downloader compatibility
+  tests and 14 targeted #89 authorization/withdrawal tests. Changed-file Ruff,
+  formatting, strict mypy for `ingestion.py` and `git diff --check` passed.
+  Repository-wide Ruff/format checks encounter pre-existing `.audit` and
+  Markdown formatting failures; the combined broader capture/research run was
+  interrupted in an existing slow F16 successor fixture before completing.
+- Implementation commit `03d0d1a223256a7795bed3fcf187a07fd125253c` is pushed to
+  `main`. #90 is CLOSED and no longer triaged `ready-for-agent`.
+- Remaining blockers: #91 and #92 stay OPEN `needs-info` for exact source and
+  schedule-slice qualification. #93/#94 projections remain open. Real source
+  authorization/configuration and causal operational key/checkpoint/approval
+  remain unprovisioned; default production refuses live fetches.
 
 ## #85 implementation record
 
