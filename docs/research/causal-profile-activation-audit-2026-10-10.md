@@ -4,8 +4,26 @@ Audit target: `matchvet-sigstore-causal-event-v1`, SHA-256
 `7ba7e2f4db4de3aa7ef41d77d9ff5f8fafecb73c6de9c5b297924454f51e5c66`.
 This record concerns prospective RESEARCH_ONLY collection. It grants no activation.
 
-Decision: activation remains BLOCKED. The fetched policy and trust pins support
-the existing historical-assurance profile, but they do not supply authenticated
+## Subsequent scoped decision
+
+[ADR 0005](../adr/0005-research-only-causal-witness-trust-premises.md), accepted by
+explicit user confirmation later on 2026-10-10, selects Option A for prospective
+RESEARCH_ONLY #70 corpus collection. It accepts the existing conditional premises;
+actual deployment conformity and affirmative current nonrevocation remain UNKNOWN.
+The original audit classifications below are retained as findings at audit time.
+This scoped policy acceptance supplies no authenticated runtime owner record.
+
+[#87](https://github.com/Awisalas/match-vet/issues/87) now specifies authenticated
+activation/withdrawal/restore continuity, fresh exact TUF admission, and exact
+profile/policy/pin binding. Activation remains BLOCKED until those mechanics and
+owner provisioning are operational. Real-source authorization remains separate.
+The no-issue determination below is historical and superseded by this scoped
+decision; no factual UNKNOWN has been converted into affirmative evidence.
+
+## Original audit determination (before ADR 0005)
+
+Decision at audit completion: activation remained BLOCKED. The fetched policy and
+trust pins support the existing historical-assurance profile, but they do not supply authenticated
 production approval, withdrawal handling, or authoritative restore history.
 The original retained metadata is expired, and the deployment and current-status
 UNKNOWNs below cannot become factual approvals. No activation implementation issue
@@ -150,7 +168,7 @@ ordinary freshness. This proposal retains MatchVet's event-interval semantics.
 It does not turn the checked token or local wall time into proof of a globally
 latest configuration or trust state.
 
-## Evidence reviewed and exact next blockers
+## Evidence reviewed and next blockers at audit completion (historical)
 
 Local review covered both requested designs, ADR 0003, the four production
 modules, retained #80/#81/#84 issues/audits/tests, DER/TUF assets, and CandidateInput

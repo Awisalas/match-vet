@@ -1,9 +1,17 @@
 # Qualify complete Matchweek selection by a causal remote event
 
 Date: 2026-10-08.
-Status: accepted prospective design for #79. Production implementation and activation
-remain unstarted. Supersedes ADR 0002's boundary choice for new, explicitly versioned
-work only. Its actual-at-return impossibility diagnosis remains accepted.
+Status: accepted prospective design for #79. Implementation and activation were
+unstarted at adoption; #80 implementation and #84 integrated proofs subsequently
+completed. Runtime activation remains refused. Supersedes ADR 0002's boundary
+choice for new, explicitly versioned work only. Its actual-at-return impossibility
+diagnosis remains accepted.
+
+[ADR 0005](0005-research-only-causal-witness-trust-premises.md) explicitly accepts
+the existing conditional authority premises for prospective RESEARCH_ONLY #70
+corpus collection only. It grants no runtime activation, real-source authorization,
+production PLAY, or promotion. It leaves this ADR's proof, strict `U < T`,
+immutable profile, and historical trust semantics unchanged.
 
 ## Decision
 

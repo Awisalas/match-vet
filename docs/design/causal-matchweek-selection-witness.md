@@ -1,9 +1,18 @@
 # Causal Matchweek selection architecture
 
 This is the prospective design accepted in [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md)
-for #79. Nothing here is implemented or activated. ADR 0002's return-time
-impossibility remains true. The new boundary authenticates a historical remote
-event and makes no trusted-current-time claim.
+for #79, retained as the architecture contract. Its original sketches below
+predate the completed #80 implementation and #84 integrated proofs. Runtime
+activation remains refused. ADR 0002's return-time impossibility remains true.
+The boundary authenticates a historical remote event and makes no
+trusted-current-time claim.
+
+[ADR 0005](../adr/0005-research-only-causal-witness-trust-premises.md) accepts the
+existing conditional V1 premises for prospective RESEARCH_ONLY #70 corpus
+collection only. [#87](https://github.com/Awisalas/match-vet/issues/87) covers the
+remaining authenticated activation, withdrawal, restore continuity, and exact
+metadata admission mechanics. Neither record activates the profile or grants
+real-source authorization; the proof and immutable profile below remain unchanged.
 
 ## Caller usage and owner boundary
 
