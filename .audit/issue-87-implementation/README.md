@@ -98,6 +98,9 @@ construction; the completed 16-test compatibility batch supersedes it. Interrupt
 intermediate owner runs also do not count. Read-only inspection confirms the fixed
 default owner installation path is absent; no production Store was opened.
 
-Delivery SHA and final #87/#70/#86 tracking state are recorded in the subsequent
-repository status entry. Completion supplies mechanics only. Every operational
-prerequisite listed above remains external and unprovisioned.
+Implementation delivered as `3fe2d5f949e3e865fcf7deb5c9a7856a99c27ffc`, pushed to
+`main`. GitHub tracking verified on 2026-10-10: #87 CLOSED, #70 OPEN with
+`needs-info`, #86 CLOSED. The [completion comment](https://github.com/Awisalas/match-vet/issues/87#issuecomment-6093011509)
+and [repository status](../../docs/product-v2/CANDIDATE-INPUT-STATUS.md) record
+delivery. Completion supplies mechanics only. Default production still refuses;
+every operational prerequisite listed above remains external and unprovisioned.

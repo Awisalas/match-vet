@@ -272,8 +272,16 @@ migration.
   service, production activation or admitted operational metadata is provisioned.
   No TSA/TUF/source acquisition, production Store, SQL migration, PLAY, fitting or
   F17/F18/F20 work occurred. #70 remains OPEN with `needs-info`; #86 remains CLOSED.
-- Implementation commit, final checks, review and #87 closure state are recorded
-  in the delivery entry below after verification and push.
+- Implementation commit: `3fe2d5f949e3e865fcf7deb5c9a7856a99c27ffc`, pushed to
+  `main`. Final validation: 235 focused offline tests passed; formatter, Ruff,
+  strict mypy, executable V1/CB01 baseline compatibility, documentation checks,
+  and `git diff --check` passed. Independent Standards/Spec review found no
+  outstanding blocker. The full suite was not run.
+- Delivery verified on 2026-10-10: [#87](https://github.com/Awisalas/match-vet/issues/87)
+  CLOSED after implementation, review, checks and push. [Completion evidence](https://github.com/Awisalas/match-vet/issues/87#issuecomment-6093011509)
+  records the mechanics-only acceptance. #70 is OPEN with `needs-info`; #86 is
+  CLOSED. Default production still refuses because owner authority and operational
+  approval remain unprovisioned.
 - Remaining prerequisites: independent owner key/configuration and secure signing
   administration; nonrollback checkpoint/head/floors and authenticated Store/history
   restore reconciliation; owner-signed applicable approval binding deployment,
