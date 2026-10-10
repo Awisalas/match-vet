@@ -1,5 +1,22 @@
 # Minimum F13 model-history dataset evidence, 2026-10-10
 
+## Current policy and model-input requirement
+
+[ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) supersedes
+the permission-before-automation assumption for private RESEARCH_ONLY public
+sources. Recent publicly reachable result inputs may use the internal
+`PRODUCT_OWNER_AUTOMATION_RISK_ACCEPTED` basis without claiming external
+clearance. The [automated closure](automated-prospective-source-closure-2026-10-10.md)
+requires exact chronology, lineage and usable full-time results; owner acceptance
+does not fix old datasets, missing kickoff times or inadequate effective samples.
+
+## Historical licence/permission assessment (superseded as a gate)
+
+The evidence and narrow requests below retain the earlier review. Permission
+UNKNOWN stays UNKNOWN and the recency/field findings remain applicable.
+Requests for publisher approval are historical options, not current
+RESEARCH_ONLY automation prerequisites. No dataset was acquired by this decision.
+
 Reviewed 2026-10-10. This note investigates replacements for Football-Data.co.uk and unresolved OpenFootball upstream inputs. It approves no acquisition, source, model, or operational collection. Only first-party documentation, licence text, repository descriptions, and dataset metadata were consulted. No match dataset, live feed, credentials, or provider adapter was used.
 
 ## What the unchanged model needs

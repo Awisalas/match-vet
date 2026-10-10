@@ -404,6 +404,9 @@ An immutable result-evidence record for one exact F16 match result, F14 decision
 **Intended Use**:
 The specific MatchVet operation or distribution context for which a provider observation is assessed. Permission is evaluated for that use under a versioned source-rights policy.
 
+**Product-owner Source-use Risk Acceptance**:
+The product owner's explicit acceptance of legal, terms-of-use and database-rights risk for bounded private RESEARCH_ONLY source acquisition, retention and replay. It establishes an internal use basis, not publisher permission or rights clearance, and does not establish evidence reliability or completeness.
+
 **Provider Health Record**:
 An immutable F04 observation for one provider or feed, one capability, one exact requested query scope, one intended use, and one check time. It records each health dimension separately and has a deterministic versioned digest.
 

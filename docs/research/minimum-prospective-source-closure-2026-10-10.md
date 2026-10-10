@@ -1,5 +1,22 @@
 # Minimum prospective #70 source closure, 2026-10-10
 
+## Current decision: automated architecture replaces the manual-first proposal
+
+[ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) accepts
+source-use risk for private RESEARCH_ONLY public acquisition and required
+retention/replay. Read the [current automated closure](automated-prospective-source-closure-2026-10-10.md).
+Publisher permission is no longer a prerequisite in that policy scope; UNKNOWN
+permission remains UNKNOWN. LF02/LF05 remain historical/emergency paths, not
+the intended primary prospective architecture. Actual all-seven automatic
+completeness and source capability still require proof. No live run is authorized.
+
+## Historical permission-first minimum closure (superseded)
+
+The earlier verdict B, manual-source strategy and permission requests below are
+retained historical planning, not current implementation/readiness conditions.
+No grant was obtained by supersession. Unchanged model, cutoff and evidence
+requirements remain applicable.
+
 Decision: **B — a zero-cost closure appears possible, but is not rights-cleared
 or operationally demonstrated.** Create no source-authorization implementation
 issue. This refinement of the [source-use decision](prospective-source-use-decision-2026-10-10.md)

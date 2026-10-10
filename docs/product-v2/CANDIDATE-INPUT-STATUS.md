@@ -36,26 +36,45 @@ owner-signed current approval and event-valid TUF admission are also NOT
 OPERATIONAL. The original retained metadata is expired; the
 [audit](../research/causal-profile-activation-audit-2026-10-10.md) retains its
 factual findings and labels its earlier no-issue decision historical.
-Real-source authorization is SEPARATE AND UNRESOLVED, and no qualified
-prospective #70 cohort exists.
+Runtime source authorization is SEPARATE AND NOT OPERATIONAL. Source-use
+policy is accepted below; no qualified prospective #70 cohort exists.
 
-The [2026-10-10 source-use decision](../research/prospective-source-use-decision-2026-10-10.md)
-requires a versioned successor to `research-real-source-use-decision-v1` with
-an immutable source-use manifest. The current primary permission review does
-not clear the actual football source closure for prospective collection. No
-source-authorization mechanics issue is created while the human/provider rights
-evidence remains insufficient. Internal LF02/LF05 policies and historical F05
-permission labels cannot supply missing publisher/upstream permission.
+[ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) accepts
+product-owner legal/terms/database-rights risk for private RESEARCH_ONLY automated
+public-source acquisition, required raw/normalized retention, private backup/
+restore/replay and derived inputs. Internal basis:
+`PRODUCT_OWNER_AUTOMATION_RISK_ACCEPTED`. This is not publisher permission,
+a licence or rights clearance. External UNKNOWN/REFUSED remains separately
+recorded. Publisher permission is no longer a prerequisite in this policy scope.
+Technical circumvention/refusal, rate limits, source quality, chronology,
+completeness and UNKNOWN remain binding.
 
-The [minimum source-closure review](../research/minimum-prospective-source-closure-2026-10-10.md)
-returns **B: possible with explicit permissions, currently unapproved**. It
-does not require every configured source: a small recent official full-time
-result corpus can share schedule/publication grants; weather, specialist
-context and prior calibration can remain UNPERFORMED/UNKNOWN in diagnostic
-records. All seven completeness scopes and actual LF02 base acquisition remain
-mandatory. Current manual policies cover five leagues; Spanish/Portuguese
-feeds and selected mapping lineage still need clearance. No implementation
-issue is ready, and no zero-cost operational closure has been established.
+[#88](https://github.com/Awisalas/match-vet/issues/88) is CLOSED, NOT_PLANNED,
+**SUPERSEDED BY PRODUCT-OWNER RISK DECISION**; its outreach history is retained
+and no permission request is marked successful. Independent technical identity,
+lineage, mapping and capability requirements moved to
+[#91](https://github.com/Awisalas/match-vet/issues/91).
+The [automated closure assessment](../research/automated-prospective-source-closure-2026-10-10.md)
+replaces the manual-first permission proposal: seven official publisher families
+for schedules/current revisions/completeness, plus one existing Football-Data
+CSV family only if needed for recent FT history and later outcomes. No reviewed
+source set yet proves the complete all-seven automatic contract.
+
+Policy is settled for implementation, not live operation. #89 source risk
+admission/V2 manifest, #90 bounded transport, #93 FT-to-F13 projection and #94
+FT-to-F19 projection are OPEN `ready-for-agent`. #91 exact source qualification
+and #92 first Pro League automatic schedule slice are OPEN `needs-info` until
+actual endpoint/coverage/freshness/identity evidence is sufficient. Follow-up
+league slices require qualified contracts. LF02/LF05 remain historical/emergency
+manual paths, not the intended primary prospective architecture. Optional
+weather/context may remain UNKNOWN/UNPERFORMED in honest diagnostic records.
+
+Source authorization remains SEPARATE AND NOT OPERATIONAL: internal policy is
+accepted, its runtime mechanics/configuration and exact selected-graph manifest
+are not installed/authorized. Causal #87 mechanics COMPLETE;
+owner key/configuration/checkpoint provisioning NOT OPERATIONAL;
+owner-signed current approval and event-valid TUF admission NOT OPERATIONAL;
+qualified prospective #70 cohort DOES NOT EXIST. No live run is authorized.
 
 ## #85 implementation record
 
@@ -136,16 +155,16 @@ record below.
    Owner key/configuration and checkpoint continuity remain NOT OPERATIONAL;
    an owner-signed current approval and event-valid TUF admission remain NOT
    OPERATIONAL. Issue completion activates nothing.
-   Real-source authorization remains SEPARATE AND UNRESOLVED: obtain exact
-   current source-chain, access, raw/normalized retention and backup/replay rights
-   evidence before specifying source-authorization mechanics. The required V2
-   decision must bind an explicit immutable manifest of the selected graph's
-   source uses. No implementation issue or live source approval exists for it.
-   For the smallest proposed graph, obtain the seven official publishers'
-   minimal-fact/citation retention and backup/replay basis; a recent full-time
-   result corpus can share one of those grants. Resolve actual Spanish/Portuguese
-   JSON/TXT and selected alias upstream rights under current adapters. Optional
-   Football-Data, weather and specialist sources are not universal blockers.
+   Source-use policy is now settled by ADR 0006. Publisher permission is not
+   required for its private risk-accepted public acquisition scope; external
+   permission stays independently UNKNOWN/REFUSED unless evidence proves a grant.
+   Implement #89 internal authorization/exact V2 manifest, #90 bounded transport,
+   #93 retained FT-to-F13 history and #94 later outcome projection. Qualify exact
+   automated source contracts in #91 before #92's first Pro League schedule
+   adapter, then deliver only genuinely specified additional league slices.
+   Preserve all-seven F01/F06 coverage/currentness and canonical identities.
+   #88 is superseded/closed; its technical requirements are in #91. The old
+   permission-first/manual-first planning below is explicitly historical.
 3. After both prerequisites are approved and operational, run #86
    prospectively. Retain exact cutoff-valid inputs, immutable provenance, all
    denominator rows, and later source-backed outcomes. Keep unavailable,
@@ -322,7 +341,11 @@ migration.
   graph followed by the sole qualified witness and protected receipt. No qualified
   prospective #70 cohort exists. Fitting and promotion remain separate and blocked.
 
-## Latest source-use decision and current blockers, 2026-10-10
+## Historical permission-first source-use decision, 2026-10-10 (superseded)
+
+The entries below preserve the earlier permission-first policy and issue states.
+ADR 0006 and the current sections supersede their permission/readiness claims;
+no historical UNKNOWN became publisher approval.
 
 - [Retained decision](../research/prospective-source-use-decision-2026-10-10.md)
   and [current primary terms evidence](../research/real-source-permission-evidence-2026-10-10.md)
@@ -357,7 +380,11 @@ migration.
   #87 CLOSED without `ready-for-agent`. No production code/test diff; no runtime
   tests or full suite ran for these documentation-only changes.
 
-## Latest minimum source-closure decision and current blockers, 2026-10-10
+## Historical permission-first minimum closure, 2026-10-10 (superseded)
+
+The entries below preserve the earlier permission-first policy and issue states.
+ADR 0006 and the current sections supersede their permission/readiness claims;
+no historical UNKNOWN became publisher approval.
 
 - [Dependency decision](../research/minimum-prospective-source-closure-2026-10-10.md)
   and [current dataset licence evidence](../research/minimal-model-dataset-evidence-2026-10-10.md)
@@ -405,3 +432,44 @@ migration.
 - Human evidence blocker: [#88 — obtain minimum source-permission evidence](https://github.com/Awisalas/match-vet/issues/88).
   #70 is blocked by this human outreach/evidence issue; no source authorization
   implementation issue was created.
+
+## Latest current decision and delivery: public-source automation risk, 2026-10-10
+
+- Accepted [ADR 0006](../adr/0006-research-only-public-source-automation-risk.md):
+  `PRODUCT_OWNER_AUTOMATION_RISK_ACCEPTED` for private RESEARCH_ONLY public
+  acquisition and required raw/normalized retention, private backup/replay and
+  derived statistical inputs. It is owner risk acceptance, never publisher
+  permission/licensing/rights clearance. No technical bypass or weaker evidence
+  gates. No live run is authorized.
+- #88 CLOSED NOT_PLANNED, SUPERSEDED BY PRODUCT-OWNER RISK DECISION; removed
+  `ready-for-human`. No permission request succeeded by supersession. Its
+  independent technical requirements are tracked in #91.
+- Technical tickets: [#89 source authorization/V2 manifest](https://github.com/Awisalas/match-vet/issues/89),
+  [#90 bounded public transport](https://github.com/Awisalas/match-vet/issues/90),
+  [#91 exact source qualification](https://github.com/Awisalas/match-vet/issues/91),
+  [#92 first automatic Pro League schedule slice](https://github.com/Awisalas/match-vet/issues/92),
+  [#93 retained FT-to-F13 history](https://github.com/Awisalas/match-vet/issues/93),
+  [#94 retained FT-to-F19 outcomes](https://github.com/Awisalas/match-vet/issues/94).
+  #89/#90/#93/#94 are OPEN ready-for-agent; #91/#92 OPEN needs-info. No optional
+  context implementation is required for the initial diagnostic graph.
+- Target closure: seven official publisher schedule/coverage/revision families;
+  use their FT results too, or add one existing Football-Data CSV family if needed.
+  Exact current capability, source timezone, coverage, freshness, identity and
+  lineage are not yet qualified. Manual LF02/LF05 remain separate compatibility
+  paths. UNKNOWN/UNPERFORMED diagnostic rows remain visible.
+- #70 OPEN needs-info; #86/#87 CLOSED. #87 mechanics COMPLETE; causal owner
+  key/configuration/independent checkpoint NOT OPERATIONAL; signed current
+  approval/event-valid TUF admission NOT OPERATIONAL; source runtime admission
+  and exact graph authorization NOT OPERATIONAL; qualified prospective cohort
+  DOES NOT EXIST. Default live collection remains off. Later operation needs
+  technical completion, trusted source configuration and causal prerequisites,
+  then separately authorized prospective execution. Fitting, F17/F18/F20,
+  PLAY and Product Promotion remain blocked.
+- Decision/status changes contain no production code or test modifications and
+  no live acquisition. Delivery checks and commit SHA are recorded below.
+- Checks passed: ten changed Markdown documents, local-link resolution, fenced
+  blocks/table structure, current versus historical policy consistency, risk
+  boundaries and documentation-only scope; GitHub states/triage and native
+  blockers; git diff --check. No runtime tests or full suite were run for this
+  decision-only change. #70 retains needs-info; #86/#87 CLOSED; #88 CLOSED
+  NOT_PLANNED without ready-for-human. No real source was acquired.

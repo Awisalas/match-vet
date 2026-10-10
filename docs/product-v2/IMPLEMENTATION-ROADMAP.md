@@ -2,9 +2,26 @@
 
 Each entry is one proposed implementation ticket. `Blocked by` uses the roadmap IDs below. Keep V1 artifacts and readers under their original versions. Add V2 contracts alongside them and migrate one boundary at a time.
 
-Use free, open, or official football data and infrastructure that requires no paid dependency. Keep provider boundaries replaceable.
+Require no paid football data or infrastructure. For private RESEARCH_ONLY sources, apply ADR 0006 below; commercial/Product Promotion source requirements remain separate. Keep provider boundaries replaceable.
 
 The original roadmap total remains 53 numbered tickets. Corrective `LF` entries are outside that total; keep F01–F21 numbering unchanged.
+
+## Current RESEARCH_ONLY source policy, 2026-10-10
+
+[ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) supersedes publisher permission as a prerequisite for private RESEARCH_ONLY public automation. It accepts legal/terms/database-rights risk without asserting a licence or external grant. Technical access refusals, bounded transport, lineage, private retention and unchanged evidence gates remain mandatory. The [automated closure assessment](../research/automated-prospective-source-closure-2026-10-10.md) defines current corrective work; no live collection is activated.
+
+LF01/LF02/LF05 and the earlier F08 permission inventory below retain their historical decisions. Manual bridges are compatibility/emergency research paths, not the target prospective architecture. Earlier automated/licensed requirements for Product Promotion remain separate and unchanged; they are not the current RESEARCH_ONLY permission gate. Source families can be risk-eligible while their capability, freshness or completeness remains UNKNOWN.
+
+| Current corrective ticket | State / boundary |
+| --- | --- |
+| [#89](https://github.com/Awisalas/match-vet/issues/89) internal risk admission and V2 manifest | OPEN ready-for-agent; preserve V1, private retention and separate external permission |
+| [#90](https://github.com/Awisalas/match-vet/issues/90) bounded public transport | OPEN ready-for-agent; pre-contact redirect checks, rate limits and refusal |
+| [#91](https://github.com/Awisalas/match-vet/issues/91) exact source qualification | OPEN needs-info; real identity, lineage, timezone, coverage and freshness evidence |
+| [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | OPEN needs-info; blocked by #89/#90/#91, no all-seven parser in this ticket |
+| [#93](https://github.com/Awisalas/match-vet/issues/93) retained FT-to-F13 projection | OPEN ready-for-agent; exact chronology and unchanged model support |
+| [#94](https://github.com/Awisalas/match-vet/issues/94) retained FT-to-F19 projection | OPEN ready-for-agent; post-kickoff evidence and unchanged settlement hierarchy |
+
+#88 is CLOSED as superseded by the owner risk decision; its independent technical requirements moved to #91. #70 remains OPEN needs-info, #86/#87 CLOSED. These tickets activate no provider or prospective collection; causal operational provisioning remains separate.
 
 ## 1. Live foundation
 
@@ -139,7 +156,7 @@ The original roadmap total remains 53 numbered tickets. Corrective `LF` entries 
 ### F08 Inventory no-cost contextual sources
 - **Goal:** Map the current enabled preferences to free, open, or official contextual sources and their permitted use.
 - **Blocked by:** F04, F05 (both complete).
-- **Status:** Complete in #59. The [contextual source inventory](../research/contextual-source-inventory-2026-10-03.md) approves only the existing Open-Meteo weather path under its non-commercial free tier; injury/availability, suspensions, pre-lineup expected lineups, manager changes, referee appointments/context, and new workload sourcing remain UNKNOWN for approved automated and retained sourcing.
+- **Status:** Complete in #59. Historically, the [contextual source inventory](../research/contextual-source-inventory-2026-10-03.md) approved only the existing Open-Meteo weather path under its non-commercial free tier; injury/availability, suspensions, pre-lineup expected lineups, manager changes, referee appointments/context, and new workload sourcing remained UNKNOWN for approved automated and retained sourcing under that earlier permission-first policy. Current risk eligibility follows ADR 0006; operational capability and evidence quality are still unproven.
 - **Size:** S.
 - **Recommended Matt Pocock skills:** `$research`, `$domain-modeling`.
 - **Model:** GPT-6 Luna Max is sufficient.

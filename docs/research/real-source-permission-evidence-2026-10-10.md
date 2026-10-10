@@ -1,5 +1,25 @@
 # Prospective #70 real-source permission evidence, 2026-10-10
 
+## Current policy and interpretation
+
+This note retains external permission findings as reviewed on 2026-10-10; it
+makes no claim that terms subsequently changed. [ADR 0006](../adr/0006-research-only-public-source-automation-risk.md)
+now permits a separate `PRODUCT_OWNER_AUTOMATION_RISK_ACCEPTED` basis for
+private RESEARCH_ONLY public acquisition and required retention/replay. Unknown
+or restrictive external terms remain visible; risk acceptance is not a grant.
+Publisher clearance is no longer the prerequisite for that internal policy.
+Technical refusals and evidence-quality gates remain binding. See the
+[current automated closure](automated-prospective-source-closure-2026-10-10.md).
+
+## Historical permission-first evidence assessment (superseded as a gate)
+
+The tables and conclusions below preserve the external permission assessment.
+Their permission-required/prohibited labels describe the earlier policy or
+publisher statements, not the current internal risk-accepted RESEARCH_ONLY
+eligibility decision. Technical access prohibitions, commercial boundaries and
+UNKNOWN evidence are unchanged. No acquisition or operational authorization
+was issued by these notes.
+
 Decision support, reviewed 2026-10-10: permission evidence is insufficient for a prospective seven-scope graph. No operational source approval is issued by this note. Read it with the [source-authorization decision](prospective-source-use-decision-2026-10-10.md). The earlier [fixture capability](upcoming-fixture-provider-capability-2026-09-23.md), [coverage audit](upcoming-fixture-coverage-source-audit-2026-09-27.md), [live blocker](live-blocker-source-research-2026-09-29.md), and [context inventory](contextual-source-inventory-2026-10-03.md) identify candidate paths; their old observations do not establish unchanged permissions.
 
 Only primary licence/terms/policy documents were reviewed for present permissions. No football feed, official fixture page, credentials, provider activation, or collection was used. Review date means the document was inspected on that date; a publisher's effective date remains unknown unless displayed. URLs and clause identities below are research citations, not an immutable operational terms package or proof of rights-chain clearance. Current operational approval must retain exact review evidence by a permitted method.

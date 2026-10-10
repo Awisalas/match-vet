@@ -16,7 +16,9 @@ Missing evidence remains UNKNOWN. MatchVet never infers ABSENT from missing data
 
 ## Delivery constraints
 
-The project has no budget. Product V2 must require no paid football data or infrastructure. Use free, open, and official sources now, with replaceable provider boundaries for later.
+The project has no budget. Product V2 must require no paid football data or infrastructure. Prefer free open/licensed sources, then public machine-readable feeds, then documented public pages, then bounded HTML extraction where no better reliable source exists. Keep provider boundaries replaceable.
+
+For private RESEARCH_ONLY work, [ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) records product-owner acceptance of legal/terms/database-rights risk for public-source automation and necessary raw/normalized retention, private backup/replay and derived inputs. This is `PRODUCT_OWNER_AUTOMATION_RISK_ACCEPTED`, not publisher approval or rights clearance. External permission remains separately evidenced or UNKNOWN. No authentication/paywall/CAPTCHA/WAF bypass, private endpoints, impersonation or ban evasion is allowed; rate limits, bounded requests and technical refusal must be respected. Evidence quality, seven-scope completeness and UNKNOWN remain unchanged. This policy grants no live run, PLAY or Product Promotion. See the [automated source closure](../research/automated-prospective-source-closure-2026-10-10.md).
 
 Fix the live workflow before adding major features. Upcoming fixture acquisition is unreliable, and `matchvet run` completes lifecycle phases without running the full analysis pipeline. Later features include Trend Intelligence, Comparable Match Intelligence, Regime Intelligence, Failure Pattern Intelligence, automatic settlement, source health, and a transparent historical MatchVet record.
 

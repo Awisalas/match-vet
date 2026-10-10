@@ -1,5 +1,29 @@
 # Prospective #70 source-use decision
 
+## Current decision: permission-first gate superseded
+
+[ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) records
+explicit product-owner legal/terms/database-rights risk acceptance for private
+RESEARCH_ONLY automated public-source acquisition, required raw/normalized
+retention, private backup/replay and derived inputs. The truthful internal basis
+is `PRODUCT_OWNER_AUTOMATION_RISK_ACCEPTED`; external permission UNKNOWN/REFUSED
+is unchanged and is not a publisher grant. Technical refusal/circumvention and
+all source-quality, completeness and chronology gates remain binding.
+
+The [automated closure decision](automated-prospective-source-closure-2026-10-10.md)
+is current. V1 remains insufficient: preserve its replay and introduce the
+proposed V2 decision/immutable manifest with distinct internal risk basis and
+external permission. Policy is settled for specifying mechanics; source authorization mechanics
+remain unimplemented and causal owner provisioning remains unprovisioned.
+No live run or Product Promotion is authorized.
+
+## Historical permission-first analysis (superseded)
+
+Everything below preserves the earlier 2026-10-10 permission-first assessment.
+Its instruction to obtain publisher clearance before implementation is
+superseded by ADR 0006. Contract/replay findings and external permission gaps
+remain factual; no historical UNKNOWN became permission or rights clearance.
+
 Reviewed 2026-10-10 against repository commit
 `3b401ad33287fbde1e7591c098cdd58854ed4569` and current primary terms.
 Scope: one prospective RESEARCH_ONLY #70 selected graph and its bounded #86
