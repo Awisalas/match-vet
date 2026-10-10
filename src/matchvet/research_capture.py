@@ -278,7 +278,7 @@ class ResearchCaptureRepository:
         )
 
         source_decision = self._outcome_source_decision(
-            value, settlement_digest, source_manifest_digest
+            value, settlement_digest, source_manifest_digest, exact_fact_evidence
         )
 
         history = row["outcome_history"]
@@ -751,7 +751,18 @@ class ResearchCaptureRepository:
         value: Mapping[str, Any],
         settlement_digest: str,
         manifest_digest: str | None,
+        exact_fact_evidence: tuple[str, ...] | None,
     ) -> SourceUseDecision:
+        if manifest_digest is not None:
+            manifest = verify_manifest(self.store, manifest_digest)
+            expected = manifest["projection"].get("fact_evidence_digests")
+            if expected is None or (
+                exact_fact_evidence is not None and sorted(exact_fact_evidence) != expected
+            ):
+                raise CaptureError(
+                    "Exact outcome fact-evidence differs from the authorized manifest; "
+                    "supplements require an exact authorization representation."
+                )
         return self._current_v2_decision(
             value,
             manifest_digest,
@@ -819,7 +830,9 @@ class ResearchCaptureRepository:
     ) -> None:
         try:
             decision = replay_decision(self.store, source_use["decision_digest"])
-            manifest = verify_manifest(self.store, decision["manifest_digest"])
+            manifest = verify_manifest(
+                self.store, decision["manifest_digest"], historical_inspection=True
+            )
             if (
                 source_use
                 != {
@@ -1311,6 +1324,20 @@ class ResearchCaptureRepository:
                 )
             attachment = self._cb01_body(item["outcome_attachment_digest"], "OutcomeAttachment")
             fact = self._cb01_body(item["fact_attachment_digest"], "OutcomeFactAttachment")
+            if item.get("source_use", {}).get("contract") == DECISION_CONTRACT:
+                manifest = verify_manifest(
+                    self.store, item["source_use"]["manifest_digest"], historical_inspection=True
+                )
+                expected_evidence = sorted(
+                    {
+                        item["settlement_digest"],
+                        *manifest["projection"]["fact_evidence_digests"],
+                    }
+                )
+                if fact["evidence_snapshot_digests"] != expected_evidence:
+                    raise CaptureError(
+                        "Attached outcome fact-evidence differs from the authorized manifest."
+                    )
             expected_settlement_predecessor = (
                 row["outcome_history"][sequence - 1]["settlement_digest"] if sequence else None
             )

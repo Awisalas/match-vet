@@ -60,9 +60,23 @@ and current authority before returning its digest as an F01 internal use-policy
 reference. This supplies no coverage, freshness or completeness evidence. F05 and
 F04 permission records retain their released meanings. No SQLite migration is needed.
 
-OUTCOME projections bind the original selection and one exact F19 settlement and
-its source evidence. They have a separate dependency closure. They never change
-the pre-T selection or its manifest. Each later correction needs its own review.
+OUTCOME projections bind the original selection, one exact F19 settlement, and
+`fact_evidence_digests` for its complete evidence snapshot. Each evidence record
+has a classified `outcome-evidence:<evidence_digest>` dependency with its exact
+facts and digest. Applicable retained raw artifacts referenced by `source_digest`
+have separate classified dependencies. Both bare and `sha256:` digests resolve
+only to exact catalogued bytes. Missing raw bytes are not inferred.
+
+V2 attachment compares the supplied fact-evidence set with that manifest before
+authorization. Additions, removals, substitutions, and raw-source mismatches
+refuse. Supplemental T10 evidence requires an exact authorization representation;
+until supplied, V2 refuses supplements. Released CB01 and V1 readers retain their
+original behavior. Replay compares the attached fact-evidence identities with the
+authorized set and follows only pinned OUTCOME artifact identities. Retaining raw
+bytes later cannot enlarge an old closure; current use requires a new review.
+
+Outcomes have a separate dependency closure. They never change the pre-T selection
+or its manifest. Each later correction needs its own review.
 
 ## Signed source authority and current continuity
 
@@ -130,7 +144,14 @@ access. An attribution-only approval cannot dispatch or admit these operations.
 It produces `research-capture-index-v2` with the exact V2 sidecar. Each CB01 trust
 refresh and timestamp dispatch rechecks current source authority. The existing
 artifact write guard rechecks after staging and inside protected catalog insertion.
-Withdrawal during an operation refuses admission. Existing attempts and failures
+All retained-evidence and manifest validation, authority history verification,
+classification reads, and validity calculations precede the final fresh checkpoint.
+A withdrawal completed during validation either appears in the checked history or
+makes the checkpoint disagree with that history. Dispatch then refuses, and the
+protected insertion transaction rolls back. No post-commit guard reports a refused
+admission after catalog insertion. The minimal interval between the checked current
+state and an external request remains unavoidable; there is no network atomicity
+claim. Existing attempts and failures
 remain retained; this adds no retry or backfill capability. Outcome attachment
 requires its own exact OUTCOME manifest and guard.
 

@@ -592,8 +592,9 @@ class ArtifactStore:
                 "MV-ARTIFACT-DB_PUBLICATION_FAILED",
                 "Artifact catalog publication failed; the object remains unreferenced.",
             ) from error
-        if self._write_guard is not None:
-            self._write_guard()
+        # The final guard runs inside the insertion transaction above. A guard
+        # after commit cannot roll back admission and can report refusal with a
+        # catalogued artifact, so there is no post-commit authorization check.
         return self._record_or_raise(digest)
 
     def publish_manifest(

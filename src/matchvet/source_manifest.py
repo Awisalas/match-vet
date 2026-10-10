@@ -144,7 +144,36 @@ def _strings(value: object) -> set[str]:
     return set()
 
 
-def _closure(store: Store, roots: tuple[str, ...]) -> list[dict[str, Any]]:
+def _retained_source_digest(
+    store: Store, facts: Mapping[str, Any], source_digests: frozenset[str] | None = None
+) -> str | None:
+    identity = facts.get("source_digest")
+    if not isinstance(identity, str):
+        return None
+    identity = identity.removeprefix("sha256:")
+    # An evidence digest does not imply that raw bytes were retained. Follow only
+    # an explicit exact reference with a catalogued object; never infer bytes.
+    if source_digests is not None:
+        return identity if identity in source_digests else None
+    return identity if store.artifact_metadata(identity) is not None else None
+
+
+def _raw_source_references(
+    store: Store, value: object, source_digests: frozenset[str] | None = None
+) -> set[str]:
+    if isinstance(value, Mapping):
+        identity = _retained_source_digest(store, value, source_digests)
+        return ({identity} if identity else set()) | set().union(
+            *(_raw_source_references(store, item, source_digests) for item in value.values())
+        )
+    if isinstance(value, (list, tuple)):
+        return set().union(*(_raw_source_references(store, item, source_digests) for item in value))
+    return set()
+
+
+def _closure(
+    store: Store, roots: tuple[str, ...], *, source_digests: frozenset[str] | None = None
+) -> list[dict[str, Any]]:
     artifacts = ArtifactStore(store)
     dependencies: dict[str, dict[str, Any]] = {}
     strings: set[str] = set()
@@ -152,6 +181,7 @@ def _closure(store: Store, roots: tuple[str, ...]) -> list[dict[str, Any]]:
     examined: set[str] = set()
     connection = store._connection_for_repository()
     while pending_artifacts or strings - examined:
+        discovered_raw: set[str] = set()
         for identity in sorted(pending_artifacts):
             record = artifacts.verify_artifact(identity)
             raw = artifacts.read_artifact(identity)
@@ -164,8 +194,12 @@ def _closure(store: Store, roots: tuple[str, ...]) -> list[dict[str, Any]]:
             }
             # Exact binary/raw bytes are already bound by their digest.
             with suppress(ValueError, UnicodeDecodeError):
-                strings.update(_strings(json.loads(raw)))
-        pending_artifacts = set()
+                value = json.loads(raw)
+                strings.update(_strings(value))
+                discovered_raw.update(_raw_source_references(store, value, source_digests))
+        pending_artifacts = {
+            identity for identity in discovered_raw if "artifact:" + identity not in dependencies
+        }
         candidates = sorted(strings - examined)
         examined.update(candidates)
         for table, primary in _SOURCE_TABLES.items():
@@ -185,6 +219,11 @@ def _closure(store: Store, roots: tuple[str, ...]) -> list[dict[str, Any]]:
                         "facts": facts,
                     }
                     strings.update(_strings(facts))
+                    pending_artifacts.update(
+                        identity
+                        for identity in _raw_source_references(store, facts, source_digests)
+                        if "artifact:" + identity not in dependencies
+                    )
                     raw_identity = facts.get("artifact_digest")
                     if isinstance(raw_identity, str):
                         if "artifact:" + raw_identity not in dependencies:
@@ -198,7 +237,11 @@ def selected_projection(store: Store, selection_digest: str) -> dict[str, Any]:
     selected = MatchweekResearchRepository(store).inspect_causal(selection_digest)
     artifacts = ArtifactStore(store)
     selection = artifacts.verify_manifest(selection_digest)
-    dependencies = _closure(store, tuple(ref.digest for ref in selection.artifacts))
+    # Preserve the released selected graph traversal. Outcome source-digest
+    # dependencies belong only to their separate post-play manifest.
+    dependencies = _closure(
+        store, tuple(ref.digest for ref in selection.artifacts), source_digests=frozenset()
+    )
     f16 = object_bytes(artifacts.read_artifact(selected.f16_manifest_digest))
     candidate = resolve_candidate(store, f16["candidate_contract_digest"])
     return {
@@ -222,15 +265,36 @@ def selected_projection(store: Store, selection_digest: str) -> dict[str, Any]:
 
 
 def outcome_projection(
-    store: Store, selection_digest: str, settlement_digest: str
+    store: Store,
+    selection_digest: str,
+    settlement_digest: str,
+    *,
+    source_digests: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     selected = selected_projection(store, selection_digest)
-    settlement = SettlementRepository(store).replay(settlement_digest).to_dict()
+    settlement = object_bytes(
+        canonical(SettlementRepository(store).replay(settlement_digest).to_dict())
+    )
     if (
         settlement.get("selection_digest") != selection_digest
         or settlement.get("manifest_digest") != selected["f16_manifest_digest"]
     ):
         raise SourceAuthorizationError("Outcome source manifest differs from original selection.")
+    # Until supplements have an exact retained manifest representation, V2
+    # admits only the full settlement snapshot. Each evidence record has its own
+    # classification, including any applicable exact retained raw dependency.
+    evidence = settlement["evidence"]
+    evidence_ids = [item["evidence_digest"] for item in evidence]
+    if len(evidence_ids) != len(set(evidence_ids)):
+        raise SourceAuthorizationError("Duplicate exact outcome fact-evidence identities.")
+    dependencies = _closure(store, (settlement_digest,), source_digests=source_digests) + [
+        {
+            "id": "outcome-evidence:" + item["evidence_digest"],
+            "digest": digest(canonical(item)),
+            "facts": item,
+        }
+        for item in evidence
+    ]
     # Outcomes have their own closure. They never join or replace the pre-T graph.
     return {
         "selection_digest": selection_digest,
@@ -238,7 +302,8 @@ def outcome_projection(
         "f16_manifest_digest": selected["f16_manifest_digest"],
         "settlement_digest": settlement_digest,
         "settlement": settlement,
-        "dependencies": _closure(store, (settlement_digest,)),
+        "fact_evidence_digests": sorted(evidence_ids),
+        "dependencies": sorted(dependencies, key=lambda item: item["id"]),
     }
 
 
@@ -384,14 +449,21 @@ def _validate_entry(store: Store, entry: dict[str, Any]) -> None:
     _nonempty(limits["rate_limit_review"])
 
 
-def _bind_dependency(entry: dict[str, Any], dependency: dict[str, Any]) -> None:
+def _bind_dependency(
+    store: Store,
+    entry: dict[str, Any],
+    dependency: dict[str, Any],
+    source_digests: frozenset[str] | None = None,
+) -> None:
     expected = {"id": dependency["id"], "digest": dependency["digest"]}
     if entry["normalized_identity"] != expected:
         raise SourceAuthorizationError(
             "Classification normalized identity differs from exact dependency."
         )
     facts = dependency.get("facts", {})
-    raw_digest = facts.get("artifact_digest")
+    raw_digest = facts.get("artifact_digest") or _retained_source_digest(
+        store, facts, source_digests
+    )
     if "media_type" in dependency:
         raw_digest = dependency["digest"]
     if raw_digest is not None and entry["raw_identity"] != {
@@ -404,6 +476,7 @@ def _bind_dependency(entry: dict[str, Any], dependency: dict[str, Any]) -> None:
     for field, column in (
         ("retrieved_at", "retrieved_at_utc"),
         ("published_at", "source_published_at_utc"),
+        ("published_at", "published_at_utc"),
         ("observed_at", "observed_at_utc"),
     ):
         if column in facts:
@@ -426,7 +499,9 @@ def _bind_dependency(entry: dict[str, Any], dependency: dict[str, Any]) -> None:
         raise SourceAuthorizationError("Classification changes retained manual access provenance.")
 
 
-def verify_manifest(store: Store, manifest_digest: str) -> dict[str, Any]:
+def verify_manifest(
+    store: Store, manifest_digest: str, *, historical_inspection: bool = False
+) -> dict[str, Any]:
     value = read(store, manifest_digest, MANIFEST_MEDIA_TYPE)
     if (
         set(value)
@@ -456,11 +531,22 @@ def verify_manifest(store: Store, manifest_digest: str) -> dict[str, Any]:
         raise SourceAuthorizationError("Exact source risk policy is unavailable.")
     stage = value["stage"]
     projection = value["projection"]
+    source_digests = frozenset[str]()
     if stage == "SELECTED_GRAPH":
         expected = selected_projection(store, value["selection_digest"])
     elif stage == "OUTCOME":
+        # Historical OUTCOME replay follows only the exact authorized identities.
+        # A raw source retained later cannot enlarge an immutable old closure.
+        source_digests = frozenset(
+            dependency["digest"]
+            for dependency in projection["dependencies"]
+            if dependency["id"].startswith("artifact:")
+        )
         expected = outcome_projection(
-            store, value["selection_digest"], projection["settlement_digest"]
+            store,
+            value["selection_digest"],
+            projection["settlement_digest"],
+            source_digests=source_digests if historical_inspection else None,
         )
     elif stage == "ACQUISITION":
         if (
@@ -504,7 +590,7 @@ def verify_manifest(store: Store, manifest_digest: str) -> dict[str, Any]:
         _validate_entry(store, entry)
     if stage != "ACQUISITION":
         for entry, dependency in zip(entries, projection["dependencies"], strict=True):
-            _bind_dependency(entry, dependency)
+            _bind_dependency(store, entry, dependency, source_digests)
     return value
 
 

@@ -26,7 +26,7 @@ from test_research_capture import (
     successor_week as successor_week,
 )
 
-from matchvet.artifacts import ArtifactStore
+from matchvet.artifacts import ArtifactError, ArtifactStore
 from matchvet.research_capture import CaptureError, ResearchCaptureRepository
 from matchvet.source_authorization import SourceAuthorizationRepository, replay_decision
 from matchvet.source_manifest import (
@@ -209,7 +209,9 @@ def test_v1_decision_reader_preserves_exact_historical_bytes(selected_case: Sele
         assert ArtifactStore(store).read_artifact(legacy.decision.decision_digest) == raw
 
 
-@pytest.mark.parametrize("withdrawal", ["NONE", "REFRESH", "SUBMIT"])
+@pytest.mark.parametrize(
+    "withdrawal", ["NONE", "REFRESH", "SUBMIT", "DISPATCH_VALIDATION", "ADMISSION_VALIDATION"]
+)
 def test_v2_continuation_checks_dispatch_and_protected_cb01_admission(
     withdrawal: str,
     selected_case: SelectedCase,
@@ -280,6 +282,47 @@ def test_v2_continuation_checks_dispatch_and_protected_cb01_admission(
 
         witness = WithdrawalWitness(transport_states=("UNAVAILABLE",))
         bootstrap = BootstrapRepository(store, witness_backend=witness)
+        if withdrawal in {"DISPATCH_VALIDATION", "ADMISSION_VALIDATION"}:
+            pending_validation: list[int] = []
+
+            def withdraw_during_validation(
+                retained_store: Store, identity: str, *, historical_inspection: bool = False
+            ) -> dict[str, Any]:
+                result = verify_manifest(
+                    retained_store, identity, historical_inspection=historical_inspection
+                )
+                if pending_validation and owner.calls == pending_validation[0]:
+                    pending_validation.clear()
+                    owner.withdraw(manifest_digest)
+                return result
+
+            monkeypatch.setattr(
+                "matchvet.source_authorization.verify_manifest", withdraw_during_validation
+            )
+            if withdrawal == "DISPATCH_VALIDATION":
+                original_trust = bootstrap._load_attempt_trust
+
+                def dispatch_ready(*args: Any, **kwargs: Any) -> Any:
+                    result = original_trust(*args, **kwargs)
+                    pending_validation.append(owner.calls)
+                    return result
+
+                monkeypatch.setattr(bootstrap, "_load_attempt_trust", dispatch_ready)
+            else:
+                from matchvet.artifacts import ArtifactRecord
+
+                original_publish = ArtifactStore._publish_object
+
+                def staged_result(
+                    artifacts: ArtifactStore, content: bytes, record: ArtifactRecord
+                ) -> None:
+                    original_publish(artifacts, content, record)
+                    if record.media_type == MEDIA_TYPES["TimestampAttemptResult"]:
+                        # One guard after staging, then the guard inside catalog
+                        # insertion. Withdraw during validation of the latter.
+                        pending_validation.append(owner.calls + 1)
+
+                monkeypatch.setattr(ArtifactStore, "_publish_object", staged_result)
         repository = ResearchCaptureRepository(store, bootstrap=bootstrap)
         initial = repository.capture_week(selected_case.selection_digest)
         if withdrawal == "NONE":
@@ -296,7 +339,7 @@ def test_v2_continuation_checks_dispatch_and_protected_cb01_admission(
             assert all(row["capture_state"] == "FAILED" for row in value["denominator_rows"])
             assert repository.replay(result.digest).to_bytes() == result.to_bytes()
         else:
-            with pytest.raises((SourceAuthorizationError, CaptureError, ValueError)):
+            with pytest.raises((SourceAuthorizationError, CaptureError, ValueError, ArtifactError)):
                 repository.capture_week(
                     selected_case.selection_digest,
                     prior_index_digest=initial.digest,
@@ -307,4 +350,11 @@ def test_v2_continuation_checks_dispatch_and_protected_cb01_admission(
                 item.media_type != MEDIA_TYPES["TimestampAttemptResult"]
                 for item in store.artifact_catalog()
             )
-        assert witness.request_count == (0 if withdrawal == "REFRESH" else 1)
+        expected_requests = (
+            len(initial.to_dict()["denominator_rows"])
+            if withdrawal == "NONE"
+            else 0
+            if withdrawal in {"REFRESH", "DISPATCH_VALIDATION"}
+            else 1
+        )
+        assert witness.request_count == expected_requests

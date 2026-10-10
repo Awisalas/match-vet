@@ -13,6 +13,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -235,10 +236,17 @@ def _history(records: tuple[bytes, ...], key: bytes) -> dict[str, tuple[dict[str
 
 
 def _check_head(
-    raw: bytes, key: bytes, records: tuple[bytes, ...], nonce: str | None
+    raw: bytes,
+    key: bytes,
+    records: tuple[bytes, ...],
+    nonce: str | None,
+    *,
+    expected_head: tuple[dict[str, Any], str] | None = None,
 ) -> dict[str, Any]:
+    if expected_head is None:
+        expected_head = object_bytes(records[-1])["signed"], digest(records[-1])
+    last, last_digest = expected_head
     head = _verify(raw, key)
-    last = object_bytes(records[-1])["signed"]
     if (
         set(head)
         != {
@@ -260,7 +268,7 @@ def _check_head(
         or type(head["sequence"]) is not int
         or (
             head["sequence"] != len(records)
-            or head["head"] != digest(records[-1])
+            or head["head"] != last_digest
             or any(head[k] != last[k] for k in _IDENTITY)
             or timestamp(head["current_time"]) < timestamp(last["issued_at"])
         )
@@ -271,7 +279,9 @@ def _check_head(
     return head
 
 
-def _load(store: Store) -> dict[str, Any]:
+def _installation(
+    store: Store,
+) -> tuple[dict[str, Any], tuple[bytes, ...], bytes, dict[str, tuple[dict[str, Any], bytes]]]:
     status = _SOURCE_CONFIG.stat()
     if status.st_uid != os.getuid() or status.st_mode & 0o022 or _SOURCE_CONFIG.is_symlink():
         raise SourceAuthorizationError(
@@ -303,13 +313,26 @@ def _load(store: Store) -> dict[str, Any]:
         raise SourceAuthorizationError("Missing or forked append-only source authority history.")
     records = tuple(p.read_bytes() for p in paths)
     key = _hex(config["verification_key"])
-    _history(records, key)
+    state = _history(records, key)
     last = object_bytes(records[-1])["signed"]
     if any(last[k] != config[k] for k in ("deployment", "catalog", "history")):
         raise SourceAuthorizationError("Source authority installation and history conflict.")
+    return config, records, key, state
+
+
+def _current_checkpoint(
+    config: dict[str, Any], records: tuple[bytes, ...], key: bytes
+) -> tuple[bytes, dict[str, Any]]:
+    expected_head = object_bytes(records[-1])["signed"], digest(records[-1])
     nonce = secrets.token_bytes(32).hex()
     checkpoint = _checkpoint(config, nonce)
-    _check_head(checkpoint, key, records, nonce)
+    head = _check_head(checkpoint, key, records, nonce, expected_head=expected_head)
+    return checkpoint, head
+
+
+def _load(store: Store) -> dict[str, Any]:
+    config, records, key, _state = _installation(store)
+    checkpoint, _head = _current_checkpoint(config, records, key)
     return {
         "records": [v.hex() for v in records],
         "checkpoint": checkpoint.hex(),
@@ -365,7 +388,7 @@ def replay_decision(store: Store, decision_digest: str) -> dict[str, Any]:
     """Historical inspection only. No runtime configuration, checkpoint call or network."""
     try:
         value = read(store, decision_digest, DECISION_MEDIA_TYPE)
-        manifest = verify_manifest(store, value["manifest_digest"])
+        manifest = verify_manifest(store, value["manifest_digest"], historical_inspection=True)
         if value != _decision(value["manifest_digest"], manifest, value["evidence"]):
             raise SourceAuthorizationError(
                 "Source-use decision differs from exact signed evidence."
@@ -377,29 +400,35 @@ def replay_decision(store: Store, decision_digest: str) -> dict[str, Any]:
         ) from error
 
 
-def _require_applicable(manifest: dict[str, Any], decision: dict[str, Any]) -> None:
-    now = timestamp(decision["issued_at"])
-    if decision["state"] != "APPROVED" or not (
-        timestamp(decision["not_before"]) <= now < timestamp(decision["not_after"])
-    ):
+def _applicability_window(
+    manifest: dict[str, Any], decision: dict[str, Any]
+) -> tuple[datetime, datetime]:
+    if decision["state"] != "APPROVED":
         raise SourceAuthorizationError(
             "Source authority is missing, expired, refused or withdrawn."
         )
+    lower, upper = timestamp(decision["not_before"]), timestamp(decision["not_after"])
+    required = _RETAINED_OPERATIONS | (
+        {"AUTOMATED_ACCESS"} if manifest["stage"] == "ACQUISITION" else set()
+    )
     for entry in manifest["entries"]:
-        required = _RETAINED_OPERATIONS | (
-            {"AUTOMATED_ACCESS"} if manifest["stage"] == "ACQUISITION" else set()
-        )
         if not required.issubset(entry["requested_operations"]):
             raise SourceAuthorizationError(
                 "Source manifest lacks required retention/replay/derived operation authority."
             )
         terms = entry["terms_review"]
-        if timestamp(terms["reviewed_at"]) > now or (
-            terms["valid_until"] != "UNKNOWN" and (now >= timestamp(terms["valid_until"]))
-        ):
-            raise SourceAuthorizationError(
-                "Source terms classification is stale or not yet reviewed."
-            )
+        lower = max(lower, timestamp(terms["reviewed_at"]))
+        if terms["valid_until"] != "UNKNOWN":
+            upper = min(upper, timestamp(terms["valid_until"]))
+    return lower, upper
+
+
+def _require_applicable(manifest: dict[str, Any], decision: dict[str, Any]) -> None:
+    lower, upper = _applicability_window(manifest, decision)
+    if not lower <= timestamp(decision["issued_at"]) < upper:
+        raise SourceAuthorizationError(
+            "Source authority or terms classification is expired or not yet applicable."
+        )
 
 
 def _scope(manifest: dict[str, Any]) -> tuple[object, ...]:
@@ -413,13 +442,23 @@ def _scope(manifest: dict[str, Any]) -> tuple[object, ...]:
     return (stage, manifest["selection_digest"], manifest["projection"].get("settlement_digest"))
 
 
+def _classification_scopes(
+    store: Store, manifest_digest: str, state: dict[str, tuple[dict[str, Any], bytes]]
+) -> dict[str, tuple[object, ...]]:
+    return {
+        identity: _scope(read(store, identity, MANIFEST_MEDIA_TYPE))
+        for identity, (record, _raw) in state.items()
+        if identity != manifest_digest and record["state"] != "SUPERSEDED"
+    }
+
+
 def _require_unambiguous(
-    store: Store,
     manifest_digest: str,
     manifest: dict[str, Any],
-    evidence: dict[str, Any],
+    state: dict[str, tuple[dict[str, Any], bytes]],
+    head: dict[str, Any],
+    scopes: dict[str, tuple[object, ...]],
 ) -> None:
-    state, head = _evidence(evidence)
     now = timestamp(head["current_time"])
     for identity, (record, _raw) in state.items():
         if (
@@ -431,8 +470,7 @@ def _require_unambiguous(
             )
         ):
             continue
-        other = read(store, identity, MANIFEST_MEDIA_TYPE)
-        if _scope(other) == _scope(manifest):
+        if scopes[identity] == _scope(manifest):
             raise SourceAuthorizationError(
                 "Conflicting current source classifications need explicit supersession."
             )
@@ -460,7 +498,14 @@ class SourceAuthorizationRepository:
             decision = _decision(manifest_digest, manifest, evidence)
             if decision["state"] == "APPROVED":
                 _require_applicable(manifest, decision)
-                _require_unambiguous(self.store, manifest_digest, manifest, evidence)
+                state, head = _evidence(evidence)
+                _require_unambiguous(
+                    manifest_digest,
+                    manifest,
+                    state,
+                    head,
+                    _classification_scopes(self.store, manifest_digest, state),
+                )
             return (
                 ArtifactStore(self.store)
                 .publish_artifact(canonical(decision), DECISION_MEDIA_TYPE)
@@ -475,21 +520,44 @@ class SourceAuthorizationRepository:
         """Recheck independent continuity and original lineage immediately before a side effect."""
         try:
             original = replay_decision(self.store, decision_digest)
-            evidence = _load(self.store)
+            manifest = verify_manifest(self.store, original["manifest_digest"])
+            _require_applicable(manifest, original)
+            config, records, key, state = _installation(self.store)
             old = original["evidence"]
-            if evidence["verification_key"] != old["verification_key"] or (
-                evidence["records"][: len(old["records"])] != old["records"]
+            if key.hex() != old["verification_key"] or (
+                [v.hex() for v in records[: len(old["records"])]] != old["records"]
             ):
                 raise SourceAuthorizationError(
                     "Retained source authorization is outside current lineage."
                 )
-            manifest = verify_manifest(self.store, original["manifest_digest"])
-            current = _decision(original["manifest_digest"], manifest, evidence)
-            if timestamp(current["issued_at"]) < timestamp(original["issued_at"]):
+            scopes = _classification_scopes(self.store, original["manifest_digest"], state)
+            record = state.get(original["manifest_digest"])
+            if record is None:
+                raise SourceAuthorizationError("No independently current exact authorization.")
+            lower, upper = _applicability_window(manifest, record[0])
+            conflicts = [
+                (timestamp(other["not_before"]), timestamp(other["not_after"]))
+                if other["state"] == "APPROVED"
+                else None
+                for identity, (other, _raw) in state.items()
+                if identity != original["manifest_digest"]
+                and other["state"] != "SUPERSEDED"
+                and scopes[identity] == _scope(manifest)
+            ]
+            original_time = timestamp(original["issued_at"])
+            # All retained reads, manifest checks, history verification and time
+            # parsing precede this fresh checkpoint. A completed change during
+            # validation appears in state or makes the checkpoint disagree.
+            _checkpoint_bytes, head = _current_checkpoint(config, records, key)
+            now = timestamp(head["current_time"])
+            if now < original_time:
                 raise SourceAuthorizationError("Current source checkpoint time rolled back.")
-            _require_applicable(manifest, current)
-            _require_applicable(manifest, original)
-            _require_unambiguous(self.store, original["manifest_digest"], manifest, evidence)
+            if not lower <= now < upper:
+                raise SourceAuthorizationError("Current source authority or terms review expired.")
+            if any(window is None or window[0] <= now < window[1] for window in conflicts):
+                raise SourceAuthorizationError(
+                    "Conflicting current source classifications need explicit supersession."
+                )
             return manifest
         except (OSError, ValueError, TypeError, KeyError, ArtifactError) as error:
             raise SourceAuthorizationError(

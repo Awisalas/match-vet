@@ -952,7 +952,7 @@ def test_f19_outcome_versions_append_to_exact_row_and_preserve_times(
             predecessor: str | None,
         ) -> tuple[str, str]:
             assert exact_enrollment == enrollment_digest
-            assert exact_fact_evidence is None
+            assert exact_fact_evidence in (None, ("c" * 64,))
             attachment_calls.append((exact_settlement, exact_enrollment, predecessor))
             return attachment_values[exact_settlement]
 
@@ -999,12 +999,25 @@ def test_f19_outcome_versions_append_to_exact_row_and_preserve_times(
         )
         owner.append(first_source_manifest)
 
+        for exact_evidence in (("9" * 64,), (), ("c" * 64, "9" * 64)):
+            with pytest.raises(CaptureError, match="fact-evidence"):
+                repository.attach_outcome(
+                    current[0].digest,
+                    membership_id=row["membership_id"],
+                    preference_id=row["preference_id"],
+                    settlement_digest=first_digest,
+                    exact_fact_evidence=exact_evidence,
+                    source_manifest_digest=first_source_manifest,
+                )
+        assert attachment_calls == []
+
         first = repository.attach_outcome(
             current[0].digest,
             membership_id=row["membership_id"],
             preference_id=row["preference_id"],
             settlement_digest=first_digest,
             source_manifest_digest=first_source_manifest,
+            exact_fact_evidence=("c" * 64,),
         )
         original_first = first.to_bytes()
         first_history = first.to_dict()["denominator_rows"][0]["outcome_history"]
@@ -1046,6 +1059,8 @@ def test_f19_outcome_versions_append_to_exact_row_and_preserve_times(
                 settlement_digest="latest",
             )
 
+        changed_fact_evidence: list[str] = []
+
         def cb01_body(digest: str, kind: str) -> dict[str, Any]:
             if kind == "OutcomeAttachment":
                 sequence = 0 if digest == history[0]["outcome_attachment_digest"] else 1
@@ -1061,6 +1076,15 @@ def test_f19_outcome_versions_append_to_exact_row_and_preserve_times(
             if kind == "OutcomeFactAttachment":
                 sequence = 0 if digest == history[0]["fact_attachment_digest"] else 1
                 return {
+                    "evidence_snapshot_digests": sorted(
+                        [
+                            history[sequence]["settlement_digest"],
+                            evidence_snapshots[history[sequence]["settlement_digest"]][
+                                "evidence_digest"
+                            ],
+                            *changed_fact_evidence,
+                        ]
+                    ),
                     "correction_sequence": sequence,
                     "enrollment_digest": enrollment_digest,
                     "predecessor_digest": (
@@ -1076,6 +1100,24 @@ def test_f19_outcome_versions_append_to_exact_row_and_preserve_times(
             second_value["denominator_rows"][0],
             ((row["preference_id"], enrollment_digest, {}),),
         )
+        monkeypatch.setattr(
+            "matchvet.source_authorization._checkpoint",
+            lambda *_a: pytest.fail("Outcome replay contacted current authority"),
+        )
+        owner.config_path.unlink()
+        repository._verify_outcomes(
+            second_value,
+            second_value["denominator_rows"][0],
+            ((row["preference_id"], enrollment_digest, {}),),
+        )
+        changed_fact_evidence.append("9" * 64)
+        with pytest.raises(CaptureError, match="fact-evidence"):
+            repository._verify_outcomes(
+                second_value,
+                second_value["denominator_rows"][0],
+                ((row["preference_id"], enrollment_digest, {}),),
+            )
+        changed_fact_evidence.clear()
         settlements[corrected_digest]["state"] = "PENDING"
         with pytest.raises(CaptureError, match="post-play outcome"):
             repository._verify_outcomes(

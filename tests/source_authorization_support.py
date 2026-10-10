@@ -15,6 +15,7 @@ from matchvet.source_manifest import (
     OPERATIONS,
     POLICY_DIGEST,
     RISK_BASIS,
+    _retained_source_digest,
     canonical,
     digest,
     outcome_projection,
@@ -175,7 +176,7 @@ def projection_entries(store: Store, projection: dict[str, Any]) -> tuple[dict[s
             "digest": dependency["digest"],
         }
         facts = dependency.get("facts", {})
-        raw_digest = facts.get("artifact_digest")
+        raw_digest = facts.get("artifact_digest") or _retained_source_digest(store, facts)
         if "media_type" in dependency:
             raw_digest = dependency["digest"]
         if raw_digest:
@@ -197,6 +198,7 @@ def projection_entries(store: Store, projection: dict[str, Any]) -> tuple[dict[s
         for field, column in (
             ("retrieved_at", "retrieved_at_utc"),
             ("published_at", "source_published_at_utc"),
+            ("published_at", "published_at_utc"),
             ("observed_at", "observed_at_utc"),
         ):
             if column in facts:
