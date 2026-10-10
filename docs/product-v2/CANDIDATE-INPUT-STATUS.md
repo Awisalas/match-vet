@@ -402,3 +402,6 @@ migration.
   `main`; no implementation issue was created. Next blocker: exact current
   publisher/upstream rights evidence for the bounded proposed source closure,
   alongside the separate unprovisioned causal operational prerequisites.
+- Human evidence blocker: [#88 — obtain minimum source-permission evidence](https://github.com/Awisalas/match-vet/issues/88).
+  #70 is blocked by this human outreach/evidence issue; no source authorization
+  implementation issue was created.
