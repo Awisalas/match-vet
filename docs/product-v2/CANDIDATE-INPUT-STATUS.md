@@ -254,3 +254,31 @@ migration.
   No qualified prospective #70 cohort exists. #70 stays OPEN with `needs-info`;
   #86 stays CLOSED. F17, #37 fitting, production PLAY, and promotion remain
   blocked. No activation or collection occurred.
+
+## Latest completed implementation: authenticated causal owner mechanics
+
+- Implemented #87's private canonical Ed25519 owner-record verifier, explicit
+  RESEARCH_ONLY #70 premise acceptance, exact TUF admission/floor advancement,
+  withdrawal, nonce-bound independent checkpoint and authenticated restore lineage.
+  [Contract](../design/causal-owner-activation.md) and
+  [offline evidence](../../.audit/issue-87-implementation/README.md) define the
+  external owner-service responsibility and the all-copy rollback limitation.
+- Added schema-2 signed approval retention with legacy dispatch. Historical
+  inspection preserves original bytes; present qualification checks current owner
+  lineage and known adverse evidence. Dispatch and protected receipt insertion
+  recheck current authority. Occupied failure, restart, no-retry/backfill rules,
+  unchanged V1/CB01 meanings, UNKNOWN and separate #86 authorization remain.
+- Production still refuses. No real owner key/configuration, current checkpoint
+  service, production activation or admitted operational metadata is provisioned.
+  No TSA/TUF/source acquisition, production Store, SQL migration, PLAY, fitting or
+  F17/F18/F20 work occurred. #70 remains OPEN with `needs-info`; #86 remains CLOSED.
+- Implementation commit, final checks, review and #87 closure state are recorded
+  in the delivery entry below after verification and push.
+- Remaining prerequisites: independent owner key/configuration and secure signing
+  administration; nonrollback checkpoint/head/floors and authenticated Store/history
+  restore reconciliation; owner-signed applicable approval binding deployment,
+  catalog/history, exact profile/policy/pins/interval and ADR 0005 premises; exact
+  compatible event-valid TUF admission; separate approved operational real-source
+  authorization; a new eligible unoccupied prospective Matchweek and its complete
+  graph followed by the sole qualified witness and protected receipt. No qualified
+  prospective #70 cohort exists. Fitting and promotion remain separate and blocked.

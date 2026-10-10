@@ -460,8 +460,8 @@ _PROFILE_DIGEST = _digest(_PROFILE)
 class _Approval:
     """Authenticated state provided only by the trusted configuration owner.
 
-    Constructing/retaining this object does not activate it. There is deliberately
-    no caller-supplied approval API, catalog discovery or production loader in #81.
+    Constructing/retaining this object does not activate it. Only the private
+    independently configured owner loader can supply current runtime authority.
     """
 
     not_before: str
@@ -473,8 +473,12 @@ class _Approval:
     timescale: str = "UNSMEARED_UTC"
     operator_compliance: bool = True
     profile_digest: str = _PROFILE_DIGEST
+    owner_record: bytes | None = None
+    owner_evidence: bytes | None = None
 
     def evidence(self) -> bytes:
+        if self.owner_evidence is not None:
+            return self.owner_evidence
         return _canonical(
             {
                 "profile_digest": self.profile_digest,

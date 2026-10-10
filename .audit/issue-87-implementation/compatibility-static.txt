@@ -1,0 +1,1 @@
+PASS: unchanged V1 profile, floors, TUF/interval semantics, CB01 bytes, schema and released readers

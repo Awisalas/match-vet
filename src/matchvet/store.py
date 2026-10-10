@@ -4771,6 +4771,14 @@ class _ResearchOperation:
         ):
             raise RuntimeError("Private insertion authority is invalid or consumed.")
         self._inserted = True
+        if receipt and self._causal_graph is not None:
+            # Evidence staging can observe withdrawal. Reload independently trusted
+            # owner state at the final protected insertion, before indexing receipt.
+            from matchvet.causal_selection import _require_current
+
+            if self._attempt is None:
+                raise RuntimeError("Causal receipt has no original witness attempt.")
+            _require_current(self._attempt, receipt=True)
         if (
             not receipt
             and self._causal_graph is not None

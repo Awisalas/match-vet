@@ -135,14 +135,44 @@ def _manifest_v2(
 
 
 def _load_approval(store: Store) -> tuple[_Approval, _TrustBundle]:
-    # Activation is an authenticated trusted-configuration boundary. No discovery
-    # of caller-published artifacts can approve an authority. #81 tests inject this
-    # private seam with isolated approval; production stays refusing.
-    raise MatchweekResearchError("Authenticated causal profile activation is unavailable.")
+    from matchvet.causal_activation import _load_owner
+
+    try:
+        return _load_owner(store)
+    except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
+        raise MatchweekResearchError(
+            "Authenticated causal profile activation is unavailable."
+        ) from error
 
 
-def _software() -> tuple[tuple[str, bytes], ...]:
+def _require_current(attempt: _WitnessAttempt, *, receipt: bool = False) -> None:
+    from dataclasses import replace
+
+    current, bundle = _load_approval(attempt._operation._store)
+    original = attempt._approval
+    if current.withdrawn_from is not None or (
+        replace(original, owner_evidence=current.owner_evidence) != current
+        or bundle != attempt._bundle
+    ):
+        raise WitnessError("Cached approval is stale or withdrawn; the occupied slot is terminal.")
+    if current.owner_record is not None:
+        from matchvet.causal_activation import _require_lineage
+
+        _require_lineage(original, current)
+    from matchvet.causal_trust import _authenticate
+
+    event = attempt._event if receipt else None
+    current.require(
+        _authenticate(bundle),
+        bundle,
+        None if event is None else event.lower,
+        None if event is None else event.upper,
+    )
+
+
+def _software(*, owner: bool = False) -> tuple[tuple[str, bytes], ...]:
     files = (
+        *(("causal_activation.py",) if owner else ()),
         "causal_selection.py",
         "causal_witness.py",
         "causal_trust.py",
@@ -211,6 +241,7 @@ class _WitnessAttempt:
         self._bundle = bundle
         self._sent = False
         self._transport_started = False
+        self._owner_dispatch_checked = False
         self._event: _VerifiedSelectionEvent | None = None
         fields = graph.binding_fields(operation._selection_digest or "")
         fields["postcommit_entropy"] = secrets.token_bytes(32).hex()
@@ -247,6 +278,7 @@ class _WitnessAttempt:
         self._sent = True  # Before transport or any callback; timeout is terminal.
         self._operation._busy = True
         try:
+            _require_current(self)
             response = _post(self)
             parsed = _verify_event(
                 self._request,
@@ -279,6 +311,12 @@ class _WitnessAttempt:
             or not self._operation._busy
         ):
             raise RuntimeError("Transport authority has expired or belongs to another operation.")
+        # The real transport first checks here after DNS/TLS, immediately before
+        # dispatch. Subsequent response reads retain the existing lifetime checks.
+        if self._transport_started and not self._owner_dispatch_checked:
+            _require_current(self)
+            _ResearchOperation._check(self._operation)
+            self._owner_dispatch_checked = True
 
     def _start_transport(self) -> bytes:
         _WitnessAttempt._check_transport(self)
@@ -291,6 +329,8 @@ class _WitnessAttempt:
         ):
             raise RuntimeError("Transport requires the original sole live witness attempt.")
         self._transport_started = True
+        _require_current(self)
+        self._operation._check()
         return self._request
 
     def _evidence(self, response: bytes, parsed: _ParsedEvent) -> _VerifiedSelectionEvent:
@@ -317,7 +357,7 @@ class _WitnessAttempt:
                 .joinpath("cb01/sigstore-tsa-root.der")
                 .read_bytes(),
             ),
-            *_software(),
+            *_software(owner=self._approval.owner_evidence is not None),
         )
         return _VerifiedSelectionEvent(
             self._binding,
@@ -382,6 +422,8 @@ def _seal(repository: MatchweekResearchRepository, digest: str) -> FrozenMatchwe
     from matchvet.causal_trust import _authenticate
 
     approval.require(_authenticate(bundle), bundle)
+    if approval.withdrawn_from is not None:
+        raise MatchweekResearchError("Authenticated owner approval is withdrawn for new work.")
     try:
         with store._research_operation(graph.logical_id, lambda: None) as operation:
             operation._configure_causal(graph, approval, bundle)
@@ -551,7 +593,8 @@ def _verify_receipt(
     evidence = {name: artifacts.read_artifact(digest) for name, digest in entries.items()}
     roots = [name for name in evidence if name.startswith("root-")]
     root_names = [f"root-{number}" for number in range(11, 11 + len(roots))]
-    software_names = {name for name, _ in _software()}
+    signed_approval = json.loads(evidence["approval"]).get("schema_version") == 2
+    software_names = {name for name, _ in _software(owner=signed_approval)}
     required = {
         "binding",
         "request",
@@ -594,29 +637,42 @@ def _verify_receipt(
         evidence["targets"],
         evidence["trusted-root"],
     )
-    current, current_bundle = _load_approval(repository._store)
-    # Exact original approved activation is retained, while current authenticated
-    # configuration may raise floors or withdraw trust. It cannot rewrite history.
     prior = json.loads(evidence["approval"])
-    original = _Approval(
-        prior["not_before"],
-        prior["not_after"],
-        tuple(tuple(v) for v in prior["floors"]),
-        prior["target_digest"],
-        prior["history_identity"],
-        prior["withdrawn_from"],
-        prior["timescale"],
-        prior["operator_compliance"],
-        prior["profile_digest"],
-    )
-    if (
-        original.evidence() != evidence["approval"]
-        or original.history_identity != current.history_identity
-    ):
-        raise MatchweekResearchError("Uncertain restore or activation history.")
+    if signed_approval:
+        from matchvet.causal_activation import _retained_approval
+
+        original, admitted = _retained_approval(evidence["approval"])
+        if admitted != bundle:
+            raise MatchweekResearchError("Retained bundle differs from exact owner admission.")
+    else:
+        original = _Approval(
+            prior["not_before"],
+            prior["not_after"],
+            tuple(tuple(v) for v in prior["floors"]),
+            prior["target_digest"],
+            prior["history_identity"],
+            prior["withdrawn_from"],
+            prior["timescale"],
+            prior["operator_compliance"],
+            prior["profile_digest"],
+        )
+    if original.evidence() != evidence["approval"]:
+        raise MatchweekResearchError("Unsupported retained approval bytes.")
     from matchvet.causal_trust import _asset, _authenticate, _utc
 
-    current.require(_authenticate(current_bundle), current_bundle)
+    current = None
+    if qualify:
+        current, current_bundle = _load_approval(repository._store)
+        if signed_approval:
+            from matchvet.causal_activation import _require_lineage
+
+            _require_lineage(original, current)
+        elif (
+            current.owner_record is not None
+            or original.history_identity != current.history_identity
+        ):
+            raise MatchweekResearchError("Uncertain restore or activation history.")
+        current.require(_authenticate(current_bundle), current_bundle)
     trust = _authenticate(bundle)
     if (
         evidence["bootstrap"] != _asset("sigstore-root10.json")
@@ -641,6 +697,7 @@ def _verify_receipt(
     # Present withdrawal still invalidates qualification of an earlier receipt.
     if (
         qualify
+        and current is not None
         and current.withdrawn_from is not None
         and _utc(event.upper) >= _utc(current.withdrawn_from)
     ):
