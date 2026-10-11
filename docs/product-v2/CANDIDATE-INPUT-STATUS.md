@@ -16,11 +16,12 @@ seven-scope F01, policy1/policy2 membership, observations, and cutoff artifacts
 retain their original identities, bytes, digests, and replay meaning. See the
 [contract and LF14 branch audit](../active-fixture-scope.md).
 
-#99 implementation is under validation. Its acceptance boundary includes all
-LF14 semantic checks, closed F01/F06 pairs, immutable observations, mixed Store
-BEL exclusion, protected artifact integrity, and backup/restore. No migration
-or released migration change is needed. The delivery entry below will record
-the final checks, implementation SHA, issue state, and remaining blockers.
+#99 acceptance is complete: all LF14 semantic checks, closed F01/F06 pairs,
+immutable observations, mixed Store BEL exclusion, protected artifact integrity,
+and backup/restore pass focused verification. No migration or released migration
+change was needed. The delivery entry below records the implementation SHA,
+checks, issue state, and remaining blockers. The broader suite retains unchanged
+baseline failures and an unresolved SIGKILL limitation in its #84 end-to-end test.
 
 Next ticket is #100 for prospective capture/cohort and graph identity; #101 adds
 separate offline release qualification. Neither is implemented here. Qualified
@@ -62,10 +63,60 @@ Real temporary Store checks prove policy1 and policy2 exact golden replay,
 policy3 semantic roundtrip, coexistence, FK/triggers, protected artifact closure,
 corruption refusal, and backup/restore. No migration is required.
 
-Implementation commit and final checks: pending validation and review.
-#99 state: OPEN during implementation. Next ticket: #100.
-Remaining operational blockers are the source/currentness contracts, independent
-source/causal authority, #100/#101 integration/qualification, and #70 evidence.
+Implementation commit: `1366c6b680d170b6e8294aa35fc31473c9f14ae6`.
+Pushed to `main`; [#99](https://github.com/Awisalas/match-vet/issues/99) is CLOSED as completed.
+
+All 344 focused tests passed. Changed-file formatter/Ruff, strict mypy for the
+four production modules and three test files, documentation links/fences,
+retained golden hashes, pinned ADR digest, and `git diff --check` passed.
+Standards and spec reviews have no blocking findings. The broader suite completed once: 1767 passed, 18 failed, and 10 skipped.
+It used four isolated workers and short temporary paths for real Unix checkpoints.
+Six failures pass after correcting the installation environment; eleven reproduce
+on the starting commit. One #84 worker exited from SIGKILL during its end-to-end
+settlement check, after successful cohort evaluation. Its exact standalone recheck under `.venv`, using the existing fixture reuse
+path, also exited from SIGKILL (137), without an assertion result. Matched
+public F19 probes used copies of that exact retained graph under both the
+starting commit and the implementation, with the original synthetic authority
+fixture restored. Both PENDING builds and protected-lineage replays succeeded,
+producing the identical artifact digest
+`041cc862d916a7bbf87c29b7df198df47f06a9f612053ad699f571d68a6831c0`.
+The full #84 end-to-end test remains an infrastructure verification blocker;
+its complete settlement/correction path is not claimed green. No source/causal
+activation was provisioned. No #99 contract regression was identified.
+The known CB01 `_support` / missing `f14_digest` failure was reproduced separately;
+its source and test files are byte-for-byte unchanged from the starting commit.
+
+All 24 CLI tests pass with the installed `.venv` interpreter. Five CLI failures
+in the broader run came from the system interpreter's installation context;
+rechecking the complete module corrected that environment error. Both
+interpreters use the same Python, pytest, NumPy, and SciPy versions. Strict mypy
+also passes for all seven changed Python files under `.venv`.
+
+The broader run exposed additional unchanged legacy failures. The F11 weather
+test refuses through the F12 frozen-attempt guard. Three F13 tests fail through
+the frozen-model guard, including the fixture-identity error assertion. All four
+tests reproduce with matching errors on starting commit
+`4b701ef1b05fa66c250bc098849dca0d7247381b`. A public F15 malformed-policy request
+also reproduces its `AttributeError` on that commit, before any F06 lookup. Their
+production and test files are unchanged. These defects remain outside #99;
+their broader-suite failure counts are included above.
+
+The legacy CB01 missing-F16 admission and receipt-as-selection error-message
+mismatch also reproduce on the starting commit using copies of the exact
+retained seven-scope test graph. Its F06/F07/F16 artifacts replay under the old
+code. CB01 source/evaluation and causal witness semantics remain unchanged.
+
+The LF05 test still patches a removed `ingestion.urlopen` symbol, and the CB01
+pinned-hash test expects bytes older than the starting commit. Both tests fail
+identically on that commit; its other two pinned artifacts pass. The #78 end-to-end
+test reaches the same obsolete CB01 hash assertion after its historical F06/F07/F16
+and settlement replay assertions pass; its test and CB01 bytes are unchanged. An operator CLI
+test missing `requests` under the system interpreter passes under `.venv`.
+
+#99 state: CLOSED as completed. Next ticket: #100.
+Remaining blockers are the unchanged baseline defects, the #84 SIGKILL verification
+limitation, source/currentness contracts, independent source/causal authority,
+#100/#101 integration/qualification, and #70 evidence. No #99 contract blocker remains.
 
 ## Six-scope F01 acquisition/replay delivery, #98, 2026-10-11
 
