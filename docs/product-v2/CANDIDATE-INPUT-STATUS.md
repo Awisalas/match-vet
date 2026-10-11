@@ -31,14 +31,36 @@ Checks: offline real-code proof with sockets disabled and synthetic temporary
 Store; retained golden digests and exact locators; canonical league/team-target
 consistency; current issue states/native dependencies; documentation links and
 static checks; proof formatter/Ruff; unchanged production/tests/migrations and
-ADR 0006 pinned digest; `git diff --check`. Audit delivery SHA will be recorded
-in the delivery entry below after commit.
+ADR 0006 pinned digest; `git diff --check`. The delivery entry below records
+the audit commit identity.
 
 Next implementation boundary is #98. Qualified zero-cost complete-current source
 contracts for all six and independently supplied current source/causal authority
 remain operational blockers. #70 numerical support/evidence remains unresolved.
 Default live acquisition remains disabled. No fitting, F17/F18/F20, PLAY, or
 Product Promotion is authorized.
+
+## Six-scope audit delivery, 2026-10-11
+
+Audit commit: `2eeeff1a0f5bcb2db2619568c32c65b477e54864`.
+The [committed audit](https://github.com/Awisalas/match-vet/blob/2eeeff1a0f5bcb2db2619568c32c65b477e54864/docs/research/six-scope-blast-radius-2026-10-11.md)
+and ADR 0007 record exactly six active leagues and zero required paid football/data
+provider or API subscription dependencies. All historical seven-scope/BEL evidence,
+reader meanings, golden bytes/digests, migrations, and ADR 0006 policy bytes remain.
+
+Passed checks: offline F01/F06 replay and full-Store representation proof; 530 exact
+baseline references across 80 paths; seven retained golden digests; six canonical
+league keys and 18 retained BEL targets with unchanged manual authority; 12 changed
+Markdown documents and 101 local links/anchors, tables and fences; issue states and
+native dependencies; proof Ruff/formatter; unchanged production/tests/scripts and
+`git diff --check`. No fixture acquisition or broad test run occurred.
+
+#92 is CLOSED NOT_PLANNED. #91/#95/#96/#97 remain historical CLOSED; #70 is OPEN
+needs-info and blocked by #100. Next implementation ticket is #98, followed by
+#99, #100 and #101 under their native dependencies. Six semantic admission/replay,
+qualified zero-cost complete-current sources for the remaining six, independently
+supplied current source/causal authority, and #70 support/numerical evidence remain
+blockers. Default live acquisition, fitting, PLAY and promotion remain disabled.
 
 ## Retained frontier through 2026-10-10
 
