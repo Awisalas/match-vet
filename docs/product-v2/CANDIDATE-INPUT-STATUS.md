@@ -10,47 +10,62 @@ ITA Serie A, ESP LaLiga, GER Bundesliga, FRA Ligue 1, and POR Primeira Liga.
 Runtime must require no paid football/data provider or paid API subscription;
 ordinary hosting, device, and network costs are outside this rule.
 
-The [blast-radius audit](../research/six-scope-blast-radius-2026-10-11.md) identifies
-all fixed-scope validators, retained digests, LF14 policy branches, unfiltered T05
-membership risk, prospective denominator/cohort changes, and source/causal lineage.
-Its offline proof confirms old F01 bytes/digest and old policy1 F06 replay, and
-shows that the recommended F06 policy3 storage shape fits without a migration.
-#98 adds the immutable scope v2, automatic F01 v4, explicit six acquisition plan,
-and F03 replay in the existing SQLite representation. The new read-only T05
-admission route excludes retained BEL revisions and unresolved rows. Historical
-T05 freeze publication, F06/F07 policies, captures, migrations, manifests, golden
-bytes/digests, Belgian identities/mappings, and ADR 0006 remain unchanged.
-See the [contract reference](../active-fixture-scope.md).
+#98 delivers immutable scope v2 and automatic F01 v4. #99 adds exact six-scope
+F06 policy3 and F07 admission in the existing SQLite representation. Historical
+seven-scope F01, policy1/policy2 membership, observations, and cutoff artifacts
+retain their original identities, bytes, digests, and replay meaning. See the
+[contract and LF14 branch audit](../active-fixture-scope.md).
 
-Implementation tickets after #98 are #99 F06/F07, #100 six prospective
-capture/cohort and graph identity, and #101 separate offline release qualification.
-They remain OPEN under their native prerequisite edges. #98 is CLOSED as completed.
-Focused validation and two-axis review passed. The delivery entry records the
-implementation SHA, and the broader test-run limits are recorded below.
-#92 is CLOSED NOT_PLANNED, superseded by this product decision, with no adapter
-claimed complete. #91/#95/#96/#97 remain CLOSED historical insufficient research.
-#70 remains OPEN needs-info, now also blocked by #100. #86 remains CLOSED as the
-historical seven-scope offline implementation; no prospective cohort is qualified.
+#99 implementation is under validation. Its acceptance boundary includes all
+LF14 semantic checks, closed F01/F06 pairs, immutable observations, mixed Store
+BEL exclusion, protected artifact integrity, and backup/restore. No migration
+or released migration change is needed. The delivery entry below will record
+the final checks, implementation SHA, issue state, and remaining blockers.
 
-Checks: 288 focused tests passed, including old F01/LF02 byte/digest/replay checks,
-successor states, acquisition/refusals, and mixed Store F03/T05 compatibility.
-All seven retained golden file hashes and ADR 0006 bytes match the audit baseline.
-Formatter, Ruff, strict mypy on eight changed production modules and five new test
-files, documentation links/fences, and `git diff --check` passed. Both review axes
-are clear after the minor version-constant cleanup. No migration was needed.
+Next ticket is #100 for prospective capture/cohort and graph identity; #101 adds
+separate offline release qualification. Neither is implemented here. Qualified
+zero-cost complete-current source contracts for all six and independently supplied
+current source/causal authority remain operational blockers. #70 numerical
+support/evidence remains unresolved. Default live acquisition remains disabled.
+No fitting, F17/F18/F20, PLAY, or Product Promotion is authorized.
 
-The full suite was attempted with sockets blocked, then stopped at the unrelated
-CB01 integrated cases under #98's focused testing boundary. It reached 260 passes
-and two refusals caused by the guard blocking local Unix checkpoint sockets.
-Both checkpoint tests pass when local sockets are allowed. Separately reproduced
-the known unchanged `test_cb01_sources` failure: `_support` lacks `f14_digest`.
-No clean full-suite result is claimed, and the excluded CB01 defect is not fixed.
+#92 remains CLOSED NOT_PLANNED under ADR 0007, with no Belgian adapter claimed
+complete. #91/#95/#96/#97 retain their historical insufficiency outcomes. #86
+remains the completed historical seven-scope implementation. The known unchanged
+CB01 `_support` / missing `f14_digest` baseline defect is outside #99.
 
-Next implementation boundary is #99. Qualified zero-cost complete-current source
-contracts for all six and independently supplied current source/causal authority
-remain operational blockers. #70 numerical support/evidence remains unresolved.
-Default live acquisition remains disabled. No fitting, F17/F18/F20, PLAY, or
-Product Promotion is authorized.
+## Six-scope F06/F07 delivery, #99, 2026-10-11
+
+Policy3 keeps `matchweek-membership-freeze-v2`, payload version 1, and binds
+active-scope v2/2026-27, its six ordered keys and exact digest, and automatic
+F01 `fixture-coverage-v4-v4`/schema4. Policies 1/2 keep historical seven contracts.
+Freeze, persist, replay, and observation reject incompatible policy/F01 pairs.
+All six scopes require the existing COMPLETE or source-backed CONFIRMED_EMPTY
+gates, with no Belgian placeholder.
+
+The LF14 branch audit covers policy JSON/codec validation, revision loading,
+controlling-tier conflicts, cumulative-history projection, replay completeness,
+and observation revision/conflict/identity semantics. Policy3 inherits ordered
+confirmed teams and roles, typed DATE/INSTANT compatibility, exact revision and
+assertion coherence, cumulative-history conflicts, explicit identity resolution,
+and precision-aware controller ordering. It also refuses duplicate stable IDs,
+fixture/scope reassignment, and resolved-to-unresolved reattachment. Policy1/2
+observation semantics remain unchanged.
+
+F07 policy3 requires the explicit 21600-second common-cutoff rule. T uses actual
+six-scope INCLUDED members and exact freeze/policy/F01 lineage. In the mixed
+Store proof, earlier retained BEL controls old seven T at 01:00 UTC, while new
+six T is 13:00 UTC. An earlier excluded Thursday fixture does not control either.
+The original freeze stays immutable after a later policy3 observation.
+
+Real temporary Store checks prove policy1 and policy2 exact golden replay,
+policy3 semantic roundtrip, coexistence, FK/triggers, protected artifact closure,
+corruption refusal, and backup/restore. No migration is required.
+
+Implementation commit and final checks: pending validation and review.
+#99 state: OPEN during implementation. Next ticket: #100.
+Remaining operational blockers are the source/currentness contracts, independent
+source/causal authority, #100/#101 integration/qualification, and #70 evidence.
 
 ## Six-scope F01 acquisition/replay delivery, #98, 2026-10-11
 

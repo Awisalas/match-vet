@@ -5,12 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, cast
 
-from matchvet.fixture_coverage import fixture_scopes_for_matchweek
+from matchvet.active_fixture_coverage import (
+    FIXTURE_COVERAGE_V4_CONTRACT_VERSION,
+    FIXTURE_COVERAGE_V4_SCHEMA_VERSION,
+    active_fixture_scopes_for_matchweek,
+)
+from matchvet.active_scope import SUCCESSOR_SIX_SCOPE
+from matchvet.fixture_coverage import FixtureScope, fixture_scopes_for_matchweek
 
 F06_CONTRACT_VERSION = "matchweek-membership-freeze-v2"
 F06_PAYLOAD_VERSION = 1
@@ -75,7 +81,13 @@ def _canonical_utc(value: str, label: str) -> str:
 
 
 def membership_policy_document(policy_version: str = "1") -> dict[str, object]:
-    """Return the immutable initial policy rules in canonicalizable form."""
+    """Return a retained policy contract, never a current-default interpretation."""
+    if policy_version not in ("1", "2", "3"):
+        raise MatchweekMembershipError(
+            "MV-F06-POLICY-UNSUPPORTED",
+            "POLICY_UNSUPPORTED",
+            f"Unsupported F06 membership policy version {policy_version!r}.",
+        )
     document: dict[str, object] = {
         "authority": {
             "fallback_source_keys": {
@@ -157,8 +169,9 @@ def membership_policy_document(policy_version: str = "1") -> dict[str, object]:
         },
         "version": "1",
     }
-    if policy_version == "2":
-        document["version"] = "2"
+    if policy_version in ("2", "3"):
+        # Policy3 changes population only; all LF14 rules and ordering remain exact.
+        document["version"] = policy_version
         authority = cast(dict[str, object], document["authority"])
         authority["selection_order"] = [
             "authority_rank_desc",
@@ -175,11 +188,27 @@ def membership_policy_document(policy_version: str = "1") -> dict[str, object]:
             "references": "revision_content_and_complete_assertion_coherence",
             "identity_transition": "explicit_stable_candidate_state_change",
         }
+    if policy_version == "3":
+        document["active_scope"] = asdict(SUCCESSOR_SIX_SCOPE)
+        document["fixture_coverage"] = {
+            "contract_version": FIXTURE_COVERAGE_V4_CONTRACT_VERSION,
+            "schema_version": FIXTURE_COVERAGE_V4_SCHEMA_VERSION,
+        }
     return document
 
 
+def membership_scopes(season: str, friday: str, policy_version: str) -> tuple[FixtureScope, ...]:
+    """Dispatch the fixed population from the retained F06 policy identity."""
+    policy_snapshot(F06_POLICY_ID, policy_version)
+    if policy_version == "3":
+        if season != SUCCESSOR_SIX_SCOPE.season:
+            raise ValueError("Policy3 requires the exact active-scope season.")
+        return active_fixture_scopes_for_matchweek(friday, active_scope=SUCCESSOR_SIX_SCOPE)
+    return fixture_scopes_for_matchweek(friday, season=season)
+
+
 def policy_snapshot(policy_id: str, policy_version: str) -> PolicySnapshot:
-    if policy_id != F06_POLICY_ID or policy_version not in ("1", "2"):
+    if policy_id != F06_POLICY_ID or policy_version not in ("1", "2", "3"):
         raise MatchweekMembershipError(
             "MV-F06-POLICY-UNSUPPORTED",
             "POLICY_UNSUPPORTED",
@@ -205,6 +234,11 @@ class PolicySnapshot:
         if sha256_digest(self.canonical_json) != self.digest:
             raise ValueError("F06 policy snapshot digest does not match its canonical JSON.")
 
+    @property
+    def uses_lf14_integrity(self) -> bool:
+        """Policy2 and policy3 share the complete LF14 semantic evidence contract."""
+        return {"1": False, "2": True, "3": True}[self.policy_version]
+
     def to_payload(self) -> dict[str, object]:
         return {
             "policy_id": self.policy_id,
@@ -223,6 +257,28 @@ class ScopeSnapshot:
     coverage_state: str
     window_start_utc: str
     window_end_utc: str
+
+
+def _validate_exact_scope_snapshots(
+    snapshots: tuple[ScopeSnapshot, ...], expected: tuple[FixtureScope, ...]
+) -> None:
+    for snapshot, scope in zip(snapshots, expected, strict=True):
+        if (
+            snapshot.scope_id,
+            snapshot.league_key,
+            snapshot.season,
+            snapshot.matchweek_friday,
+            snapshot.window_start_utc,
+            snapshot.window_end_utc,
+        ) != (
+            scope.scope_id,
+            scope.league_key,
+            scope.season,
+            scope.matchweek_friday,
+            scope.window_start_utc,
+            scope.window_end_utc,
+        ):
+            raise ValueError("Policy3 scope snapshots must retain the exact canonical identity.")
 
 
 @dataclass(frozen=True)
@@ -339,18 +395,17 @@ class MatchweekMembershipFreeze:
         _digest(self.membership_set_digest, "F06 membership-set digest")
         if not self.season.strip():
             raise ValueError("F06 season must not be empty.")
-        expected = fixture_scopes_for_matchweek(self.matchweek_friday, season=self.season)
+        expected = membership_scopes(self.season, self.matchweek_friday, self.policy.policy_version)
         if tuple(item.scope_id for item in self.scopes) != tuple(
             item.scope_id for item in expected
         ):
-            raise ValueError("F06 freeze scope snapshots must use canonical seven-scope order.")
-        _canonical_utc(self.created_at_utc, "F06 created_at_utc")
-        scope_order = {
-            scope.scope_id: index
-            for index, scope in enumerate(
-                fixture_scopes_for_matchweek(self.matchweek_friday, season=self.season)
+            raise ValueError(
+                "F06 freeze scope snapshots must use the policy's exact canonical scope order."
             )
-        }
+        if self.policy.policy_version == "3":
+            _validate_exact_scope_snapshots(self.scopes, expected)
+        _canonical_utc(self.created_at_utc, "F06 created_at_utc")
+        scope_order = {scope.scope_id: index for index, scope in enumerate(expected)}
         if self.memberships != tuple(
             sorted(self.memberships, key=lambda item: (scope_order[item.scope_id], item.fixture_id))
         ):
@@ -404,15 +459,29 @@ class MatchweekMembershipObservation:
         _canonical_utc(self.recorded_at_utc, "F06 recorded_at_utc")
         if not self.assessment_state:
             raise ValueError("F06 observation requires the later F01 aggregate state.")
-        if len(self.scopes) != 7:
-            raise ValueError("F06 observation must retain all seven exact F01 scope states.")
-        if tuple(item.scope_id for item in self.scopes) != tuple(
-            scope.scope_id
-            for scope in fixture_scopes_for_matchweek(
-                self.scopes[0].matchweek_friday, season=self.scopes[0].season
+        if not self.scopes:
+            raise ValueError("F06 observation requires exact F01 scopes.")
+        first = self.scopes[0]
+        actual_ids = tuple(item.scope_id for item in self.scopes)
+        legacy_ids = tuple(
+            scope.scope_id for scope in membership_scopes(first.season, first.matchweek_friday, "1")
+        )
+        six_ids = (
+            tuple(
+                scope.scope_id
+                for scope in membership_scopes(first.season, first.matchweek_friday, "3")
             )
-        ):
-            raise ValueError("F06 observation scopes must use canonical seven-scope order.")
+            if first.season == SUCCESSOR_SIX_SCOPE.season
+            else ()
+        )
+        # The unchanged observation envelope has no policy field. Its repository
+        # verifies these scopes against the exact referenced freeze and F01 contract.
+        if actual_ids not in (legacy_ids, six_ids):
+            raise ValueError("F06 observation scopes must use an exact supported scope order.")
+        if actual_ids == six_ids:
+            _validate_exact_scope_snapshots(
+                self.scopes, membership_scopes(first.season, first.matchweek_friday, "3")
+            )
         scope_order = {item.scope_id: index for index, item in enumerate(self.scopes)}
         expected_changes = tuple(
             sorted(
@@ -677,10 +746,8 @@ def _validate_freeze_digests(freeze: MatchweekMembershipFreeze) -> None:
             or any(item.history_value_digest is not None for item in decision.conflicts)
         ):
             raise ValueError("Policy1 cannot contain policy2 integrity or projection evidence.")
-        if freeze.policy.policy_version == "2" and any(
-            item.integrity is None for item in revisions
-        ):
-            raise ValueError("Policy2 requires semantic revision integrity evidence.")
+        if freeze.policy.uses_lf14_integrity and any(item.integrity is None for item in revisions):
+            raise ValueError("LF14 policies require semantic revision integrity evidence.")
     if freeze.freeze_id != freeze_identity(
         freeze.season, freeze.matchweek_friday, freeze.assessment_digest, freeze.policy
     ):

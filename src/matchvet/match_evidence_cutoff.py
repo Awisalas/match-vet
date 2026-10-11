@@ -224,6 +224,14 @@ class MatchEvidenceCutoffRepository:
         if freeze is None:
             raise _refuse("FREEZE-MISSING", "Exact F06 freeze is required.")
         policy = self.read_policy(policy_digest)
+        if freeze.policy.policy_version == "3" and (
+            policy.rule != "MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME"
+            or policy.lead_time_seconds != 21600
+        ):
+            raise _refuse(
+                "POLICY-INVALID",
+                "Policy3 requires the common earliest INCLUDED cutoff and explicit 21600 seconds.",
+            )
         if policy.lead_time_seconds is None:
             raise _refuse("POLICY-UNCONFIGURED", "F07 requires an explicitly configured lead time.")
         if policy.rule == "MATCHWEEK_EARLIEST_INCLUDED_KICKOFF_MINUS_LEAD_TIME":
@@ -286,9 +294,7 @@ def _cutoff(
     )
 
 
-def _matchweek_boundary(
-    freeze: MatchweekMembershipFreeze, policy: CutoffPolicy
-) -> datetime:
+def _matchweek_boundary(freeze: MatchweekMembershipFreeze, policy: CutoffPolicy) -> datetime:
     included = tuple(
         member for member in freeze.memberships if member.decision is MembershipState.INCLUDED
     )
@@ -311,7 +317,7 @@ def _matchweek_boundary(
 def _validate_original_slate(freeze: MatchweekMembershipFreeze) -> None:
     """Reject retained excluded candidates that could move the original K earlier.
 
-    Exact F06 replay has already verified its complete seven-scope F01 coverage and candidate
+    Exact F06 replay has already verified its complete policy-specific F01 coverage and candidate
     references. A precise out-of-window NOT_SCHEDULED candidate is harmless; an in-window or
     imprecise one leaves original eligibility unresolved.
     """

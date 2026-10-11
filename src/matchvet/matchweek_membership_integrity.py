@@ -1,4 +1,4 @@
-"""Assessment-specific integrity facts for F06 membership policy 2."""
+"""LF14 integrity facts shared by F06 membership policies 2 and 3."""
 
 from __future__ import annotations
 

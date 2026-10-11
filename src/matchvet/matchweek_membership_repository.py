@@ -11,7 +11,15 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
+from matchvet.active_fixture_coverage import (
+    FIXTURE_COVERAGE_V4_CONTRACT_VERSION,
+    FIXTURE_COVERAGE_V4_SCHEMA_VERSION,
+    ActiveFixtureCoverageAssessment,
+)
+from matchvet.active_scope import SUCCESSOR_SIX_SCOPE
 from matchvet.fixture_coverage import (
+    FIXTURE_COVERAGE_CONTRACT_VERSION,
+    FIXTURE_COVERAGE_SCHEMA_VERSION,
     FixtureIdentityResolution,
     FixtureIdentityState,
     FixtureRevisionReference,
@@ -19,7 +27,11 @@ from matchvet.fixture_coverage import (
     MatchweekScheduleState,
     ScopeCoverageState,
     SupportedFixtureCoverageAssessment,
-    fixture_scopes_for_matchweek,
+)
+from matchvet.fixture_coverage_codec import (
+    FIXTURE_COVERAGE_V3_CONTRACT_VERSION,
+    FIXTURE_COVERAGE_V3_SCHEMA_VERSION,
+    is_supported_f01_assessment,
 )
 from matchvet.fixture_coverage_repository import (
     FixtureCoverageIntegrityError,
@@ -52,6 +64,7 @@ from matchvet.matchweek_membership import (
     freeze_payload,
     membership_digest,
     membership_identity,
+    membership_scopes,
     membership_set_digest,
     observation_digest,
     observation_from_canonical_json,
@@ -113,14 +126,15 @@ class MatchweekMembershipRepository:
         policy_version: str,
     ) -> MatchweekMembershipFreeze:
         """Freeze one explicitly named persisted F01 assessment and exact F05 history."""
-        scopes = _requested_scopes(season, matchweek_friday)
         policy = policy_snapshot(policy_id, policy_version)
+        scopes = _requested_scopes(season, matchweek_friday, policy.policy_version)
         freeze_id = freeze_identity(season, matchweek_friday, assessment_digest, policy)
         existing = self.get_by_id(freeze_id)
         if existing is not None:
             return existing
 
         assessment = self._load_assessment(assessment_digest)
+        _validate_f01_pair(policy, assessment)
         _validate_assessment_gate(assessment, season, matchweek_friday, scopes)
         health_references = self._exact_health_references(assessment)
         memberships = _build_memberships(self._store, assessment, freeze_id, policy)
@@ -459,13 +473,7 @@ class MatchweekMembershipRepository:
                 f"F05 attempt history differs from F01. Missing {missing}; unexpected {extra}.",
             )
         scope_order = {
-            scope.scope_id: index
-            for index, scope in enumerate(
-                fixture_scopes_for_matchweek(
-                    assessment.scope_assessments[0].scope.matchweek_friday,
-                    season=assessment.scope_assessments[0].scope.season,
-                )
-            )
+            item.scope.scope_id: index for index, item in enumerate(assessment.scope_assessments)
         }
         result: list[ProviderHealthReference] = []
         for attempt_id, attempt in attempts.items():
@@ -515,8 +523,11 @@ class MatchweekMembershipRepository:
                 return existing
             raise _identity_conflict(freeze.freeze_id)
 
-        scopes = _requested_scopes(freeze.season, freeze.matchweek_friday)
+        scopes = _requested_scopes(
+            freeze.season, freeze.matchweek_friday, freeze.policy.policy_version
+        )
         assessment = self._load_assessment(freeze.assessment_digest)
+        _validate_f01_pair(freeze.policy, assessment)
         _validate_assessment_gate(assessment, freeze.season, freeze.matchweek_friday, scopes)
         health_references = self._exact_health_references(assessment)
         expected_memberships = _build_memberships(
@@ -687,8 +698,11 @@ class MatchweekMembershipRepository:
             raise _stored_corruption(f"F06 health rows for {freeze.freeze_id} differ from root.")
 
     def _validate_replay_references(self, freeze: MatchweekMembershipFreeze) -> None:
-        scopes = _requested_scopes(freeze.season, freeze.matchweek_friday)
+        scopes = _requested_scopes(
+            freeze.season, freeze.matchweek_friday, freeze.policy.policy_version
+        )
         assessment = self._load_assessment(freeze.assessment_digest)
+        _validate_f01_pair(freeze.policy, assessment)
         _validate_assessment_gate(assessment, freeze.season, freeze.matchweek_friday, scopes)
         if freeze.scopes != _scope_snapshots(assessment):
             raise _stored_corruption(
@@ -711,11 +725,11 @@ class MatchweekMembershipRepository:
         if set(candidates) != {(item.scope_id, item.fixture_id) for item in freeze.memberships}:
             raise _stored_corruption("F06 membership groups differ from exact F01 identities.")
         for membership in freeze.memberships:
-            if freeze.policy.policy_version == "2" and any(
+            if freeze.policy.uses_lf14_integrity and any(
                 item.integrity is None for item in membership.evaluated_revisions
             ):
                 raise _stored_corruption(
-                    "Policy2 revisions must retain semantic integrity evidence."
+                    "LF14 policy revisions must retain semantic integrity evidence."
                 )
             if membership.scope_id not in {scope.scope_id for scope in scopes}:
                 raise _stored_corruption("F06 membership points to an unknown Fixture Scope.")
@@ -750,7 +764,7 @@ class MatchweekMembershipRepository:
                     }
                 )
             )
-            if freeze.policy.policy_version == "2":
+            if freeze.policy.uses_lf14_integrity:
                 semantic_values = {
                     item.assertion_id: item.semantic_value
                     for snapshot in membership.evaluated_revisions
@@ -766,7 +780,7 @@ class MatchweekMembershipRepository:
                     or any(item.history_value_digest is None for item in membership.conflicts)
                 ):
                     raise _stored_corruption(
-                        "Policy2 material conflict projections are incomplete."
+                        "LF14 policy material conflict projections are incomplete."
                     )
             values_by_conflict = _validate_frozen_conflicts(
                 self._store,
@@ -797,13 +811,15 @@ class MatchweekMembershipRepository:
             _validate_stored_decision(membership, freeze.policy)
 
 
-def _requested_scopes(season: str, matchweek_friday: str) -> tuple[FixtureScope, ...]:
+def _requested_scopes(
+    season: str, matchweek_friday: str, policy_version: str = "1"
+) -> tuple[FixtureScope, ...]:
     if not isinstance(season, str) or not season.strip():
         raise MatchweekMembershipError(
             "MV-F06-SCOPE-MISMATCH", "SCOPE_MISMATCH", "F06 season must be a nonempty exact value."
         )
     try:
-        scopes = fixture_scopes_for_matchweek(matchweek_friday, season=season)
+        scopes = membership_scopes(season, matchweek_friday, policy_version)
     except (TypeError, ValueError) as error:
         raise MatchweekMembershipError(
             "MV-F06-SCOPE-MISMATCH",
@@ -819,6 +835,66 @@ def _requested_scopes(season: str, matchweek_friday: str) -> tuple[FixtureScope,
     return scopes
 
 
+def _validate_f01_pair(
+    policy: PolicySnapshot, assessment: SupportedFixtureCoverageAssessment
+) -> None:
+    """Closed admission table. Legacy seven contracts never acquire six semantics."""
+    pair = (assessment.contract_version, assessment.schema_version)
+    valid = is_supported_f01_assessment(assessment)
+    if policy.policy_version == "3":
+        valid = (
+            valid
+            and type(assessment) is ActiveFixtureCoverageAssessment
+            and assessment.active_scope == SUCCESSOR_SIX_SCOPE
+            and pair == (FIXTURE_COVERAGE_V4_CONTRACT_VERSION, FIXTURE_COVERAGE_V4_SCHEMA_VERSION)
+        )
+    elif policy.policy_version in ("1", "2"):
+        valid = valid and pair in (
+            (FIXTURE_COVERAGE_CONTRACT_VERSION, FIXTURE_COVERAGE_SCHEMA_VERSION),
+            (FIXTURE_COVERAGE_V3_CONTRACT_VERSION, FIXTURE_COVERAGE_V3_SCHEMA_VERSION),
+        )
+    else:
+        valid = False
+    if not valid:
+        raise _scope_refusal(assessment.digest, "Unsupported exact F06 policy/F01 contract pair.")
+    if policy.policy_version == "3":
+        _validate_policy3_identities(assessment)
+
+
+def _validate_policy3_identities(assessment: SupportedFixtureCoverageAssessment) -> None:
+    """Do not let a duplicate stable candidate make transition lookup ambiguous."""
+    seen: set[str] = set()
+    for identity in assessment.identity_resolutions:
+        try:
+            replace(identity)  # Revalidate the retained typed identity, including its references.
+        except (TypeError, ValueError) as error:
+            raise _scope_refusal(
+                assessment.digest, "Malformed policy3 candidate identity."
+            ) from error
+        if identity.candidate_id in seen:
+            raise _scope_refusal(assessment.digest, "Ambiguous policy3 stable candidate identity.")
+        seen.add(identity.candidate_id)
+
+
+def _validate_policy3_transitions(
+    original: SupportedFixtureCoverageAssessment, later: SupportedFixtureCoverageAssessment
+) -> None:
+    _validate_policy3_identities(original)
+    _validate_policy3_identities(later)
+    prior = {item.candidate_id: item for item in original.identity_resolutions}
+    for identity in later.identity_resolutions:
+        old = prior.get(identity.candidate_id)
+        if old is None:
+            continue  # A new candidate is an addition, never implicit identity resolution.
+        if old.scope_id != identity.scope_id:
+            raise _scope_refusal(later.digest, "Stable candidate identity cannot change scope.")
+        if old.state is FixtureIdentityState.RESOLVED and (
+            identity.state is not FixtureIdentityState.RESOLVED
+            or old.canonical_fixture_id != identity.canonical_fixture_id
+        ):
+            raise _scope_refusal(later.digest, "Unsupported stable candidate identity transition.")
+
+
 def _validate_assessment_gate(
     assessment: SupportedFixtureCoverageAssessment,
     season: str,
@@ -827,12 +903,10 @@ def _validate_assessment_gate(
 ) -> None:
     if not assessment.scope_assessments:
         raise _scope_refusal(assessment.digest, "F01 assessment has no Fixture Scopes.")
-    if len(assessment.scope_assessments) != 7:
-        raise _scope_refusal(assessment.digest, "F01 assessment must have exactly seven scopes.")
     expected_by_id = {scope.scope_id: scope for scope in expected_scopes}
     actual_ids = tuple(item.scope.scope_id for item in assessment.scope_assessments)
     expected_ids = tuple(scope.scope_id for scope in expected_scopes)
-    if actual_ids != expected_ids or len(set(actual_ids)) != 7:
+    if actual_ids != expected_ids:
         raise _scope_refusal(
             assessment.digest,
             f"F01 scope order or identity differs. Expected {expected_ids}; got {actual_ids}.",
@@ -895,7 +969,7 @@ def _validate_assessment_gate(
     if assessment.schedule_state is not expected_state:
         raise _scope_refusal(
             assessment.digest,
-            "F01 aggregate schedule state conflicts with the seven persisted scope states.",
+            "F01 aggregate schedule state conflicts with the declared persisted scope states.",
         )
     if assessment.scope_assessments[0].scope.season != season:
         raise _scope_refusal(assessment.digest, "F01 season does not match the explicit request.")
@@ -935,9 +1009,10 @@ def _build_memberships(
     scope_order = {
         scope.scope_id: index
         for index, scope in enumerate(
-            fixture_scopes_for_matchweek(
+            membership_scopes(
+                assessment.scope_assessments[0].scope.season,
                 assessment.scope_assessments[0].scope.matchweek_friday,
-                season=assessment.scope_assessments[0].scope.season,
+                policy.policy_version,
             )
         )
     }
@@ -968,7 +1043,7 @@ def _build_memberships(
                 )
             snapshots.append(
                 _load_revision_snapshot(
-                    store, reference, assessment, semantic=policy.policy_version == "2"
+                    store, reference, assessment, semantic=policy.uses_lf14_integrity
                 )
             )
             if policy.policy_version == "1":
@@ -978,11 +1053,11 @@ def _build_memberships(
                     raise _stored_corruption(str(error)) from error
         snapshots.sort(key=lambda item: item.revision_id)
         _refuse_top_authority_conflict(
-            store, fixture_id, snapshots, semantic=policy.policy_version == "2"
+            store, fixture_id, snapshots, semantic=policy.uses_lf14_integrity
         )
         chosen = max(snapshots, key=controller_key)
         conflicts = _load_exact_conflicts(
-            store, fixture_id, snapshots, semantic=policy.policy_version == "2"
+            store, fixture_id, snapshots, semantic=policy.uses_lf14_integrity
         )
         if policy.policy_version == "1":
             assertion_ids = tuple(
@@ -1675,6 +1750,14 @@ def _validate_observation_matchweek(
     freeze: MatchweekMembershipFreeze,
     assessment: SupportedFixtureCoverageAssessment,
 ) -> None:
+    _validate_f01_pair(freeze.policy, assessment)
+    expected = _requested_scopes(
+        freeze.season, freeze.matchweek_friday, freeze.policy.policy_version
+    )
+    if tuple(item.scope for item in assessment.scope_assessments) != expected:
+        raise _scope_refusal(
+            assessment.digest, "Observation cannot change the frozen scope contract."
+        )
     scope = assessment.scope_assessments[0].scope
     if assessment.digest == freeze.assessment_digest:
         raise MatchweekMembershipError(
@@ -1699,6 +1782,8 @@ def _build_observation_changes(
     original_assessment = FixtureCoverageRepository(store).get(freeze.assessment_digest)
     if original_assessment is None:
         raise _stored_corruption("F06 observation source freeze has a missing F01 assessment.")
+    if freeze.policy.policy_version == "3":
+        _validate_policy3_transitions(original_assessment, assessment)
     original_candidate_ids = {
         item.candidate_id for item in original_assessment.identity_resolutions
     }
@@ -1741,7 +1826,7 @@ def _build_observation_changes(
                 )
             snapshots.append(
                 _load_revision_snapshot(
-                    store, reference, assessment, semantic=freeze.policy.policy_version == "2"
+                    store, reference, assessment, semantic=freeze.policy.uses_lf14_integrity
                 )
             )
         snapshots.sort(key=lambda item: item.revision_id)
@@ -1755,7 +1840,7 @@ def _build_observation_changes(
         identity_resolved = any(
             candidate_id not in original_candidate_ids for candidate_id in candidate_ids
         )
-        if freeze.policy.policy_version == "2":
+        if freeze.policy.uses_lf14_integrity:
             prior_states = {
                 item.candidate_id: item.state for item in original_assessment.identity_resolutions
             }
@@ -1770,7 +1855,7 @@ def _build_observation_changes(
             codes.add(ObservationCode.REVISION_OBSERVED)
 
         conflicts = _load_exact_conflicts(
-            store, fixture_id, snapshots, semantic=freeze.policy.policy_version == "2"
+            store, fixture_id, snapshots, semantic=freeze.policy.uses_lf14_integrity
         )
         if conflicts:
             codes.add(ObservationCode.SOURCE_CONFLICT)

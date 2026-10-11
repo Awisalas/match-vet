@@ -2,7 +2,7 @@
 
 Date: 2026-10-11.
 Status: accepted product decision; #98 scope and F01/F02/F03 are implemented offline.
-F06/F07 and end-to-end successor operation remain pending.
+F06/F07 policy3 is implemented offline in #99; end-to-end successor operation remains pending.
 
 MatchVet's active recommendation scope is exactly ENG Premier League, ITA Serie A,
 ESP LaLiga, GER Bundesliga, FRA Ligue 1, and POR Primeira Liga, in that order.
@@ -29,7 +29,8 @@ Changing the shared catalog in place breaks old F01 replay. The smallest propose
 storage design uses a new F01 version and F06 membership policy3 within the existing
 freeze envelope. Offline storage evidence supports no migration for that design;
 F01 successor admission and persistence use that representation without migration.
-F06/F07 successor admission and end-to-end replay remain pending in #99 through #101.
+F06/F07 policy3 uses the same representation without migration. Prospective
+capture/cohort integration and release qualification remain pending in #100/#101.
 
 See the [blast-radius audit](../research/six-scope-blast-radius-2026-10-11.md)
 for exact contracts, proof limits, implementation tickets, and activation blockers.

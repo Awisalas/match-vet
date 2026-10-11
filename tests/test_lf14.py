@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from membership_policy3_support import _six_scope_assessment
 from test_matchweek_membership import (
     _assessment_with_higher_authority_revision,
     _persist_attested_assessment,
@@ -48,7 +49,10 @@ from matchvet.provider_health_repository import ProviderHealthRepository
 from matchvet.store import CanonicalIdentifier, Store, open_store
 
 
-def test_exact_conflict_projection_accepts_ac_subset_of_abc_history(tmp_path: Path) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_exact_conflict_projection_accepts_ac_subset_of_abc_history(
+    tmp_path: Path, policy_version: str
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         original = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
@@ -59,11 +63,17 @@ def test_exact_conflict_projection_accepts_ac_subset_of_abc_history(tmp_path: Pa
         selected = _assessment_with_higher_authority_revision(
             store, tmp_path, original, kickoff="14:00", cache_key="C", attempt_id="C"
         )
+        if policy_version == "3":
+            selected = _six_scope_assessment(selected)
         FixtureCoverageRepository(store).persist(selected)
         ProviderHealthRepository(store).persist_many(build_provider_health_records(selected))
         repository = MatchweekMembershipRepository(store)
         frozen = repository.freeze_exact(
-            "2026-27", "2026-09-25", selected.digest, "matchvet:matchweek-membership", "2"
+            "2026-27",
+            "2026-09-25",
+            selected.digest,
+            "matchvet:matchweek-membership",
+            policy_version,
         )
         assert len(frozen.memberships) == 1
         assert frozen.memberships[0].controlling_revision.kickoff_utc == (
@@ -74,7 +84,11 @@ def test_exact_conflict_projection_accepts_ac_subset_of_abc_history(tmp_path: Pa
         assert repository.get_by_id(frozen.freeze_id) == frozen
         assert (
             repository.freeze_exact(
-                "2026-27", "2026-09-25", selected.digest, "matchvet:matchweek-membership", "2"
+                "2026-27",
+                "2026-09-25",
+                selected.digest,
+                "matchvet:matchweek-membership",
+                policy_version,
             )
             == frozen
         )
@@ -90,13 +104,14 @@ def _with_capture(
     home: str = "Start United",
     away: str = "Start City",
     time: str = "12:00",
+    date: str = "25/09/2026",
     status: str | None = None,
     key: str = "extra",
     retrieved_at: str = "2026-09-17T12:00:00+00:00",
 ) -> FixtureCoverageAssessment:
     league = league_by_key("premier_league")
     content = (
-        f"Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG\nE0,25/09/2026,{time},{home},{away},,\n"
+        f"Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG\nE0,{date},{time},{home},{away},,\n"
     ).encode()
     dataset = FootballDataCSVParser().parse(content, league=league, season="2026-27")
     if status is not None:
@@ -116,10 +131,13 @@ def _with_capture(
         ),
     )
     observation = importer.observations_for_capture(capture.source_capture_id)[0]
-    assert observation.fixture_id == original.fixture_revisions[0].fixture_id
+    assert observation.fixture_id is not None
+    original_reference = next(
+        item for item in original.fixture_revisions if item.fixture_id == observation.fixture_id
+    )
     assert observation.revision_id is not None and observation.revision_digest is not None
     reference = FixtureRevisionReference(
-        scope_id=original.fixture_revisions[0].scope_id,
+        scope_id=original_reference.scope_id,
         fixture_id=observation.fixture_id,
         revision_id=observation.revision_id,
         revision_digest=observation.revision_digest,
@@ -166,17 +184,21 @@ def _with_capture(
 
 
 def _freeze(
-    store: Store, assessment: SupportedFixtureCoverageAssessment
+    store: Store, assessment: SupportedFixtureCoverageAssessment, *, policy_version: str = "2"
 ) -> MatchweekMembershipFreeze:
+    if policy_version == "3":
+        assessment = _six_scope_assessment(assessment)
     FixtureCoverageRepository(store).persist(assessment)
     ProviderHealthRepository(store).persist_many(build_provider_health_records(assessment))
     return MatchweekMembershipRepository(store).freeze_exact(
-        "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", "2"
+        "2026-27", "2026-09-25", assessment.digest, "matchvet:matchweek-membership", policy_version
     )
 
 
+@pytest.mark.parametrize("policy_version", ("2", "3"))
 def test_equivalent_source_spellings_preserve_raw_provenance_and_canonical_identity(
     tmp_path: Path,
+    policy_version: str,
 ) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
@@ -196,41 +218,47 @@ def test_equivalent_source_spellings_preserve_raw_provenance_and_canonical_ident
         )
         selected = _with_capture(store, tmp_path, original, home="Arsenal", away="Chelsea")
         before = importer.source_assertions()
-        frozen = _freeze(store, selected)
+        frozen = _freeze(store, selected, policy_version=policy_version)
         assert len(frozen.memberships) == 1
         assert frozen.memberships[0].conflicts == ()
         assert importer.source_assertions() == before
         assert MatchweekMembershipRepository(store).get_by_id(frozen.freeze_id) == frozen
 
 
-def test_scheduled_and_confirmed_are_one_membership_status_class(tmp_path: Path) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_scheduled_and_confirmed_are_one_membership_status_class(
+    tmp_path: Path, policy_version: str
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         original = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
         )
         scheduled = _with_capture(store, tmp_path, original, status="SCHEDULED", key="scheduled")
         confirmed = _with_capture(store, tmp_path, scheduled, status="CONFIRMED", key="confirmed")
-        frozen = _freeze(store, confirmed)
+        frozen = _freeze(store, confirmed, policy_version=policy_version)
         assert frozen.memberships[0].decision.value == "INCLUDED"
         assert frozen.memberships[0].conflicts == ()
         assert MatchweekMembershipRepository(store).get_by_digest(frozen.freeze_digest) == frozen
 
 
-def test_same_tier_date_and_instant_are_compatible_and_use_exact_kickoff(tmp_path: Path) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_same_tier_date_and_instant_are_compatible_and_use_exact_kickoff(
+    tmp_path: Path, policy_version: str
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         original = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
         )
         dated = _with_capture(store, tmp_path, original, time="", key="date")
         exact = _with_capture(store, tmp_path, dated, time="12:00", key="instant")
-        frozen = _freeze(store, exact)
+        frozen = _freeze(store, exact, policy_version=policy_version)
         assert frozen.memberships[0].controlling_revision.kickoff_precision == "INSTANT"
         assert frozen.memberships[0].conflicts == ()
         assert MatchweekMembershipRepository(store).get_by_id(frozen.freeze_id) == frozen
 
 
 @pytest.mark.parametrize("valid_digest", (False, True))
-@pytest.mark.parametrize("policy_version", ("1", "2"))
+@pytest.mark.parametrize("policy_version", ("1", "2", "3"))
 @pytest.mark.parametrize("mismatch", ("kickoff", "status"))
 def test_supported_revision_requires_content_digest_and_assertion_coherence(
     tmp_path: Path, valid_digest: bool, policy_version: str, mismatch: str
@@ -295,6 +323,8 @@ def test_supported_revision_requires_content_digest_and_assertion_coherence(
             freshness_results=base.freshness_results,
         )
         with pytest.raises(MatchweekMembershipError) as refusal:
+            if policy_version == "3":
+                bad = _six_scope_assessment(bad)
             FixtureCoverageRepository(store).persist(bad)
             ProviderHealthRepository(store).persist_many(build_provider_health_records(bad))
             MatchweekMembershipRepository(store).freeze_exact(
@@ -303,12 +333,15 @@ def test_supported_revision_requires_content_digest_and_assertion_coherence(
         assert refusal.value.reason_code == "REFERENCE_CORRUPT"
 
 
-def test_candidate_id_change_alone_is_not_identity_resolution(tmp_path: Path) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_candidate_id_change_alone_is_not_identity_resolution(
+    tmp_path: Path, policy_version: str
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         base = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
         )
-        frozen = _freeze(store, base)
+        frozen = _freeze(store, base, policy_version=policy_version)
         later = assess_fixture_coverage(
             scopes=tuple(item.scope for item in base.scope_assessments),
             provider_attempts=base.provider_attempts,
@@ -319,6 +352,8 @@ def test_candidate_id_change_alone_is_not_identity_resolution(tmp_path: Path) ->
             ),
             freshness_results=base.freshness_results,
         )
+        if policy_version == "3":
+            later = _six_scope_assessment(later)
         FixtureCoverageRepository(store).persist(later)
         repository = MatchweekMembershipRepository(store)
         observation = repository.append_observation(frozen.freeze_id, later.digest)
@@ -327,8 +362,9 @@ def test_candidate_id_change_alone_is_not_identity_resolution(tmp_path: Path) ->
 
 
 @pytest.mark.parametrize("disagreement", ("kickoff", "status"))
+@pytest.mark.parametrize("policy_version", ("2", "3"))
 def test_genuine_controlling_tier_disagreement_fails_closed(
-    tmp_path: Path, disagreement: str
+    tmp_path: Path, policy_version: str, disagreement: str
 ) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         base = _persistable_schedule_assessment(
@@ -344,7 +380,7 @@ def test_genuine_controlling_tier_disagreement_fails_closed(
             status="POSTPONED" if disagreement == "status" else "SCHEDULED",
         )
         with pytest.raises(MatchweekMembershipError) as refusal:
-            _freeze(store, second)
+            _freeze(store, second, policy_version=policy_version)
         assert refusal.value.reason_code == "MEMBERSHIP_CONFLICT"
 
 
@@ -463,15 +499,20 @@ def test_all_seven_66_decision_freeze_is_atomic_and_idempotent(
 
 
 @pytest.mark.parametrize("omit", ("integrity", "conflict", "legacy_integrity"))
-def test_policy2_replay_rejects_omitted_integrity_evidence(tmp_path: Path, omit: str) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_policy2_replay_rejects_omitted_integrity_evidence(
+    tmp_path: Path, policy_version: str, omit: str
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         base = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
         )
         selected = _with_capture(store, tmp_path, base, time="13:00")
-        frozen = _freeze(store, selected)
+        frozen = _freeze(store, selected, policy_version=policy_version)
         semantic = frozen
         if omit == "legacy_integrity":
+            FixtureCoverageRepository(store).persist(selected)
+            ProviderHealthRepository(store).persist_many(build_provider_health_records(selected))
             frozen = MatchweekMembershipRepository(store).freeze_exact(
                 "2026-27", "2026-09-25", selected.digest, "matchvet:matchweek-membership", "1"
             )
@@ -534,7 +575,10 @@ def test_policy2_replay_rejects_omitted_integrity_evidence(tmp_path: Path, omit:
             MatchweekMembershipRepository(store).get_by_id(frozen.freeze_id)
 
 
-def test_different_canonical_team_assertion_is_rejected(tmp_path: Path) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_different_canonical_team_assertion_is_rejected(
+    tmp_path: Path, policy_version: str
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         base = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
@@ -547,11 +591,11 @@ def test_different_canonical_team_assertion_is_rejected(tmp_path: Path) -> None:
                 ('"Start City"', base.fixture_revisions[0].fixture_id),
             )
         with pytest.raises(MatchweekMembershipError) as refusal:
-            _freeze(store, base)
+            _freeze(store, base, policy_version=policy_version)
         assert refusal.value.reason_code == "REFERENCE_CORRUPT"
 
 
-@pytest.mark.parametrize("policy_version", ("1", "2"))
+@pytest.mark.parametrize("policy_version", ("1", "2", "3"))
 def test_conflict_history_must_cover_every_selected_assertion(
     tmp_path: Path, policy_version: str
 ) -> None:
@@ -580,6 +624,8 @@ def test_conflict_history_must_cover_every_selected_assertion(
                 (capture_id,),
             )
         with pytest.raises(MatchweekMembershipError) as refusal:
+            if policy_version == "3":
+                selected = _six_scope_assessment(selected)
             FixtureCoverageRepository(store).persist(selected)
             ProviderHealthRepository(store).persist_many(build_provider_health_records(selected))
             MatchweekMembershipRepository(store).freeze_exact(
@@ -592,7 +638,10 @@ def test_conflict_history_must_cover_every_selected_assertion(
         assert refusal.value.reason_code == "REFERENCE_CORRUPT"
 
 
-def test_selected_revision_cannot_omit_explicit_status_assertion(tmp_path: Path) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_selected_revision_cannot_omit_explicit_status_assertion(
+    tmp_path: Path, policy_version: str
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         base = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
@@ -620,11 +669,14 @@ def test_selected_revision_cannot_omit_explicit_status_assertion(tmp_path: Path)
             ),
         )
         with pytest.raises(MatchweekMembershipError) as refusal:
-            _freeze(store, missing)
+            _freeze(store, missing, policy_version=policy_version)
         assert refusal.value.reason_code == "REFERENCE_CORRUPT"
 
 
-def test_legacy_date_assertion_timestamps_remain_immutable_and_compatible(tmp_path: Path) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_legacy_date_assertion_timestamps_remain_immutable_and_compatible(
+    tmp_path: Path, policy_version: str
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         base = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "", "Start United", "Start City"),)
@@ -642,14 +694,17 @@ def test_legacy_date_assertion_timestamps_remain_immutable_and_compatible(tmp_pa
         assert manifest.candidate_count == 1
         importer = FixtureHistoryImporter(store, private_root=tmp_path)
         before = importer.source_assertions()
-        frozen = _freeze(store, exact)
+        frozen = _freeze(store, exact, policy_version=policy_version)
         assert frozen.memberships[0].controlling_revision.kickoff_precision == "INSTANT"
         assert MatchweekMembershipRepository(store).get_by_id(frozen.freeze_id) == frozen
         assert importer.source_assertions() == before
 
 
 @pytest.mark.parametrize("missing_value", (False, True))
-def test_explicit_status_requires_observed_value(tmp_path: Path, missing_value: bool) -> None:
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_explicit_status_requires_observed_value(
+    tmp_path: Path, policy_version: str, missing_value: bool
+) -> None:
     with open_store(tmp_path / "matchvet.sqlite3", private_root=tmp_path) as store:
         base = _persistable_schedule_assessment(
             store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
@@ -668,5 +723,37 @@ def test_explicit_status_requires_observed_value(tmp_path: Path, missing_value: 
                     "unknown_reason='SOURCE_MISSING_FIELD' WHERE predicate='fixture_status'"
                 )
         with pytest.raises(MatchweekMembershipError) as refusal:
-            _freeze(store, selected)
+            _freeze(store, selected, policy_version=policy_version)
+        assert refusal.value.reason_code == "REFERENCE_CORRUPT"
+
+
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_date_instant_disagreement_refuses(tmp_path: Path, policy_version: str) -> None:
+    with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+        base = _persistable_schedule_assessment(
+            store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
+        )
+        dated = _with_capture(store, tmp_path, base, time="", key="date")
+        disagree = _with_capture(store, tmp_path, dated, date="26/09/2026", key="instant")
+        with pytest.raises(MatchweekMembershipError) as refusal:
+            _freeze(store, disagree, policy_version=policy_version)
+        assert refusal.value.reason_code == "MEMBERSHIP_CONFLICT"
+
+
+@pytest.mark.parametrize("policy_version", ("2", "3"))
+def test_reversed_home_away_roles_refuse(tmp_path: Path, policy_version: str) -> None:
+    with open_store(tmp_path / "store.sqlite3", private_root=tmp_path) as store:
+        base = _persistable_schedule_assessment(
+            store, tmp_path, (("2026-09-25", "12:00", "Start United", "Start City"),)
+        )
+        with store.transaction() as tx:
+            tx.execute("DROP TRIGGER source_assertions_no_update")
+            tx.execute(
+                "UPDATE source_assertions SET normalized_value_json=CASE predicate "
+                "WHEN 'home_team' THEN '\"Start City\"' "
+                "WHEN 'away_team' THEN '\"Start United\"' END "
+                "WHERE predicate IN ('home_team','away_team')"
+            )
+        with pytest.raises(MatchweekMembershipError) as refusal:
+            _freeze(store, base, policy_version=policy_version)
         assert refusal.value.reason_code == "REFERENCE_CORRUPT"
