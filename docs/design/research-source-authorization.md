@@ -1,5 +1,10 @@
 # Private research source authorization
 
+Scope update, 2026-10-11: [ADR 0007](../adr/0007-six-active-leagues-without-paid-data.md)
+sets new active scope to ENG/ITA/ESP/GER/FRA/POR. The seven-scope contracts below
+retain their historical meanings. The [successor audit](../research/six-scope-blast-radius-2026-10-11.md)
+and #98–#101 govern explicit six-scope implementation, still pending.
+
 Issue #89 implements [ADR 0006](../adr/0006-research-only-public-source-automation-risk.md)
 for private RESEARCH_ONLY #70 work. The production installation contains no source
 authority. Causal owner activation remains a separate prerequisite.

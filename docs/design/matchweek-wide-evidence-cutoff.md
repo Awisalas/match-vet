@@ -1,5 +1,10 @@
 # Matchweek-wide evidence cutoff correction
 
+Scope update, 2026-10-11: [ADR 0007](../adr/0007-six-active-leagues-without-paid-data.md)
+sets new active scope to ENG/ITA/ESP/GER/FRA/POR. The seven-scope contracts below
+retain their historical meanings. The [successor audit](../research/six-scope-blast-radius-2026-10-11.md)
+and #98–#101 govern explicit six-scope implementation, still pending.
+
 Current successor: [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md)
 and [causal selection architecture](causal-matchweek-selection-witness.md) authorize
 a new prospective remote-event boundary for #79. The return-time clock and writer

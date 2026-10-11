@@ -1,8 +1,46 @@
 # CandidateInput blocker status
 
-Status date: 2026-10-10.
+Status date: 2026-10-11.
 
-## Current state
+## Current state: six-league product decision
+
+[ADR 0007](../adr/0007-six-active-leagues-without-paid-data.md) removes Belgium
+from active scope without replacement. The exact active set is ENG Premier League,
+ITA Serie A, ESP LaLiga, GER Bundesliga, FRA Ligue 1, and POR Primeira Liga.
+Runtime must require no paid football/data provider or paid API subscription;
+ordinary hosting, device, and network costs are outside this rule.
+
+The [blast-radius audit](../research/six-scope-blast-radius-2026-10-11.md) identifies
+all fixed-scope validators, retained digests, LF14 policy branches, unfiltered T05
+membership risk, prospective denominator/cohort changes, and source/causal lineage.
+Its offline proof confirms old F01 bytes/digest and old policy1 F06 replay, and
+shows that the recommended F06 policy3 storage shape fits without a migration.
+Successor domain readers, policy2 compatibility, and six integrated replay remain
+unimplemented and require their own proofs. No production module, test fixture,
+released migration, historical manifest, or ADR 0006 bytes changed.
+
+Implementation tickets are #98 scope/F01/F02/F03, #99 F06/F07, #100 six prospective
+capture/cohort and graph identity, and #101 separate offline release qualification.
+All are OPEN ready-for-agent with native prerequisite edges; only #98 is unblocked.
+#92 is CLOSED NOT_PLANNED, superseded by this product decision, with no adapter
+claimed complete. #91/#95/#96/#97 remain CLOSED historical insufficient research.
+#70 remains OPEN needs-info, now also blocked by #100. #86 remains CLOSED as the
+historical seven-scope offline implementation; no prospective cohort is qualified.
+
+Checks: offline real-code proof with sockets disabled and synthetic temporary
+Store; retained golden digests and exact locators; canonical league/team-target
+consistency; current issue states/native dependencies; documentation links and
+static checks; proof formatter/Ruff; unchanged production/tests/migrations and
+ADR 0006 pinned digest; `git diff --check`. Audit delivery SHA will be recorded
+in the delivery entry below after commit.
+
+Next implementation boundary is #98. Qualified zero-cost complete-current source
+contracts for all six and independently supplied current source/causal authority
+remain operational blockers. #70 numerical support/evidence remains unresolved.
+Default live acquisition remains disabled. No fitting, F17/F18/F20, PLAY, or
+Product Promotion is authorized.
+
+## Retained frontier through 2026-10-10
 
 [#70](https://github.com/Awisalas/match-vet/issues/70) remains OPEN with
 `needs-info`. [ADR 0004](../adr/0004-candidate-input-estimands-and-consumer-boundaries.md)

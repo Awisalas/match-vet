@@ -1,0 +1,2724 @@
+{
+  "baseline_commit": "3a727e3b351fddd1dfb27e29b1a50fe40d17f9d4",
+  "audit_date": "2026-10-11",
+  "method": "Exact baseline tracked text search; includes cleared non-scope matches. Supplemental dependency audit is in the companion document.",
+  "references": [
+    {
+      "path": "GLOSSARY.md",
+      "line": 11,
+      "text": "The fixed recommendation scope for the 2026/27 season: Premier League, Serie A, La Liga, Bundesliga, Ligue 1, Liga Portugal, and Belgian Pro League. The set is based on the UEFA five-year association ranking and does not change during the configured season."
+    },
+    {
+      "path": "GLOSSARY.md",
+      "line": 14,
+      "text": "The user-facing Friday-through-Monday calendar slate containing every eligible Target Match in the seven configured Target Leagues whose scheduled kickoff falls within that window. Official league round numbers do not control membership; a rescheduled fixture outside the window belongs to another Matchweek."
+    },
+    {
+      "path": "GLOSSARY.md",
+      "line": 35,
+      "text": "The immutable, versioned F01 result for all seven Fixture Scopes in one season and Matchweek. It retains scope states, provider attempts and coverage evidence, Fixture Revision references, fixture identity results, freshness results, aggregate Matchweek Schedule State, and a stable digest."
+    },
+    {
+      "path": "GLOSSARY.md",
+      "line": 38,
+      "text": "The F01 aggregate coverage state for the seven Fixture Scopes: COMPLETE, CONFIRMED_EMPTY, PARTIAL, UNKNOWN, or STALE."
+    },
+    {
+      "path": "GLOSSARY.md",
+      "line": 47,
+      "text": "An immutable, assessment-specific record of the fixtures assigned to one Friday-through-Monday Matchweek from its seven Fixture Scopes. It names the exact Fixture Coverage Assessment, versioned membership policy, and controlling Fixture Revision for each resolved candidate. Later observations and later freezes do not change it. Its creation time is not a Match Evidence Cutoff."
+    },
+    {
+      "path": "README.md",
+      "line": 15,
+      "text": "T06 adds deterministic all-seven-league fixture and structured match-history ingestion from the"
+    },
+    {
+      "path": "README.md",
+      "line": 55,
+      "text": "the checked commit, seven-league replay, offline rebuild, recovery checks, and measured budgets."
+    },
+    {
+      "path": "README.md",
+      "line": 98,
+      "text": "Run the recorded seven-league release checks with"
+    },
+    {
+      "path": "docs/adr/0001-matchweek-wide-evidence-cutoff.md",
+      "line": 9,
+      "text": "The founder requires every match in the seven-league Friday-through-Monday slate to use the information frozen before its earliest eligible kickoff. The glossary preserves that rule, but the intervening V2 direction and implemented F07/F11 contracts use independent match deadlines. Exact F07 identities propagate into models, decisions, processing, and timestamp commitments. Reinterpreting them would invalidate immutable history."
+    },
+    {
+      "path": "docs/design/causal-matchweek-implementation-tickets.md",
+      "line": 14,
+      "text": "| 4 | [#84](https://github.com/Awisalas/match-vet/issues/84) | Integrated seven-league successor proof and complete parent acceptance evidence | #83 (closed) | Completed |"
+    },
+    {
+      "path": "docs/design/causal-matchweek-implementation-tickets.md",
+      "line": 139,
+      "text": "#84 completed the isolated seven-scope Friday\u2013Monday path through F06/F07/F11/F12/"
+    },
+    {
+      "path": "docs/design/causal-matchweek-selection-witness.md",
+      "line": 82,
+      "text": "2. Validate every INCLUDED member, all seven schedule scopes, exact F06 revisions,"
+    },
+    {
+      "path": "docs/design/lf13-official-fixture-observations.md",
+      "line": 31,
+      "text": "The existing observation dataclass retains its field envelope and canonical digest algorithm. Construction accepts only the exact contract/schema/policy tuples v1/1/1 or v2/2/2, then binds the tuple to the supported league. V2 requires INSTANT. Belgian policy rules, source identity and golden artifact bytes remain unchanged."
+    },
+    {
+      "path": "docs/design/lf13-official-fixture-observations.md",
+      "line": 76,
+      "text": "Manual observations are RESEARCH_ONLY and create no Provider Attempts, Provider Health or completeness certification. No store schema or migration changes. After recording exact observations, acquire a fresh assessment and complete LF02/F05/F06 separately. LF13 does not perform the real all-seven validation, close #44 or unpark F07."
+    },
+    {
+      "path": "docs/design/matchweek-wide-evidence-cutoff.md",
+      "line": 14,
+      "text": "The configured Friday-through-Monday slate across all seven Target Leagues has **one frozen information state**. All research and evidence collection must finish before its common cutoff. Later fixtures receive no extra collection window. Later news, injuries, lineups, weather, schedule observations, outcomes, or refreshed inputs cannot change any recommendation. Permitted audit, evaluation, and F19 settlement remain separate."
+    },
+    {
+      "path": "docs/design/matchweek-wide-evidence-cutoff.md",
+      "line": 93,
+      "text": "1. Require full-window schedule coverage and exact provenance for all seven scopes. Coverage of only remaining upcoming fixtures is insufficient. Resolve eligibility before choosing K."
+    },
+    {
+      "path": "docs/design/matchweek-wide-evidence-cutoff.md",
+      "line": 109,
+      "text": "| F06 `matchweek_membership.py`, `matchweek_membership_repository.py`; upstream F01/F05 | Keep membership schema/policy semantics. New prospective admission validates the exact complete seven-scope schedule, timestamps, excluded earlier candidates, and precise included kickoffs. Later observations remain append-only audit state. |"
+    },
+    {
+      "path": "docs/design/matchweek-wide-evidence-cutoff.md",
+      "line": 156,
+      "text": "2. Keep A authoritative and B unmerged. Acquire fresh approved F01 fixtures/full-window attestations for all seven scopes, with required manual official Belgian coverage where the approved live route still requires it; retain fresh F05 health. Do not transplant B's identities or old schedule assertions."
+    },
+    {
+      "path": "docs/design/research-source-authorization.md",
+      "line": 21,
+      "text": "the exact seven scopes and artifact references. Replay inspects the causal graph"
+    },
+    {
+      "path": "docs/design/research-source-authorization.md",
+      "line": 158,
+      "text": "V1 source decisions keep their exact seven-field bytes and reader. Caller-supplied"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-CHRONOLOGY-0.2.0.md",
+      "line": 16,
+      "text": "Every INCLUDED membership in the complete seven-league Friday-through-Monday"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 58,
+      "text": "replaces the manual-first permission proposal: seven official publisher families"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 61,
+      "text": "source set yet proves the complete all-seven automatic contract."
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 78,
+      "text": "is CLOSED under criterion B for the exact default Pro League calendar response."
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 79,
+      "text": "[#92](https://github.com/Awisalas/match-vet/issues/92), the first Pro League automatic"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 90,
+      "text": "The prior seven-league table is retained; no other league was researched again."
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 95,
+      "text": "also closes under B. Further official Pro League probing stops here;"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 99,
+      "text": "an exact complete-current Belgian source contract, despite zero open native"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 138,
+      "text": "  source-contract gate. Next blocker is a contract-first Belgian source/design"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 142,
+      "text": "  official Pro League probing stays stopped. OpenFootAPI/API-Football are not"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 155,
+      "text": "  no preset binding the miscellaneous-events service to the Belgian scope."
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 167,
+      "text": "- **Further official Pro League probing stops here.** The required next bounded"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 206,
+      "text": "  third-party Belgian source if no explicit official complete-current contract"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 211,
+      "text": "  UTC/status and seven fixture comparisons, 17 new source-ID observations and all"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 219,
+      "text": "  `ready-for-agent`, until an exact complete-current Belgian contract is qualified."
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 229,
+      "text": "  `TECHNICAL_REFUSAL`. The retained Pro League response contains the same dormant"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 246,
+      "text": "  `needs-info` and blocked on the replacement Pro League source contract in"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 276,
+      "text": "- Replacement decision: qualify an explicitly exposed official Pro League"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 291,
+      "text": "- Pro League verdict: PARTIAL. Preferred official candidate:"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 292,
+      "text": "  `https://www.proleague.be/jpl-kalender!`, operated by Pro League NV. Fixtures,"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 300,
+      "text": "- All seven official families remain PARTIAL. Premier League needs an exact"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 304,
+      "text": "  semantics; Liga Portugal needs its export contract; Pro League needs the"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 318,
+      "text": "- Next blocker: qualify one supported public Pro League representation with"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 437,
+      "text": "   automated source contracts in #91 before #92's first Pro League schedule"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 439,
+      "text": "   Preserve all-seven F01/F06 coverage/currentness and canonical identities."
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 489,
+      "text": "  and exact-index continuation entry point. It retains the seven-scope F06/F07"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 665,
+      "text": "  record **B**, not operational approval. Minimum practical inputs: seven-scope"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 683,
+      "text": "- Remaining rights evidence: named operator/legal capacity; seven actual official"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 727,
+      "text": "  [#92 first automatic Pro League schedule slice](https://github.com/Awisalas/match-vet/issues/92),"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 732,
+      "text": "- Target closure: seven official publisher schedule/coverage/revision families;"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 787,
+      "text": "- Open blockers: #90 bounded transport, #91 seven-scope source qualification,"
+    },
+    {
+      "path": "docs/product-v2/CANDIDATE-INPUT-STATUS.md",
+      "line": 788,
+      "text": "  #92 first automatic Pro League schedule slice, #93 FT-to-F13 history and #94"
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 19,
+      "text": "| [#91](https://github.com/Awisalas/match-vet/issues/91) exact source qualification | CLOSED under B in `288abd30716bbd1aca700220189387017e0639ea`; [raw default calendar is insufficient for current-window coverage](../research/pro-league-calendar-raw-qualification-2026-10-10.md); seven-league gaps retained |"
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 22,
+      "text": "| [#97](https://github.com/Awisalas/match-vet/issues/97) free third-party Belgian fixture qualification | CLOSED under B; [Football Charts documentation insufficient](../research/football-charts-belgium-free-contract-2026-10-10.md), zero fixture requests, full-window/currentness/empty/UTC/status/automatic mapping unproved; paid disclaimer not automatically applied to free; no qualified replacement |"
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 23,
+      "text": "| [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | OPEN needs-info after #97 outcome B; zero open native dependencies, substantive complete-current Belgian source contract still missing; contract-first source/design decision required, no adapter readiness |"
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 73,
+      "text": "### LF01 Resolve the all-seven live fixture coverage blocker"
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 75,
+      "text": "- **Goal:** Preserve F01's proof bar after the audit found no reviewed all-seven automated path satisfying both completeness and use/retention requirements. The product owner selected operator-attested official publications as a temporary Research-Only bridge; this does not approve an automated source or clear rights for Product Promotion."
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 77,
+      "text": "- **Prerequisites met:** LF09 #52 and the all-seven validation gate; the product-owner bridge decision is recorded in #44."
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 78,
+      "text": "- **Status:** Complete in #44 (closed) after LF14 produced the real all-seven F06 freeze. The automated/licensed source requirement remains tracked for Product Promotion."
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 85,
+      "text": "- **Status:** Complete in #45 (closed). The all-seven Research-Only freeze subsequently passed under LF14; #44 is closed and F07 is Ready."
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 108,
+      "text": "- **Goal:** Allow minimal immutable operator-cited official fixture facts to seed missing Belgian candidate rows without scraping, acting as a provider, asserting completeness, or changing F01/F06 rules. LF02 remains the separate completeness attestation."
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 133,
+      "text": "- **Status:** Complete in #51 (closed). The subsequent real all-seven LF14 validation passed; #44 is closed and original F07 is Ready."
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 135,
+      "text": "### LF09 Add source-scoped Pro League official team identity mappings"
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 137,
+      "text": "- **Goal:** Resolve the 15 reviewed official Pro League names against existing Belgian 2026-27 teams only for the LF05 source kind. Preserve OpenFootball policy, existing team identities, and F01 serialization."
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 140,
+      "text": "- **Status:** Complete in #52 (closed). The existing nine real Belgian LF05 observations were reused by the successful LF14 freeze; #44 is closed and original F07 is Ready."
+    },
+    {
+      "path": "docs/product-v2/IMPLEMENTATION-ROADMAP.md",
+      "line": 154,
+      "text": "- **All-seven validation gate:** Passed using the existing 2026-10-09 post-LF10 store and immutable artifacts: seven COMPLETE scopes, 66 canonical candidates, 12 exact health records, 66 persisted policy-2 membership decisions, exact replay and identical retry, reopened-store replay and Doctor PASS. Previous immutable history and failed evidence are unchanged. #44 is closed. The automated/licensed-source requirement remains separate for Product Promotion."
+    },
+    {
+      "path": "docs/product-v2/PRODUCT-DIRECTION.md",
+      "line": 13,
+      "text": "Product V2 uses a Matchweek Membership Freeze to define the full seven-league Friday-through-Monday slate and one Matchweek Research Cutoff to freeze all its research and evidence collection. Each match's immutable Match Evidence Cutoff references that common boundary. The initial corrected policy explicitly retains six hours (21600 seconds) before the earliest exact eligible kickoff; code supplies no implicit default. Later fixtures never receive new or refreshed recommendation inputs. See the [cutoff correction decision](../adr/0001-matchweek-wide-evidence-cutoff.md); implementation is pending."
+    },
+    {
+      "path": "docs/product-v2/PRODUCT-DIRECTION.md",
+      "line": 21,
+      "text": "For private RESEARCH_ONLY work, [ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) records product-owner acceptance of legal/terms/database-rights risk for public-source automation and necessary raw/normalized retention, private backup/replay and derived inputs. This is `PRODUCT_OWNER_AUTOMATION_RISK_ACCEPTED`, not publisher approval or rights clearance. External permission remains separately evidenced or UNKNOWN. No authentication/paywall/CAPTCHA/WAF bypass, private endpoints, impersonation or ban evasion is allowed; rate limits, bounded requests and technical refusal must be respected. Evidence quality, seven-scope completeness and UNKNOWN remain unchanged. This policy grants no live run, PLAY or Product Promotion. See the [automated source closure](../research/automated-prospective-source-closure-2026-10-10.md)."
+    },
+    {
+      "path": "docs/product-v2/V1-MIGRATION-AUDIT.md",
+      "line": 9,
+      "text": "**Current behavior.** T06 imports season files from Football-Data.co.uk and uses OpenFootball where configured. The Belgian Pro League has no OpenFootball fallback. T05 freezes the fixture revisions already in the store and does not prove that acquisition covered every eligible fixture. `GLOSSARY.md` and open issue #1 retain the V1 2026/27 seven-league, Friday-to-Monday scope. See `src/matchvet/ingestion.py`, `src/matchvet/matchweek.py`, and `docs/matchweek-freeze.md`."
+    },
+    {
+      "path": "docs/research-only-release-qualification.json",
+      "line": 1,
+      "text": "{\"digest\":\"4584dfcde8c91adb778d15754cb8e13f204a5ff90f9a43355911959d1c20b24b\",\"environment_digest\":\"942c3a79cf89d341a3988b3790e1e58f679ba73d2c3a28efb79bd12a12af0cb1\",\"failure_reasons\":[],\"gates\":[{\"command\":\".venv/bin/pytest -q tests/test_t18.py\",\"details\":[],\"elapsed_seconds\":2.0,\"exit_code\":0,\"name\":\"chronological_evaluation\",\"output_digest\":\"57cdf5396b4a87976ef0ae4351922b270c7b3fdbea82afea4bf6429565d40097\",\"status\":\"PASS\"},{\"command\":\".venv/bin/pytest -q tests/test_cli.py tests/test_t16.py tests/test_t17.py\",\"details\":[],\"elapsed_seconds\":71.0,\"exit_code\":0,\"name\":\"cli_report_audit_export_backup_restore\",\"output_digest\":\"bf672a9b1ba60154e1a92e875a05a7be99712c9fb7ee7ecad07c3a86ea2acbb7\",\"status\":\"PASS\"},{\"command\":\".venv/bin/pytest -q\",\"details\":[],\"elapsed_seconds\":629.0,\"exit_code\":0,\"name\":\"default_tests\",\"output_digest\":\"5a55e43269bb8648f4b517a3d28c150b01c4f6dd65dab220e7a58c90c36fd535\",\"status\":\"PASS\"},{\"command\":\"sh -c .venv/bin/python -m matchvet.t19 tests/recorded/t19-seven-league.json '/data/data/com.termux/files/home/projects/match-vet-t19-qualification-45b8876/deterministic-workspace' '/data/data/com.termux/files/home/projects/match-vet-t19-qualification-45b8876/deterministic-replay-resource.json' --software-commit '45b8876a170467c0e7eec0ed229b7043ae631a6b' && .venv/bin/python scripts/compare-t19-replays.py '/data/data/com.termux/files/home/projects/match-vet-t19-qualification-45b8876/replay-resource.json' '/data/data/com.termux/files/home/projects/match-vet-t19-qualification-45b8876/deterministic-replay-resource.json'\",\"details\":[],\"elapsed_seconds\":176.0,\"exit_code\":0,\"name\":\"deterministic_replay\",\"output_digest\":\"de6ac58a42bcf9700aa2231507c8416cf5f3d7e3814a7b71379965a463d5e9c7\",\"status\":\"PASS\"},{\"command\":\".venv/bin/pytest -q tests/test_runs.py::test_every_durable_phase_boundary_recovers_without_partial_publication tests/test_artifacts.py::test_missing_and_corrupt_objects_are_rejected_and_reported tests/test_artifacts.py::test_reopening_store_with_missing_artifact_enters_read_only_recovery tests/test_artifacts.py::test_process_crash_after_object_publication_leaves_a_detectable_orphan tests/test_artifacts.py::test_process_crash_after_database_commit_preserves_verifiable_artifact tests/test_ingestion.py::test_t06_runner_resumes_from_t04_checkpoint tests/test_matchweek.py::test_t05_runner_resumes_from_t04_checkpoint_without_recomputing_membership tests/test_workload_weather.py::test_t08_runner_resumes_after_interruption_and_keeps_weather_observed tests/test_t09.py::test_runner_checkpoint_resume_requires_exact_digests tests/test_runs.py::test_valid_resume_reuses_only_completed_digest_matched_work tests/test_runs.py::test_resume_digest_mismatch_preserves_incomplete_run tests/test_t16.py::test_interrupted_audit_publication_stays_invisible_until_marker tests/test_t17.py::test_backup_rejects_corrupt_database_and_resource_floor_before_mutation tests/test_t17.py::test_interrupted_export_leaves_only_unmarked_partial_state tests/test_t17.py::test_interrupted_backup_leaves_only_unmarked_partial_state tests/test_t17.py::test_restore_rejects_tampered_backup_and_leaves_authoritative_state_untouched tests/test_t17.py::test_restore_refuses_existing_target_and_missing_protected_object tests/test_t17.py::test_interrupted_restore_cleans_only_its_activation_files tests/test_t17.py::test_restore_rejects_incompatible_manifest_and_sqlite_foreign_key_failure tests/test_t18.py::test_interrupted_evaluation_resumes_only_with_identical_inputs tests/test_t18.py::test_checkpoint_digest_tamper_is_rejected tests/test_store.py::test_corrupt_database_enters_unreadable_recovery_mode\",\"details\":[],\"elapsed_seconds\":18.0,\"exit_code\":0,\"name\":\"failure_injection\",\"output_digest\":\"5fa8efd5913f7db4f9e84aa4f6b2ede13a87b99d9a10ba74a2d16a9a5acc7ece\",\"status\":\"PASS\"},{\"command\":\".venv/bin/pytest -q tests/test_store.py tests/test_runs.py\",\"details\":[],\"elapsed_seconds\":27.0,\"exit_code\":0,\"name\":\"migrations_recovery\",\"output_digest\":\"c5a3bce6e3e177a54e0bcbb10cd374ad40001417a0f88d9c92d250432084a17b\",\"status\":\"PASS\"},{\"command\":\"scripts/capture-offline-rebuild.sh /data/data/com.termux/files/home/projects/match-vet-t19-qualification-45b8876/recovery-artifacts /data/data/com.termux/files/usr/tmp/tmp.JFSdlZh9nw/online-source /data/data/com.termux/files/usr/tmp/tmp.JFSdlZh9nw/offline-source\",\"details\":[],\"elapsed_seconds\":124.0,\"exit_code\":0,\"name\":\"offline_rebuild_install\",\"output_digest\":\"1fa305dbe8d901bdb4ef4534f64fa393784f066eb85423d1eaca91de8ce1c07d\",\"status\":\"PASS\"},{\"command\":\"measured by matchvet.t19 recorded replay\",\"details\":[],\"elapsed_seconds\":172.0,\"exit_code\":0,\"name\":\"resource_benchmark\",\"output_digest\":\"6c014c81979adbc365a5d30597002a3537cad189b7bd9f964716b2ab7cd9928c\",\"status\":\"PASS\"},{\"command\":\".venv/bin/python -m matchvet.t19 tests/recorded/t19-seven-league.json /data/data/com.termux/files/home/projects/match-vet-t19-qualification-45b8876/replay-workspace /data/data/com.termux/files/home/projects/match-vet-t19-qualification-45b8876/replay-resource.json --software-commit 45b8876a170467c0e7eec0ed229b7043ae631a6b\",\"details\":[],\"elapsed_seconds\":172.0,\"exit_code\":0,\"name\":\"seven_league_recorded_e2e\",\"output_digest\":\"4eaae1d81e034e5235682802c2ea27f46e90f974f9f6ac138cfd936e2fb77a26\",\"status\":\"PASS\"},{\"command\":\"sh -c test -z \\\"$(git status --porcelain --untracked-files=all)\\\" && ruff check . && ruff format --check . && .venv/bin/mypy\",\"details\":[],\"elapsed_seconds\":1.0,\"exit_code\":0,\"name\":\"static_checks\",\"output_digest\":\"19ef4265e79e3a557bcc3076d2131aed1e94c379276030f797b47420ce27870a\",\"status\":\"PASS\"},{\"command\":\".venv/bin/python -m matchvet --help\",\"details\":[],\"elapsed_seconds\":1.0,\"exit_code\":0,\"name\":\"termux_smoke\",\"output_digest\":\"25cc38fe250a4c09850a59d06eeecf9a0f4346d2b52b740fca22d04957d5f05a\",\"status\":\"PASS\"}],\"known_limitations\":[\"The self-authored structural corpus does not establish real-world predictive reliability.\",\"No statistical Production Promotion thresholds or acceptance criteria exist in T19.\",\"The replay is offline and does not establish current availability of live data sources.\",\"Rights-restricted raw third-party source material is deliberately excluded from export.\",\"Recorded sparse packs exercise missing half-time and corner data as unavailable evidence.\"],\"mode\":\"RESEARCH_ONLY\",\"production_promotion\":false,\"replay\":{\"audit_digest\":\"6e5b0f1453a515f6f59c8e5a2ea2323c529377f60964ed42f064e974995e82e3\",\"backup_digest\":\"11bd8f03b90fae6142bd6807cd770fd73a45fb5ff03abc11ac05cd9d37a81ca5\",\"corpus_digest\":\"ca2b0a450e03158567e89c4eec1dd61d2110b72786afb7a7ddb26812a9837241\",\"details\":{\"calibration_bundle_statuses\":{\"AVAILABLE\":0,\"MODEL_UNAVAILABLE\":7,\"REJECT\":0},\"chronological_evaluated_target_count\":0,\"chronological_evaluation_scope\":\"STRUCTURAL_FRAMEWORK_SMOKE_WITH_EXPLICIT_RECORDED_TARGET_EXCLUSIONS\",\"chronological_framework_observation_count\":1,\"chronological_model_unavailable_exclusion_count\":7,\"contextual_conflict_count\":1,\"fallback_imports\":1,\"grade_identity_digest\":\"ca9deb68053f5cbe2e437d75c632cf9ee056f6c8a8a7af4ccbdc57fb91f200eb\",\"missing_corner_void_count\":12,\"missing_data_inference_count\":0,\"model_statuses\":{\"AVAILABLE\":21,\"MODEL_UNAVAILABLE\":7},\"post_cutoff_appendix_count\":1,\"post_cutoff_withdrawal_count\":1,\"prohibited_market_key_count\":0,\"prohibited_market_keys\":[],\"rejected_preference_count\":259,\"restored_grade_count\":259,\"restored_grade_identity_digest\":\"ca9deb68053f5cbe2e437d75c632cf9ee056f6c8a8a7af4ccbdc57fb91f200eb\",\"settlement_result_counts\":{\"LOSS\":116,\"PUSH\":8,\"VOID\":49,\"WIN\":86},\"unknown_weather_count\":2,\"unspecified_identity_count\":0,\"withdrawn_fixture_count\":1},\"evaluation_digest\":\"7bfde3b6efd341e80eea51ef56dc5d2b79b9ff20b34d87f13758eb7d9a32867c\",\"evaluation_lifecycle\":\"EVALUATED_RESEARCH_ONLY\",\"evaluation_status\":\"INCONCLUSIVE\",\"export_digest\":\"82f53cc74f6569455e398a153a1d4d0e2f0f7fff13eb4aefeffb10c9f31d3e30\",\"grade_count\":259,\"league_keys\":[\"premier_league\",\"serie_a\",\"la_liga\",\"bundesliga\",\"ligue_1\",\"liga_portugal\",\"belgian_pro_league\"],\"preference_result_count\":259,\"production_language\":[],\"replay_digest\":\"ffb680d3e47da3c640ae194b3b4f8db3652a29157153868c71353f70990f66cc\",\"report_digest\":\"1a89ac69c3e55dafb0efd889abd0b2cd9b0d545b160b5fa992259f6620bad334\",\"research_only\":true,\"restored_audit_digest\":\"6e5b0f1453a515f6f59c8e5a2ea2323c529377f60964ed42f064e974995e82e3\",\"target_match_count\":7},\"resources\":{\"cpu_heavy_concurrency\":2,\"final_managed_storage_bytes\":333726027,\"free_space_floor_bytes\":11548454912,\"network_bytes\":0,\"peak_memory_bytes\":751738880,\"runtime_seconds\":170.8642181470059,\"temporary_storage_growth_bytes\":101817116},\"schema\":\"matchvet.research-only-release-qualification.v1\",\"software_commit\":\"45b8876a170467c0e7eec0ed229b7043ae631a6b\",\"status\":\"QUALIFIED_RESEARCH_ONLY\"}"
+    },
+    {
+      "path": "docs/research-only-release-qualification.md",
+      "line": 9,
+      "text": "The seven targets span Premier League, Serie A, La Liga, Bundesliga, Ligue 1, Liga Portugal, and Belgian Pro League. Each produced all 37 preference-vetting and settlement/audit contracts: 259 preference results and 259 grades. Settlement outcomes were 86 WIN, 116 LOSS, 8 PUSH, and 49 VOID; 12 missing-corner cases were VOID rather than inferred. The replay exercised one approved-source fallback, one contextual conflict, two `UNKNOWN` weather cases, one withdrawn fixture, and one post-cutoff appendix. It recorded zero silent missing-data inferences, zero prohibited market keys, and zero unspecified publication identities. All 259 preferences remained `REJECT`; reports and audits contained no production decision or confidence language."
+    },
+    {
+      "path": "docs/research-only-release-qualification.md",
+      "line": 11,
+      "text": "Model-family results were 21 `AVAILABLE` and 7 `MODEL_UNAVAILABLE`. All seven calibration bundles were `MODEL_UNAVAILABLE`; no fallback probability was invented. Chronological evaluation reached `EVALUATED_RESEARCH_ONLY` with an `INCONCLUSIVE` policy result: seven recorded targets were explicitly excluded for unavailable calibration and one structural framework observation exercised the evaluation path. There is no evaluated real-world performance sample here."
+    },
+    {
+      "path": "docs/research-only-release-qualification.md",
+      "line": 26,
+      "text": "| Standalone seven-league recorded E2E | PASS |"
+    },
+    {
+      "path": "docs/research-only-release-qualification.md",
+      "line": 40,
+      "text": "| Seven-league replay runtime | 170.86 s | 7,200 s target; 14,400 s hard limit |"
+    },
+    {
+      "path": "docs/research-only-release-qualification.md",
+      "line": 53,
+      "text": "- Sparse history leaves calibration unavailable in all seven replay targets. Chronology validates framework behavior, but its policy result is `INCONCLUSIVE`; no statistical promotion threshold was invented or passed."
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 15,
+      "text": "Technical feasibility of an all-seven automated closure remains unproven."
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 17,
+      "text": "Target seven official competition publisher families for schedule, identity,"
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 20,
+      "text": "LALIGA (retain RFEF ancestry if used), Liga Portugal and Pro League. Reuse those"
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 23,
+      "text": "recent full-time corpus and later goal outcomes. That is seven target families,"
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 27,
+      "text": "explicit dependency; do not hide it inside the seven-family target."
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 30,
+      "text": "seven current schedules, exhaustion/affirmative empty semantics, revisions,"
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 62,
+      "text": "| Belgium / Pro League | [Competition calendar](https://www.proleague.be/jpl-kalender!), [retained timing publication](https://www.proleague.be/fr/informations/les-calendriers-des-fans-fixes-jusquapres-la-treve-hivernale) | First slice: public bounded representation, complete window/revisions and automated-source team mappings |"
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 74,
+      "text": "| All-seven schedules, F01\u2013F03/F06 | Mandatory | Six OpenFootball scopes; Belgium skipped; coverage/freshness evidence empty; LF02 manual bridge | Seven official publisher families, or an aggregate only after equivalent proof; bounded acquisition, raw/normalized retention, private replay, exact exhaustive scope/partitions/currentness | No eligible freeze; do not reduce seven scopes or fake completeness |"
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 76,
+      "text": "| Canonical team mappings, F02/F06 | Mandatory for selected rows | Source-scoped known-team mapping exists; OpenFootball aliases/manual Pro League aliases are not universal | Exact source-scoped mappings validated against existing canonical identities; retain upstream origin, revision, digest and ambiguity | UNKNOWN/unresolved; no duplicate teams or automatic REGISTER_UNKNOWN |"
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 87,
+      "text": "retained weights/support. A small suitable corpus need not span seven leagues."
+    },
+    {
+      "path": "docs/research/automated-prospective-source-closure-2026-10-10.md",
+      "line": 179,
+      "text": "the first Pro League schedule slice in [#92](https://github.com/Awisalas/match-vet/issues/92),"
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 3,
+      "text": "Reviewed 2026-10-03 for MatchVet's 2026/27 Target League Set: Premier League, Serie A, La Liga, Bundesliga, Ligue 1, Liga Portugal, and Belgian Pro League. This inventory covers the existing source-evidence families in [T07](../source-evidence.md), plus T08 workload and weather. It does not select a new evidence requirement or authorize an adapter."
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 14,
+      "text": "| Target-league coverage | Global coordinates, including venues in all seven Target Leagues; venue coordinates must already be verified. It is location coverage, not league-specific football coverage. |"
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 29,
+      "text": "| Target-league coverage | Potentially every club in all seven leagues, but publication format, language, access, and level of detail vary by club. No single complete league-wide feed or coverage guarantee was found. |"
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 44,
+      "text": "| Target-league coverage | The public coverage page lists the seven competitions under its names Premier League, Serie A, La Liga/Primera Divisi\u00f3n, Bundesliga, Ligue 1, Primeira Liga, and Jupiler Pro League. That page says detailed coverage varies by season or fixture. Endpoint-specific 2026/27 flags must be checked; league presence alone does not prove availability for injuries or any other family. |"
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 59,
+      "text": "| Target-league coverage | The relevant league/federation is authoritative within its jurisdiction for its own competitions. No complete, openly licensed, machine-readable decision source covering all seven Target Leagues was verified. A disciplinary decision may not itself establish whether a ban applies to a particular upcoming competition or fixture. |"
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 66,
+      "text": "| Status | **RESEARCH_ONLY** for identifying official decision sources. There is no approved automated or retained source path across all seven leagues. |"
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 74,
+      "text": "| Target-league coverage | Publishers are league- and match-specific. The Premier League publishes match-official appointments; Liga Portugal rules assign crews and require disclosure before a match. No documented free source with complete, licensed machine coverage for all seven leagues was found. |"
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 82,
+      "text": "| Primary evidence | [Premier League Matchweek appointment example](https://www.premierleague.com/en/news/4688925/match-officials-for-matchweek-1); [Premier League terms](https://www.premierleague.com/en/terms-and-conditions); [Liga Portugal arbitration regulations index](https://www.ligaportugal.pt/pages/estatutos-regulamentos) and [arbitration regulation](https://www.ligaportugal.pt/backoffice/assets/20240716_ra_54dce33333.pdf), which states the appointment/disclosure rule, and [terms](https://www.ligaportugal.pt/pages/termos-e-condicoes). The publication examples establish capability only, not reuse permission or all-seven coverage. |"
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 108,
+      "text": "1. There is no approved automated, storable no-cost source for injuries/player availability across all seven Target Leagues."
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 109,
+      "text": "2. There is no approved automated, storable no-cost source for suspensions, expected-lineup evidence, manager/regime changes, or referee assignments across all seven Target Leagues."
+    },
+    {
+      "path": "docs/research/contextual-source-inventory-2026-10-03.md",
+      "line": 110,
+      "text": "3. Coverage and source-specific storage rights for official French, Belgian, and individual club/federation pages remain unverified. Public pages cannot fill this gap by themselves."
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 1,
+      "text": "# Football Charts free Belgian fixture contract"
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 14,
+      "text": "not establish a complete-current real-world Belgian Matchweek contract."
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 30,
+      "text": "Nor does it claim a proved numerical truncation or that every possible Belgian"
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 44,
+      "text": "The [Belgian competition page](https://www.football-charts.com/leagues/belgium/jupiler-pro-league)"
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 45,
+      "text": "labels Jupiler Pro League 2026-2027. Its"
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 75,
+      "text": "actual Belgian lineage or persistence. Model `computed_at`/`data_through` describe"
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 98,
+      "text": "| Competition/season | Belgian 2026-2027 advertised; exact API key/fixture selector binding UNKNOWN |"
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 124,
+      "text": "compilation description does not establish exact Belgian fixture ancestry."
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 150,
+      "text": "remain the baseline for all 18 existing Belgian canonical teams. Football Charts'"
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 159,
+      "text": "Belgian schedule contract from a publisher/provider before more fixture probes."
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 164,
+      "text": "Pro League official probing already stopped at #96."
+    },
+    {
+      "path": "docs/research/football-charts-belgium-free-contract-2026-10-10.md",
+      "line": 169,
+      "text": "satisfy the fully automated architecture. No reviewed free Belgian source is"
+    },
+    {
+      "path": "docs/research/issue-89-adversarial-review-2026-10-10.md",
+      "line": 54,
+      "text": "   seven, the raw artifact insertion commits after withdrawal. The post-commit"
+    },
+    {
+      "path": "docs/research/issue-89-adversarial-review-2026-10-10.md",
+      "line": 146,
+      "text": "#92 the first automatic Pro League schedule slice, #93 history projection, #94"
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 9,
+      "text": "The snapshot is versionable, but it is not a season roster. The repository's latest commit is `ae3800227c449447b3a337fc0aac79a8f02f4c8b`, dated 2025-01-03. The [Belgian club file at that commit](https://github.com/openfootball/clubs/blob/ae3800227c449447b3a337fc0aac79a8f02f4c8b/europe/belgium/be.clubs.txt) has SHA-256 `e1c3ff0089b55e30aa87be775e9e2a3c0e385d41a12c9efb792401dd2a818cfc`. It includes useful forms such as `Club Brugge KV` for `Club Brugge`, but also historical rows and repeated short names. For example, `Lommel` appears under both `Lommel United` and `KFC Lommel SK`, while `SK Beveren` appears as an alias in the historical Beveren entries. The 2026/27 official roster includes promoted `KV Kortrijk`, `Lommel SK`, and `SK Beveren`; the OpenFootball clubs file does not identify which historical entry is the present competition participant. The [official 2026/27 announcement](https://www.proleague.be/nieuws/kalender-2026-2027-club-brugge-opent-tegen-kv-kortrijk-eerste-super-sunday-al-op-speeldag-4) names those three promoted clubs."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 13,
+      "text": "## Belgian 2026/27 schedule and candidate rows"
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 15,
+      "text": "The current [OpenFootball Belgium schedule](https://github.com/openfootball/belgium/blob/master/2026-27/be1.txt) says rounds 1 through 7 have officially confirmed dates and kickoff times. It says rounds 8 through 34 have fixed pairings but dates and times still to come. The file header dates the source list to 2026-06-18 and lists a planned 2026-09-01 update, but the checked file still leaves later rounds without exact dates. OpenFootball Belgium's [repository licence](https://github.com/openfootball/belgium/blob/master/LICENSE.md) is CC0; its season file names Pro League and VoetbalPrimeur as upstream sources, so the repository licence should not be treated as a grant from those publishers."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 17,
+      "text": "The Pro League's own [calendar update](https://www.proleague.be/nieuws/kalenders-van-fans-liggen-vast-tot-na-de-winterstop) says exact Jupiler Pro League match times are set through after the winter break. Its [official Jupiler Pro League calendar](https://www.proleague.be/jpl-kalender!) lists all nine matchday 8 pairings. The official [RSC Anderlecht fixture page](https://www.proleague.be/fr/equipes/rsc-anderlecht-1/fixtures-results) confirms one matchday 8 game, away to Cercle Brugge on Saturday 10 October at 14:00. This confirms that the competition has usable exact schedule facts for the target period while the OpenFootball file does not."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 19,
+      "text": "No published Pro League machine-readable fixture API, bulk download contract, or open-data reuse licence was found in the reviewed official pages. The pages are suitable for a human to cite under an explicit MatchVet research policy; public visibility alone does not establish a broader retention, automation, redistribution, or commercial right. MatchVet should not scrape or automatically request the site. A `RESEARCH_ONLY` manual-citation observation is therefore the appropriate row path for this scope: retain only the minimal fixture facts, publisher and publication identity, official URL, observation timestamp, operator identity, and policy version/digest. Store no page body, PDF, screenshot, or bulk copy. Keep it distinct from Provider Attempts and Provider Health, preserve conflicting facts, and leave completeness to LF02 attestation. This is not a commercial-rights claim."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 25,
+      "text": "Football-Data.co.uk says its data are free but \u201cmade available for the purposes of league match prediction only\u201d on its [data page](https://football-data.co.uk/data.php). Its [weekly fixtures page](https://football-data.co.uk/matches.php) describes a latest-fixtures CSV with betting odds and said the latest upload was 2026-09-25 08:45 UK time. A read of the linked CSV on 2026-09-29 contained 41 rows dated 2026-09-25 through 2026-09-28 and no Belgian division rows. The published pages do not state a retained-data licence or an automated-ingestion grant. The weekly feed therefore does not supply the target Belgian facts or clear the retention and automation requirements."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 27,
+      "text": "No reviewed zero-cost automated source both supplied the target Belgian candidate rows and documented the upstream rights needed for automated retained research. OpenFootAPI is worth re-evaluating if it publishes clear upstream terms and returns the relevant fixtures; it is not approved on the current evidence. Do not use an undocumented/private endpoint or scrape the Pro League pages."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 92,
+      "text": "The corrective tickets are independent: [LF06 #49](https://github.com/Awisalas/match-vet/issues/49) and [LF07 #50](https://github.com/Awisalas/match-vet/issues/50). Both are outside the original 53-ticket roadmap; F01\u2013F21 retain their numbers. After both finish, use a fresh isolated store for the 2026-10-09 reacquisition. Require zero unresolved identities across the six automated leagues and no false DATE/INSTANT conflicts. Validate Belgian team spellings before recording LF05 observations. Then persist the final v2 base, make all seven LF02 attestations, persist v3, write exact F05 records, and produce the real all-seven F06 freeze. Only then may #44 close and original F07 be unparked."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 166,
+      "text": "#44 remains open and original F07 remains parked. After LF08 verification, another fresh isolated real validation must establish zero unresolved identities across all six automated leagues and no false schedule conflicts. The separate all-seven validation sequence, including Belgian spelling validation and later authorized LF05/LF02 work, still gates the real F06 freeze and closure of #44. LF08 itself records no observations or attestations and does not certify live completeness."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 174,
+      "text": "## LF09 official Pro League identity correction"
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 176,
+      "text": "LF09 [#52](https://github.com/Awisalas/match-vet/issues/52) is outside the original 53-ticket roadmap. Against baseline `47e1eec4644f24a1ce33b5a4176379a4d7220feb`, the validated post-LF08 database was opened read-only with SQLite `mode=ro` and `PRAGMA query_only=ON`. It contains exactly 18 unique Belgian 2026-27 canonical teams. All 15 proposed targets exist once, have distinct normalized names, and their stored IDs match the frozen deterministic team identity calculation. The pre-LF09 official resolution is 3 CONFIRMED, 15 UNKNOWN, and 0 AMBIGUOUS, blocking all nine official matchday 8 fixtures."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 178,
+      "text": "The corrective policy is a separate immutable Pro League manual-citation registry for `OPERATOR_OFFICIAL_FIXTURE_OBSERVATION`, Belgian Pro League, and 2026-27. Its 15 exact names cite the approved `www.proleague.be` official competition calendar. The normal LF03 resolver combines current canonical identities, persisted whole-name aliases, and the applicable source registry; conflicts remain ambiguous and missing targets remain unknown. The policy does not expand OpenFootball lineage or make official names available to other source kinds, leagues, or seasons. The reviewed policy digest is pinned, so a coherently retargeted and re-signed entry is refused. Every new Belgian 2026-27 official source mapping, including a direct-name mapping, carries the Pro League contract and digest. No schema change or rewrite of stored mappings is needed."
+    },
+    {
+      "path": "docs/research/live-blocker-source-research-2026-09-29.md",
+      "line": 180,
+      "text": "The temporary-store regression confirms 18 of 18 official source spellings and all nine LF05 pairings are identity-ready. This is an identity check only. #44 remains open, original F07 remains parked, and recording the real LF05 observations and LF02 attestations remains a later step in the all-seven validation sequence. LF09 does not address `Gil Vicente FC [postponed]`."
+    },
+    {
+      "path": "docs/research/minimal-model-dataset-evidence-2026-10-10.md",
+      "line": 26,
+      "text": "The unchanged T11 defaults require at least three rows and an effective-history weight sum of at least three. Each row's recency weight is `2 ** (-age_days / 180)` and may also receive a regime discount. Three strictly earlier ordinary matches therefore have a sum below three. Four sufficiently recent rows are a numerical lower bound when no regime discount applies; they are not proof that a particular selected graph qualifies. Four rows within 74 days give a sum above three before regime discounts. Unseen target teams can use shared history if its row count meets the existing shared-history requirement. The model does not require a historical corpus from all seven prospective target leagues."
+    },
+    {
+      "path": "docs/research/minimal-model-dataset-evidence-2026-10-10.md",
+      "line": 35,
+      "text": "| Bassek/Rein/Weber/Memmert [official DFL dataset](https://springernature.figshare.com/articles/dataset/An_integrated_dataset_of_spatiotemporal_and_event_data_in_elite_soccer/28196177), [data descriptor](https://www.nature.com/articles/s41597-025-04505-y), and [German Sport University Cologne announcement](https://www.dshs-koeln.de/universitaet/newsroom/meldungen/detail/news/offizielle-spieldaten-im-journal-scientific-data) | The descriptor states the data release has DFL authorization under CC BY 4.0; the university announcement quotes DFL's release under that licence. This is stronger upstream evidence than a repackager's licence. Video is excluded. | Seven 2022/23 matches. Match information includes ISO-8601 kickoff, teams and IDs. Even placing all seven at 2023-12-31 yields effective weight below 0.15 at 2026-10-10. It fails the unchanged floor before any score extraction or regime discount. | Rights-supported benchmark, too small and old for this use. |"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 10,
+      "text": "the intended primary prospective architecture. Actual all-seven automatic"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 32,
+      "text": "F06 needs an eligible, fully reconciled **seven-scope** Matchweek, including"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 46,
+      "text": "   publications for all seven scopes, plus the unchanged LF02 attestation"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 51,
+      "text": "   event dataset or all-seven-league history is not mandatory."
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 67,
+      "text": "for the other five leagues and official LF02 checks for all seven. The adapter"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 94,
+      "text": "| Seven-scope schedule completeness, including empty scopes | F01/F06, LF02 | Mandatory | Automatic base plus official publications and operator attestations | Self-authored attestation permitted internally; publications UNKNOWN | Same seven official publication checks; no new provider | Human consultation, minimal facts/citations, normalized retention, private backup/replay | No eligible freeze; stop |"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 139,
+      "text": "seven separate league histories are not structurally required. Do not claim"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 161,
+      "text": "Portuguesa de Futebol Profissional, and Pro League. A publisher-specific"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 165,
+      "text": "Use this request separately for each of the seven official publishers; request"
+    },
+    {
+      "path": "docs/research/minimum-prospective-source-closure-2026-10-10.md",
+      "line": 169,
+      "text": "> one seven-league prospective Matchweek's completeness, enter minimal team and"
+    },
+    {
+      "path": "docs/research/prediction-and-uncertainty-methods.md",
+      "line": 7,
+      "text": "The source portfolio supplies full-time and half-time goals, results, aggregate shots and shots on target, corners, cards, and all-seven-league history from 2017/18 through Football-Data.co.uk. It does not supply a transparent, deep, current xG series, shot-level chances, complete player statistics, complete all-league injury and likely-lineup histories, or historical pre-cutoff news states. Those gaps make goals, results, and corners the stable statistical base. Advanced xG, player, referee, availability, and tactical features must remain optional until a cutoff-valid history exists."
+    },
+    {
+      "path": "docs/research/prediction-and-uncertainty-methods.md",
+      "line": 142,
+      "text": "- Deep neural networks, gradient boosting, random forests, and high-dimensional player or event models. The chosen toolchain excludes their frameworks and the source portfolio lacks a stable all-seven feature history."
+    },
+    {
+      "path": "docs/research/prediction-and-uncertainty-methods.md",
+      "line": 153,
+      "text": "1. Historical result, goal, half-goal, shot, and corner data can support low-dimensional team and league models. It cannot support reliable player-level or event-quality models across all seven leagues."
+    },
+    {
+      "path": "docs/research/prediction-and-uncertainty-methods.md",
+      "line": 157,
+      "text": "5. Belgian data has no open structured fallback. Source failure raises Data Quality and may block research sufficiency sooner than in the other six leagues."
+    },
+    {
+      "path": "docs/research/pro-league-calendar-raw-qualification-2026-10-10.md",
+      "line": 1,
+      "text": "# Pro League raw calendar qualification"
+    },
+    {
+      "path": "docs/research/pro-league-calendar-raw-qualification-2026-10-10.md",
+      "line": 7,
+      "text": "seven-league table; no other league was researched in this continuation."
+    },
+    {
+      "path": "docs/research/pro-league-calendar-raw-qualification-2026-10-10.md",
+      "line": 21,
+      "text": "Pro League representation lacks the required capability. No further origin"
+    },
+    {
+      "path": "docs/research/pro-league-calendar-raw-qualification-2026-10-10.md",
+      "line": 28,
+      "text": "The publisher/operator remains Pro League NV, as identified in the retained"
+    },
+    {
+      "path": "docs/research/pro-league-calendar-raw-qualification-2026-10-10.md",
+      "line": 90,
+      "text": "| `/data/matches/*/competition/id` | `18d6fee0-d3bb-4624-b4d2-ac5b16ab498c`, Jupiler Pro League |"
+    },
+    {
+      "path": "docs/research/pro-league-calendar-raw-qualification-2026-10-10.md",
+      "line": 136,
+      "text": "fabricate accounted coverage. F06's seven-scope requirement is unchanged."
+    },
+    {
+      "path": "docs/research/pro-league-calendar-raw-qualification-2026-10-10.md",
+      "line": 216,
+      "text": "source. The next representation to qualify is a **Pro League-published public"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 1,
+      "text": "# Pro League date-window calendar qualification"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 10,
+      "text": "**B: INSUFFICIENT. Further Pro League official probing stops here.**"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 15,
+      "text": "the preset that binds this events service to the Belgian fixture scope."
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 21,
+      "text": "the exact Belgian scope could not be established before contact. Filling in an"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 22,
+      "text": "invented typology, treating an absent preset as a valid Belgian query, or using a"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 67,
+      "text": "`undefined` upstream. That is not an unfiltered Belgian fixture query."
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 113,
+      "text": "entire requested Belgian window. No empty response was contacted or promoted."
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 138,
+      "text": "and #95's 17 corroborated team UUIDs/seven recurring fixture IDs were rechecked."
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 193,
+      "text": "| 3, reject | API-Football | Free 100 requests/day; exact current Belgian season entitlement unproved | REJECTED under the user's football-data availability gate |"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 204,
+      "text": "60/minute. Complete Belgian result entitlement is not proven; no demo key or"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 211,
+      "text": "provides free 100/day with limited seasons; exact Belgian 2026/27 full-result"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 239,
+      "text": "must not retry rejected candidates to find rows or return to official Pro League"
+    },
+    {
+      "path": "docs/research/pro-league-date-window-calendar-qualification-2026-10-10.md",
+      "line": 240,
+      "text": "probing. Manual Belgian evidence remains a temporary honest path, not automation."
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 1,
+      "text": "# Pro League replacement fixture source qualification"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 28,
+      "text": "This decision applies to the inspected interface, not every official Pro League"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 80,
+      "text": "is Pro League NV under the [retained operator review](pro-league-source-contract-2026-10-10.md#exact-candidate-and-known-publication-facts)."
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 89,
+      "text": "| Competition | `18d6fee0-d3bb-4624-b4d2-ac5b16ab498c`, Jupiler Pro League |"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 136,
+      "text": "Seven fixture UUIDs recur from the earlier HTML with the same ordered teams and"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 168,
+      "text": "The observed namespace is the Pro League website's client football data for the"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 169,
+      "text": "exact Belgian 2026/2027 competition/edition above. `competition.source` is `client`,"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 199,
+      "text": "Before dispatch, limits were explicitly extended to seven requests/3 MiB, then"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 250,
+      "text": "| Explicit public Pro League export/feed | No complete-current export was linked by the inspected calendar. Delivered code also names a `football_module/football_calendar` start/end handler, but its event typology/preset, fixture schema, access and coverage contract are unqualified. It is a separate lead, not a qualified export or permission to invent parameters. This is the smallest distinct official lead if its exact preset is supplied by public material. It returns an events array and drops upstream count metadata; it is not currently a qualified fixture source. Further official work needs explicit material establishing a complete-current contract. |"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 251,
+      "text": "| Reliable zero-cost third-party machine-readable source | Prefer one bounded Belgium-specific qualification of a documented current-window source with UTC, all required statuses, terminal/current-snapshot semantics, stable IDs and retained ancestry under ADR 0006. Existing [OpenFootAPI/Football-Data leads](live-blocker-source-research-2026-09-29.md#other-zero-cost-sources-checked) do not qualify such a source: capped/empty reviewed previews or weekly fixture data without reviewed Belgian rows and exact timezone/currentness proof. No third-party provider is selected or called here. |"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 255,
+      "text": "one qualified zero-cost third-party Belgian schedule source if no explicit official"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 274,
+      "text": "17 source identities and seven fixtures, and verify all 18 canonical target IDs"
+    },
+    {
+      "path": "docs/research/pro-league-replacement-fixture-source-2026-10-10.md",
+      "line": 283,
+      "text": "remains OPEN `needs-info`. The next blocker is an exact complete-current Belgian"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 1,
+      "text": "# Pro League automated source-contract qualification"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 14,
+      "text": "The initial review and seven-league table below retain their original dated"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 20,
+      "text": "is the [Pro League JPL calendar](https://www.proleague.be/jpl-kalender!). Public"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 33,
+      "text": "Pro League schedule representation containing exact times, full-window"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 54,
+      "text": "requires all seven scopes and resolved identities. A new source contract must"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 61,
+      "text": "operator as Pro League NV, Belgian enterprise number 0508.600.494. The policy"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 192,
+      "text": "## Seven-league capability table"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 215,
+      "text": "| Belgian Pro League: Pro League NV [JPL calendar](https://www.proleague.be/jpl-kalender!) | Public HTTPS extracted page; direct access unproven | Selected round rows and season format evidenced | Revision articles and one `Voltooid` result evidenced; full vocabulary UNKNOWN | Exact UTC basis UNKNOWN | UNPROVEN | LF05-only registry retained; automatic contract unqualified | PARTIAL | Public schema, exact UTC, exhaustive current window/empty proof and automatic identity namespace |"
+    },
+    {
+      "path": "docs/research/pro-league-source-contract-2026-10-10.md",
+      "line": 290,
+      "text": "The research agent inspected the cited Pro League publications through the web"
+    },
+    {
+      "path": "docs/research/prospective-source-use-decision-2026-10-10.md",
+      "line": 38,
+      "text": "Verdict B remains unapproved. Seven-scope official completeness/schedule facts,"
+    },
+    {
+      "path": "docs/research/prospective-source-use-decision-2026-10-10.md",
+      "line": 49,
+      "text": "actual seven-scope football paths for new prospective collection. Create no"
+    },
+    {
+      "path": "docs/research/prospective-source-use-decision-2026-10-10.md",
+      "line": 105,
+      "text": "| LF05 v1 Belgian and LF13 successor v2 official fixture observations across accepted scopes | CONDITIONAL internal manual path; UNKNOWN external permission wherever not established | Exact observation, publisher/publication/URL, minimal fixture facts, operator/time and manual policy digest. Human reading and entry only. These create ordinary source provenance, never Provider Attempts/Health or completeness proof. LF02 remains separate. |"
+    },
+    {
+      "path": "docs/research/prospective-source-use-decision-2026-10-10.md",
+      "line": 109,
+      "text": "| OpenFootAPI, football-data.org, API-Football, OpenLigaDB and other researched alternatives | Not configured authorization paths; CONDITIONAL or UNKNOWN as detailed in the primary review | API availability and wrapper terms do not authorize unresolved upstream uses. A licensed subset does not replace all-seven evidence. No adapter/provider activation follows from this record. |"
+    },
+    {
+      "path": "docs/research/prospective-source-use-decision-2026-10-10.md",
+      "line": 140,
+      "text": "logical Matchweek and the seven scope IDs. It enumerates every source-bearing"
+    },
+    {
+      "path": "docs/research/prospective-source-use-decision-2026-10-10.md",
+      "line": 236,
+      "text": "No sufficiently cleared current path for the actual seven-scope graph is"
+    },
+    {
+      "path": "docs/research/prospective-source-use-decision-2026-10-10.md",
+      "line": 248,
+      "text": "  retention/recovery in all seven LF02 scopes and any LF05/LF13 observations."
+    },
+    {
+      "path": "docs/research/real-source-permission-evidence-2026-10-10.md",
+      "line": 23,
+      "text": "Decision support, reviewed 2026-10-10: permission evidence is insufficient for a prospective seven-scope graph. No operational source approval is issued by this note. Read it with the [source-authorization decision](prospective-source-use-decision-2026-10-10.md). The earlier [fixture capability](upcoming-fixture-provider-capability-2026-09-23.md), [coverage audit](upcoming-fixture-coverage-source-audit-2026-09-27.md), [live blocker](live-blocker-source-research-2026-09-29.md), and [context inventory](contextual-source-inventory-2026-10-03.md) identify candidate paths; their old observations do not establish unchanged permissions."
+    },
+    {
+      "path": "docs/research/real-source-permission-evidence-2026-10-10.md",
+      "line": 41,
+      "text": "| LF05 manual official fixture observations | [#48](https://github.com/Awisalas/match-vet/issues/48) allows only operator-entered canonical facts/citations, no request, scrape or copied publication. Internal `RESEARCH_ONLY` is not an external licence. | Minimal normalized observations and their backup/replay still need a reviewed basis, including repeated/systematic extraction and retained URLs. Raw official content is prohibited by this workflow. | **CONDITIONAL / UNKNOWN** by actual publisher/publication; no blanket all-seven manual approval. It supplies facts, never completeness or Provider Health. |"
+    },
+    {
+      "path": "docs/research/real-source-permission-evidence-2026-10-10.md",
+      "line": 57,
+      "text": "| Pro League: [official footer](https://www.proleague.be/); dated \u00a92026 notice | Reserves rights. No affirmative automated, extracted-fact database, retention, backup or redistribution permission identified in this review. Its privacy/cookie policies do not grant those rights. LF05's internal bridge is not a publisher grant. **UNKNOWN**. |"
+    },
+    {
+      "path": "docs/research/real-source-permission-evidence-2026-10-10.md",
+      "line": 69,
+      "text": "The human decision authority must identify the actual operator/legal capacity and whether its research purpose meets provider definitions. For each selected source, obtain a current licence, applicable written rightsholder/provider answer, or a competent documented legal basis covering the exact access mode, competition/season/capability, minimal facts/citations versus copied content, internal research, separate raw/normalized retention, backups, restore and offline replay. Resolve third-party source lineage and any termination/deletion/withdrawal duties. Specifically resolve Football-Data automated research; each selected OpenFootball upstream; all seven actual official publishers used by LF02/LF05; each contextual publisher; and Open-Meteo's actual use classification and attribution."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 3,
+      "text": "This audit evaluates whether a no-cost source can lawfully and repeatably prove the upcoming fixture coverage required for MatchVet's seven target leagues. It is a research note for the discovered Product V2 live-acquisition gap; it does not change F01 or recommend accepting unproven coverage."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 7,
+      "text": "As of 2026-09-27, I found **no source or source combination approved under MatchVet's reviewed use policy that both documents automated access and the retention needed by F03/T17 and proves complete date-bounded coverage for the requested Fixture Scope across all seven leagues**. This is a research finding, not a legal opinion about unreviewed rights. OpenFootAPI is a newly identified, more promising access/retention candidate: its terms explicitly permit indefinite caching and internal research at the API-operator level, and its current competition catalog lists all seven 2026/27 target competitions with fixture capability and per-competition source/license labels. But the labels do not establish every upstream permission equally, and no reviewed candidate has a documented coverage contract or explicit provider metadata that establishes the entire requested scope, including an authoritative empty result. Date filters, season lists, a total-page count, or language such as \u201call matches\u201d describe what the provider returns, not whether it has the entire real-world schedule."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 9,
+      "text": "OpenFootAPI's catalog lists all seven target competitions with fixture capability for 2026/27; its documented free Starter plan includes fixtures, and its terms permit local retention and internal research at the API-operator level. However, its current API version is beta, its OpenAPI description caps the public preview at five matches and says cursor pagination requires the paid Developer plan, its upstream source metadata includes an unclear `Unlicensed-Beta (owner-approved factual data)` label for five leagues, and its terms say particular match availability is not guaranteed and upstream data can be incomplete. Thus it is a practical row source to investigate further, but not a source of F01 proof. API-Football also lists all seven but has weaker retention/underlying-rights terms. Football-data.org's free tier covers six target leagues, not Belgium, and supplies no completeness contract. OpenFootball supplies useful 2026/27 rows for six leagues under the repository CC0 notice, but that notice does not clear third-party source rights; its manually maintained upstream has no update guarantee, no completeness/empty metadata, and shares lineage between its Football.TXT input and generated JSON. No reviewed source emits qualifying F01 evidence today."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 11,
+      "text": "Belgium is the clearest blocker. The Pro League's public site says exact match times are fixed through after the winter break, and the next calendar update is scheduled for 8 December. That makes schedule content available for current Matchweeks, but the reviewed public material gives no documented machine feed or permission for automated capture and local retention. Football-data.org lists Jupiler Pro League outside its free tier. OpenFootball's 2026/27 Belgium text file still has exact dates only through round 7 and marks rounds 8\u201334 TBC; it is a separate repository with shared credited upstream sources, not independent corroboration."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 31,
+      "text": "The provider's [coverage page](https://www.football-data.org/coverage) lists Premier League, Serie A, La Liga, Bundesliga, Ligue 1, and Primeira Liga in its free tier. Jupiler Pro League appears in the all-competitions list but not under Free Tier. The API is documented, uses an account token, and supports competition match lists with season and date filters, offset/limit pagination, and a `resultSet` containing count and first/last dates ([match resource](https://docs.football-data.org/general/v4/match.html), [resource examples](https://docs.football-data.org/general/v4/resources.html), [filters](https://docs.football-data.org/general/v4/lookup_tables.html)). A result count and date range describe records in the provider response; no reviewed contract says they are the number/bounds of every real fixture for the requested schedule scope. There is no documented schedule snapshot/as-of field or affirmative-empty declaration."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 33,
+      "text": "Free access for six leagues and documented query mechanics make this a potentially useful observation source. They do not answer \u201cExactly what proves this provider covered the entire requested Fixture Scope?\u201d The docs define neither a complete schedule guarantee nor exhaustive response semantics. Its [about/terms page](https://www.football-data.org/about) requires attribution, disclaims accuracy/reliability/availability guarantees, and says fixture/result data cannot continue to be referenced after subscription cancellation. We found no explicit durable raw-capture retention license. It cannot currently establish F01 coverage and cannot cover all seven at zero cost."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 37,
+      "text": "The [coverage page](https://www.api-football.com/coverage), checked 2026-09-27, lists fixture coverage for all seven targets, including Belgium's Jupiler Pro League. The [pricing page](https://www.api-football.com/pricing) advertises a $0 tier with 100 requests/day; it has limits on available seasons. The documented fixtures API accepts league, season, date range, or round filters; responses expose pagination totals ([fixture guide](https://www.api-football.com/news/post/how-to-get-started-with-api-football-the-complete-beginners-guide), [quota/pagination guide](https://www.api-football.com/news/post/how-to-optimize-api-sports-calls-and-quota-usage)). Its guide describes querying a season and retrieving all pages, but its [coverage page](https://www.api-football.com/coverage) warns that coverage can vary by season and fixtures and that availability does not guarantee availability in the terms."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 39,
+      "text": "The terms say data are provided \u201cas is,\u201d with no guarantee; update frequency is indicative and not guaranteed. They also say API-Football does not grant a license to use or publish data in user products and that users are responsible for obtaining necessary permissions from the competent authorities/rights holders ([terms](https://www.api-football.com/terms)). Resale is prohibited. We found no raw-snapshot retention duration or third-party rights clearance covering all seven competitions. This is the broadest practical row source, but its \u201call fixtures\u201d / page-total behavior proves only what its database returned. It has no contractual whole-scope or affirmative-empty proof and does not meet the rights bar for retained MatchVet research data."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 43,
+      "text": "OpenFootAPI is the strongest newly identified zero-cost candidate for a single all-seven acquisition adapter. Its current [coverage catalog](https://openfootapi.com/coverage) lists 2026/27 fixtures for every target. A read of the documented [GET `/v1/competitions`](https://openfootapi.com/v1/competitions) endpoint on 2026-09-27 (using the public demo credential shown in the docs, for inspection only) returned `fixtures: true`, 2026/27 as the current season, source identity, and a license label for each target. The observed API response metadata included `generated_at` and `request_id`, but no upstream `source_as_of`. The mapping was:"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 53,
+      "text": "| Belgian Pro League | `comp_pro_league_be` | Football-Data.co.uk \u2014 `Free-Open-Data` | Same automation and private-use restriction; this metadata does not turn it into an official Pro League feed, authorize MatchVet's automated use, or prove the current Belgian schedule is complete. |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 67,
+      "text": "**Maintenance and lineage:** The spec calls itself an open-data beta and says no uptime SLA is included. The terms permit features, upstreams, and coverage to change or be suspended. The docs carry a September 2026 migration notice describing changed match-ID prefixes and retired OpenFootball IDs, so consumers need to expect contract/source churn. Per-competition source metadata currently identifies FotMob for the five top-five leagues; the docs separately identify OpenFootball CC0 as an archive source, not a second independent current fixture source. Liga Portugal and Belgian Pro League are mapped to Football-Data.co.uk, so those entries share lineage with MatchVet's existing Football-Data.co.uk observations and cannot count as independent corroboration. No beta/API-health endpoint can supply completeness evidence unless it also states the covered fixture scope."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 73,
+      "text": "The 2026/27 JSON directory contains six target feeds: [England](https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/en.1.json), [Italy](https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/it.1.json), [Spain](https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/es.1.json), [Germany](https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/de.1.json), [France](https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/fr.1.json), and [Portugal](https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/pt.1.json); there is no Belgium JSON file in the [2026/27 directory](https://github.com/openfootball/football.json/tree/master/2026-27). The generated JSON and upstream Football.TXT are one lineage, not independent sources. The [CC0 notice](https://github.com/openfootball/football.json/blob/master/LICENSE.md) allows broad reuse of repository contributions, but expressly disclaims warranties and does not clear third-party rights. That matters because the [Belgium source file](https://raw.githubusercontent.com/openfootball/belgium/master/2026-27/be1.txt) credits Pro League and VoetbalPrimeur. This makes the six JSON feeds useful local fixture observations, not valid evidence of coverage or an automatically cleared schedule license."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 75,
+      "text": "The Belgium Football.TXT file lists 34 rounds and 18 clubs but, as fetched 2026-09-27, only assigns exact dates/times through round 7; rounds 8\u201334 are TBC. Its repository license does not prove that the source credited in the file permits automated capture or local retention. Because the published official Belgian calendar now has more precise dates than this file, the TXT's staleness also illustrates why daily regeneration of derived JSON does not imply daily freshness of underlying fixture data."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 79,
+      "text": "This is distinct from Football-data.org. Its [data page](https://www.football-data.co.uk/data.php) offers free downloadable match CSVs for league-match prediction; its [weekly fixtures page](https://www.football-data.co.uk/matches.php) describes a short-horizon fixture/odds feed. In the repository's 2026-09-23 capture, all seven 2026/27 season CSVs had rows but zero future unscored fixtures; the separate weekly CSV ended on 2026-09-20 and the page's latest upload was 2026-09-18 ([prior live capture and row counts](upcoming-fixture-provider-capability-2026-09-23.md)). Neither route publishes coverage bounds, completeness, as-of metadata, or affirmative-empty semantics. The weekly file also carries betting odds, which are outside the fixture contract. The provider's use statement is narrow, and these CSVs cannot prove F01 coverage."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 99,
+      "text": "| Belgian Pro League | Pro League's official 2026/27 announcement describes 18 clubs and a 34-round regular phase; it initially confirmed exact details through MD7 and announced subsequent updates ([season calendar announcement](https://www.proleague.be/nieuws/kalender-2026-2027-club-brugge-opent-tegen-kv-kortrijk-eerste-super-sunday-al-op-speeldag-4)). A 1 September update says exact calendars are now fixed through after the winter break, with the next update due 8 December ([calendar update](https://www.proleague.be/fr/informations/les-calendriers-des-fans-fixes-jusquapres-la-treve-hivernale)). The official [calendar page](https://www.proleague.be/fr/jpl-calendar) is public. | The public site shows Pro League copyright/all rights reserved. No public documented machine API, reusable feed license, automated-use permission, retention permission, or explicit coverage metadata was found. Football-data.org lists Jupiler Pro League outside its free tier. API-Football lists fixtures but cannot warrant full real-world coverage or clear underlying rights. | Dates for many upcoming Belgian rounds exist publicly, but no legally approved, documented source proves and authorizes the whole requested scope. Belgium remains unresolved at zero cost. |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 113,
+      "text": "| Belgian Pro League \u2014 RBFA | RBFA's public e-kickoff material includes club-specific referee assignment pages with a visible last-updated date (example: [K.A.A. Gent assignments](https://static.rbfa.be/project/publiek/aanduidingenclub/fr/aanduiding_00007.htm)); this is not a league fixture catalogue or documented public feed. RBFA/Voetbal Vlaanderen news search found calendars for federation amateur divisions, not a Jupiler Pro League machine schedule. The RBFA privacy statement describes sharing with Pro League for people affiliated with 1A/1B clubs, consistent with the competition operator being separate ([RBFA privacy statement](https://vvsite-prod.rbfa.be/privacyverklaring)). The official Pro League calendar and updates are covered above. | No RBFA-documented Jupiler Pro League API, ICS/export contract, automated-use permission, schedule-retention license, or complete-scope metadata was found. An individual club's referee-assignment page can omit fixtures or other clubs and is not evidence of full-season or full-window coverage. RBFA's privacy statement governs personal-data processing, not a fixture-data reuse license. **Belgian result:** public fixture information exists on the Pro League site, but the federation search did not uncover a permitted, documented machine source that can prove a requested league/date scope or an empty one. |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 115,
+      "text": "Across all seven federations, no reviewed source provides the provider capability contract needed by F01: exact competition/season/window bounds; exhaustive pages and partitions; stable source-as-of/freshness semantics; a terminal completeness assertion; and a separate affirmative-empty assertion. The challenge **\u201cExactly what proves this provider covered the entire requested Fixture Scope?\u201d** has no answer in the reviewed federation contracts or metadata. DFB and FFF terms present explicit obstacles to automated retained use; FPF's narrow noncommercial content permission is not a documented automated fixture-feed license; and RFEF's PDF is a human-readable round calendar rather than a date-window proof source. These findings do not change the no-current-proof conclusion or the roadmap recommendation."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 127,
+      "text": "| Belgian Pro League | OpenFootAPI: Football-Data.co.uk, `Free-Open-Data`; API-Football free tier; OpenFootball Belgium TXT; official Pro League calendar; Football-Data.co.uk CSVs; some community database entries. Football-data.org access is paid. | No. Football-Data.co.uk's upstream terms restrict automated bot/scraper/AI use; rows share lineage with existing CSVs and have no completeness/empty proof. Official dates exist through after the winter break but no authorized documented machine source; TXT dates lag after round 7. |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 142,
+      "text": "The audit finding above is unchanged: no reviewed zero-cost automated source currently satisfies both all-seven source-backed F01 completeness and sufficiently resolved use/retention rights. The product owner selected the operator-attested official-publication route specified in [LF02 #45](https://github.com/Awisalas/match-vet/issues/45) as a temporary **RESEARCH_ONLY** bridge so development can continue without weakening F01."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 158,
+      "text": "| Belgian Pro League | Pro League [2026/27 fixture pairings](https://www.proleague.be/nieuws/kalender-2026-2027-club-brugge-opent-tegen-kv-kortrijk-eerste-super-sunday-al-op-speeldag-4), official [JPL calendar](https://www.proleague.be/fr/jpl-calendar), and staged [schedule update](https://www.proleague.be/fr/informations/les-calendriers-des-fans-fixes-jusquapres-la-treve-hivernale). | Check the latest update for the requested round; refuse dates/times still TBC or beyond the fixed horizon. |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 164,
+      "text": "This route does not approve an automated provider, alter the F01 bar, or clear copyright/database/commercial rights. Product Promotion or paid launch still requires an explicitly accepted automated/licensed source strategy or a separate reviewed rights decision. Keep [#44](https://github.com/Awisalas/match-vet/issues/44) open until LF02 and corrective LF03\u2013LF05 are implemented, a fresh isolated real v2 base is acquired, all seven scopes can be attested, a real v3 assessment persists, and F06 produces a real all-seven Research-Only freeze. Keep F07 parked until those implementation and live-validation conditions succeed."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 172,
+      "text": "The first real LF02 preparation used the immutable v2 assessment `sha256:3a99f6e8c9a548f891763e91dcae6ea46499a8f34739470631c99296949f60d0` for Matchweek 2026-10-09. The store remained read-only. Its aggregate is `UNKNOWN`, with seven scopes, 12 actual OpenFootball Provider Attempts, no `ProviderCoverageEvidence`, no v3 assessment, and no F06 freeze."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 184,
+      "text": "| Belgian Pro League | 0 / 0 | 0 | 0 | 0 | 0 | 0 | 0 / 0 / 0 |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 191,
+      "text": "Belgian Pro League had no candidates or Provider Attempts because no scheduled OpenFootball source is configured for Belgium. The current OpenFootball Belgium file has confirmed exact scheduling only through round 7; the official Pro League publishes exact scheduling beyond that point and says fixtures are fixed through after the winter break. The reviewed zero-cost automated alternatives did not provide both Belgian rows and resolved upstream retention rights. The selected path is an immutable, minimal `MANUAL_CITATION` / `RESEARCH_ONLY` fixture observation from a policy-approved official publication. It adds source facts only: it does not create Provider Health, prove completeness, or replace LF02 attestation. It stores no page body, PDF, screenshot, or bulk copy; it performs no request or scrape; conflicts remain append-only. See the [2026-09-29 primary-source review](live-blocker-source-research-2026-09-29.md)."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-coverage-source-audit-2026-09-27.md",
+      "line": 193,
+      "text": "The timestamp refusal is an LF02 compatibility defect, not grounds to reopen #45. The identity, DATE-precision, and Belgian-row corrections are tracked separately as LF03 #46, LF04 #47, and LF05 #48. The original roadmap remains 53 tickets; these corrections are outside its count, F01\u2013F21 are unchanged, and F07 stays parked until the corrections and real all-seven validation are complete."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 7,
+      "text": "T06 builds a season-results URL for Football-Data.co.uk for every configured league. Its current source codes are E0, I1, SP1, D1, F1, P1, and B1. The fallback codes are `en.1`, `it.1`, `es.1`, `de.1`, `fr.1`, `pt.1`, and no code for Belgian Pro League. `FixtureHistoryAcquirer` tries OpenFootball only when the Football-Data request raises `SourceUnavailable`. A successful response with no future fixtures does not trigger fallback, and a parse error also does not enter fallback. See the [league configuration and URL builders](../../src/matchvet/ingestion.py#L88) and the [acquisition flow](../../src/matchvet/ingestion.py#L2274)."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 19,
+      "text": "| Belgian Pro League | [B1](https://www.football-data.co.uk/mmz4281/2627/B1.csv) | 63 | 0 |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 23,
+      "text": "An isolated live refresh through `FixtureHistoryAcquirer` reproduced the issue at 2026-09-23 19:06 UTC. It returned seven imports, zero acquisition issues, and zero OpenFootball fallback imports. The T06 captures had zero fixture rows in the next seven days. The source-selection failure is distinct from whether a particular Matchweek has scheduled fixtures."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 25,
+      "text": "Football-Data.co.uk has a separate [weekly fixtures page](https://www.football-data.co.uk/matches.php) and a [CSV download](https://football-data.co.uk/fixtures.csv). The page describes dates, times, and fixture odds for the latest main-league fixtures, with weekend odds collected on Fridays and midweek odds collected on Tuesdays. The live CSV capture on 2026-09-23 returned 198 rows across 22 divisions. It included all seven target division codes, but its dates ran only from 2026-09-18 through 2026-09-20. The page reported its latest upload as 2026-09-18. It therefore supplied no future fixture on the probe date. This file is a short-horizon feed, not a complete season schedule, and the live capture had no future coverage bounds or completeness metadata. The file also contains bookmaker odds columns. F02 should read only fixture fields and must not pass odds into prediction or retain them as fixture evidence."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 29,
+      "text": "The two Football-Data routes have different purposes. The season CSVs supplied historical rows in the live capture. The separate fixtures CSV is advertised as a latest-fixtures feed, but its current capture was stale and had no future rows. Football-Data lists all seven divisions in that feed. Its official page says data files are free and says the data is provided for league-match prediction only ([data page](https://www.football-data.co.uk/data.php), [fixtures page](https://www.football-data.co.uk/matches.php))."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 31,
+      "text": "OpenFootball's current `football.json` repository lists fixture and result data for the English Premier League, Bundesliga, La Liga, Serie A, Ligue 1, and other competitions. The live 2026/27 directory contains `en.1.json`, `it.1.json`, `es.1.json`, `de.1.json`, `fr.1.json`, and `pt.1.json`, but no Belgian Pro League JSON file ([repository README](https://github.com/openfootball/football.json), [2026/27 directory](https://github.com/openfootball/football.json/tree/master/2026-27)). Direct captures on 2026-09-23 contained future, unscored fixtures in all six target files:"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 41,
+      "text": "| Belgian Pro League | No file in the `football.json` season directory | Not supplied by this adapter |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 47,
+      "text": "Belgium has a separate [OpenFootball Belgium repository](https://github.com/openfootball/belgium) with a [2026/27 Football.TXT schedule](https://raw.githubusercontent.com/openfootball/belgium/master/2026-27/be1.txt). It lists all 34 rounds and 18 teams. Its header says exact dates and kickoff times are confirmed only for rounds 1 through 7; rounds 8 through 34 list pairings without exact dates or times. This file cannot establish the schedule for a future date-bounded Matchweek when its entries have no dates. T06 does not currently map Belgian Pro League to this repository and its parser accepts JSON, not Football.TXT."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 49,
+      "text": "The official Pro League site separately publishes a [2026/27 match calendar page](https://www.proleague.be/fr/jpl-calendar) and says the exact schedule is set through the winter break in its [calendar update](https://www.proleague.be/nieuws/kalenders-van-fans-liggen-vast-tot-na-de-winterstop). The public page is not a documented fixture API or downloadable dataset in the evidence reviewed here, and the page states \"\u00a9 2026 Pro League. All rights reserved.\" The investigation found no terms granting automated capture, retention, or redistribution of its schedule. The official site is evidence that Belgian dates are published, but it is not yet an approved machine-ingestion source for T06."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 57,
+      "text": "| OpenFootball Belgium | Public raw Football.TXT with the repository's [CC0 license](https://github.com/openfootball/belgium/blob/master/LICENSE.md). | The 2026/27 schedule is incomplete for exact dates and times after round 7. Its source note attributes the schedule to Pro League and VoetbalPrimeur. Do not treat the repository's license as proof that those third-party source sites grant separate reuse rights. |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 58,
+      "text": "| Official Pro League site | Public web pages; no fee was found for reading the pages. | No public machine API, open-data license, or automated reuse permission was identified. Do not claim broader permission based only on public access. |"
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 67,
+      "text": "- Belgian Pro League is the unresolved source. The available open text schedule lacks exact dates and times after round 7, the current Football-Data weekly capture is stale, and the official site has no identified machine-ingestion or reuse contract. If no approved source establishes a requested Belgian Matchweek, report the F01 coverage result as unknown or partial. Do not claim that the schedule is empty."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 68,
+      "text": "- Keep the live future-fixture smoke test separately invoked. It can verify that the six OpenFootball feeds return structurally valid future fixture rows, but it cannot establish completeness. Report the Belgian source limitation."
+    },
+    {
+      "path": "docs/research/upcoming-fixture-provider-capability-2026-09-23.md",
+      "line": 73,
+      "text": "The probe used direct HTTPS GET requests on 2026-09-23. It requested the seven `mmz4281/2627/<division>.csv` season files, the Football-Data `fixtures.csv`, and six OpenFootball `2026-27/<code>.json` files. It parsed CSV or JSON records, counted unscored fixtures whose date was on or after 2026-09-23, and retained the counts above. No credentials or paid service were used. These counts describe the captured responses, not a standing provider guarantee."
+    },
+    {
+      "path": "docs/research/v2-candidate-input-statistical-methods.md",
+      "line": 41,
+      "text": "Effective evidence is metric-specific. Retain unique fixture and Matchweek counts, correlation groups, weights and interval precision. `(sum w)^2 / sum w^2` measures weight concentration and cannot alone account for temporal or overlapping-market dependence. Minimum evidence should be derived from the frozen uncertainty/precision objective and verified on development folds. Thirty-seven rows for one fixture are not thirty-seven independent trials."
+    },
+    {
+      "path": "docs/run-lifecycle.md",
+      "line": 17,
+      "text": "run to `COMPLETE`. The seven phase names follow the product CLI contract. At T04 they are"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-19-t17-export-backup-restore.md",
+      "line": 106,
+      "text": "  Document bundle layout, marker gating, rights omissions, destination safety, and verification behavior in the two T17-scoped docs."
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-20-t19-research-only-release-qualification.md",
+      "line": 17,
+      "text": "- The replay covers exactly the seven configured Target Leagues and exactly the 37 preferences for every included Target Match."
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-20-t19-research-only-release-qualification.md",
+      "line": 61,
+      "text": "- Create: `tests/recorded/t19-seven-league.json`"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-20-t19-research-only-release-qualification.md",
+      "line": 77,
+      "text": "### Task 3: Compose the all-seven recorded replay"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-20-t19-research-only-release-qualification.md",
+      "line": 82,
+      "text": "- Modify: `tests/recorded/t19-seven-league.json`"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-20-t19-research-only-release-qualification.md",
+      "line": 87,
+      "text": "- [ ] Add one marked red test that expects all seven league keys, one included Target Match per league before withdrawal, one fallback capture, explicit `UNKNOWN`, an append-only conflict, one withdrawn fixture, and no prohibited preference."
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-20-t19-research-only-release-qualification.md",
+      "line": 126,
+      "text": "- [ ] Write the reference qualification document with the qualified source commit, environment identity, every check, seven-league outcomes, resources, recovery results, known source/statistical limits, and `Production Promotion has NOT occurred`."
+    },
+    {
+      "path": "scripts/live_fixture_smoke.py",
+      "line": 20,
+      "text": "    TARGET_LEAGUES,"
+    },
+    {
+      "path": "scripts/live_fixture_smoke.py",
+      "line": 62,
+      "text": "    for league in TARGET_LEAGUES:"
+    },
+    {
+      "path": "scripts/live_fixture_smoke.py",
+      "line": 105,
+      "text": "    print(\"Belgian Pro League: coverage=UNKNOWN (no approved schedule source configured)\")"
+    },
+    {
+      "path": "scripts/qualify-research-release.sh",
+      "line": 124,
+      "text": "run_gate seven_league_recorded_e2e .venv/bin/python -m matchvet.t19 \\"
+    },
+    {
+      "path": "scripts/qualify-research-release.sh",
+      "line": 125,
+      "text": "    tests/recorded/t19-seven-league.json \"$replay_workspace\" \"$replay_record\" \\"
+    },
+    {
+      "path": "scripts/qualify-research-release.sh",
+      "line": 130,
+      "text": "    \".venv/bin/python -m matchvet.t19 tests/recorded/t19-seven-league.json '$deterministic_workspace' '$deterministic_record' --software-commit '$software_commit' && .venv/bin/python scripts/compare-t19-replays.py '$replay_record' '$deterministic_record'\""
+    },
+    {
+      "path": "scripts/qualify-research-release.sh",
+      "line": 131,
+      "text": "replay_exit=$(awk -F '\\t' '$1 == \"seven_league_recorded_e2e\" {print $3}' \"$qualification_results\")"
+    },
+    {
+      "path": "scripts/qualify-research-release.sh",
+      "line": 137,
+      "text": "replay_elapsed=$(awk -F '\\t' '$1 == \"seven_league_recorded_e2e\" {print $4}' \"$qualification_results\")"
+    },
+    {
+      "path": "scripts/qualify-research-release.sh",
+      "line": 141,
+      "text": "    replay_digest=$(sha256sum \"$qualification_output/logs/seven_league_recorded_e2e.log\" | awk '{print $1}')"
+    },
+    {
+      "path": "src/matchvet/fixture_coverage.py",
+      "line": 13,
+      "text": "from matchvet.ingestion import TARGET_LEAGUES"
+    },
+    {
+      "path": "src/matchvet/fixture_coverage.py",
+      "line": 16,
+      "text": "_TARGET_LEAGUE_KEYS = tuple(league.key for league in TARGET_LEAGUES)"
+    },
+    {
+      "path": "src/matchvet/fixture_coverage.py",
+      "line": 378,
+      "text": "        if self.league_key not in _TARGET_LEAGUE_KEYS:"
+    },
+    {
+      "path": "src/matchvet/fixture_coverage.py",
+      "line": 400,
+      "text": "    \"\"\"Create V2 scopes for the existing fixed seven-league Matchweek.\"\"\""
+    },
+    {
+      "path": "src/matchvet/fixture_coverage.py",
+      "line": 405,
+      "text": "        for league_key in _TARGET_LEAGUE_KEYS"
+    },
+    {
+      "path": "src/matchvet/fixture_coverage.py",
+      "line": 859,
+      "text": "    \"\"\"Assess all seven scopes, treating an omitted requested scope as unknown.\"\"\""
+    },
+    {
+      "path": "src/matchvet/fixture_coverage_repository.py",
+      "line": 30,
+      "text": "from matchvet.ingestion import TARGET_LEAGUES, _parse_date"
+    },
+    {
+      "path": "src/matchvet/fixture_coverage_repository.py",
+      "line": 715,
+      "text": "    expected_leagues = tuple(league.key for league in TARGET_LEAGUES)"
+    },
+    {
+      "path": "src/matchvet/fixture_coverage_repository.py",
+      "line": 721,
+      "text": "            \"Fixture Coverage Assessment must retain all seven ordered Fixture Scopes.\""
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 543,
+      "text": "TARGET_LEAGUES: tuple[LeagueConfig, ...] = ("
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 551,
+      "text": "        \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 552,
+      "text": "        \"Belgian Pro League\","
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 560,
+      "text": "_LEAGUES_BY_KEY = MappingProxyType({league.key: league for league in TARGET_LEAGUES})"
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 561,
+      "text": "_LEAGUES_BY_NAME = MappingProxyType({league.name.casefold(): league for league in TARGET_LEAGUES})"
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 1550,
+      "text": "            canonical_name=\"Pro League official publication, manual citation\","
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 1551,
+      "text": "            owner=\"Pro League\","
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 1942,
+      "text": "            JOIN target_leagues AS l ON l.league_id = f.league_id"
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 2335,
+      "text": "            INSERT INTO target_leagues ("
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 4945,
+      "text": "    leagues: tuple[LeagueConfig, ...] = TARGET_LEAGUES"
+    },
+    {
+      "path": "src/matchvet/ingestion.py",
+      "line": 5424,
+      "text": "        diagnostics = [\"belgian_pro_league: no approved schedule source configured\"]"
+    },
+    {
+      "path": "src/matchvet/match_evidence_cutoff.py",
+      "line": 314,
+      "text": "    Exact F06 replay has already verified its complete seven-scope F01 coverage and candidate"
+    },
+    {
+      "path": "src/matchvet/matchweek.py",
+      "line": 821,
+      "text": "        JOIN target_leagues AS l ON l.league_id = f.league_id"
+    },
+    {
+      "path": "src/matchvet/matchweek.py",
+      "line": 918,
+      "text": "        JOIN target_leagues AS l ON l.league_id = u.league_id"
+    },
+    {
+      "path": "src/matchvet/matchweek_membership.py",
+      "line": 346,
+      "text": "            raise ValueError(\"F06 freeze scope snapshots must use canonical seven-scope order.\")"
+    },
+    {
+      "path": "src/matchvet/matchweek_membership.py",
+      "line": 407,
+      "text": "        if len(self.scopes) != 7:"
+    },
+    {
+      "path": "src/matchvet/matchweek_membership.py",
+      "line": 408,
+      "text": "            raise ValueError(\"F06 observation must retain all seven exact F01 scope states.\")"
+    },
+    {
+      "path": "src/matchvet/matchweek_membership.py",
+      "line": 415,
+      "text": "            raise ValueError(\"F06 observation scopes must use canonical seven-scope order.\")"
+    },
+    {
+      "path": "src/matchvet/matchweek_membership_integrity.py",
+      "line": 146,
+      "text": "           JOIN target_leagues l ON l.league_id = f.league_id"
+    },
+    {
+      "path": "src/matchvet/matchweek_membership_integrity.py",
+      "line": 436,
+      "text": "            \"SELECT l.league_key FROM fixtures f JOIN target_leagues l ON l.league_id=f.league_id \""
+    },
+    {
+      "path": "src/matchvet/matchweek_membership_repository.py",
+      "line": 830,
+      "text": "    if len(assessment.scope_assessments) != 7:"
+    },
+    {
+      "path": "src/matchvet/matchweek_membership_repository.py",
+      "line": 831,
+      "text": "        raise _scope_refusal(assessment.digest, \"F01 assessment must have exactly seven scopes.\")"
+    },
+    {
+      "path": "src/matchvet/matchweek_membership_repository.py",
+      "line": 898,
+      "text": "            \"F01 aggregate schedule state conflicts with the seven persisted scope states.\","
+    },
+    {
+      "path": "src/matchvet/matchweek_membership_repository.py",
+      "line": 1062,
+      "text": "        JOIN target_leagues AS league ON league.league_id = f.league_id"
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 624,
+      "text": "                    \"Operator Attestation State evidence must use all seven ordered scopes.\""
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 847,
+      "text": "            \"belgian-pro-league-pairings\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 848,
+      "text": "            \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 850,
+      "text": "            \"Pro League\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 858,
+      "text": "            \"belgian-jpl-calendar\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 859,
+      "text": "            \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 861,
+      "text": "            \"Pro League\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 869,
+      "text": "            \"belgian-schedule-updates\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 870,
+      "text": "            \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 872,
+      "text": "            \"Pro League\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 1536,
+      "text": "    \"\"\"Purely derive v3 from one exact persisted-v2 value and seven selected events.\"\"\""
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 1543,
+      "text": "        raise ValueError(\"F01 v3 derivation requires the exact seven configured Fixture Scopes.\")"
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 1550,
+      "text": "        raise ValueError(\"F01 v3 derivation requires seven distinct exact scope attestations.\")"
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation.py",
+      "line": 1629,
+      "text": "        raise ValueError(\"F01 v3 requires exactly seven operator attestation artifacts.\")"
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation_cli.py",
+      "line": 74,
+      "text": "        \"assemble\", help=\"derive v3 from an explicit set of seven attestation artifacts\""
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation_cli.py",
+      "line": 83,
+      "text": "        help=\"explicit persisted attestation artifact digest; repeat exactly seven times\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_attestation_cli.py",
+      "line": 285,
+      "text": "        raise ValueError(\"Assembly requires exactly seven explicit --attestation-artifact values.\")"
+    },
+    {
+      "path": "src/matchvet/operator_fixture_observation.py",
+      "line": 61,
+      "text": "_SUPPORTED_LEAGUE = \"belgian_pro_league\""
+    },
+    {
+      "path": "src/matchvet/operator_fixture_observation.py",
+      "line": 133,
+      "text": "            or self.publisher_name != \"Pro League\""
+    },
+    {
+      "path": "src/matchvet/operator_fixture_observation.py",
+      "line": 135,
+      "text": "            or self.competition_name != \"Jupiler Pro League\""
+    },
+    {
+      "path": "src/matchvet/operator_fixture_observation.py",
+      "line": 178,
+      "text": "            raise ValueError(\"Official URL must use an approved Pro League HTTPS address.\")"
+    },
+    {
+      "path": "src/matchvet/operator_fixture_observation.py",
+      "line": 202,
+      "text": "        publisher_name=\"Pro League\","
+    },
+    {
+      "path": "src/matchvet/operator_fixture_observation.py",
+      "line": 204,
+      "text": "        competition_name=\"Jupiler Pro League\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 1,
+      "text": "\"\"\"Frozen official Pro League names for the LF05 manual-citation source.\"\"\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 15,
+      "text": "LEAGUE_KEY = \"belgian_pro_league\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 48,
+      "text": "            raise ValueError(\"Malformed Pro League registry JSON\") from error"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 50,
+      "text": "            raise ValueError(\"Invalid Pro League registry envelope\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 52,
+      "text": "            raise ValueError(\"Unsupported Pro League registry version or entries\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 56,
+      "text": "            raise ValueError(\"Invalid Pro League registry digest\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 65,
+      "text": "            raise ValueError(\"Pro League registry digest mismatch\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 72,
+      "text": "                raise ValueError(\"Malformed Pro League registry entry\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 74,
+      "text": "                raise ValueError(\"Empty Pro League registry field\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 89,
+      "text": "                raise ValueError(\"Pro League registry scope, provenance, or target is invalid\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 91,
+      "text": "                raise ValueError(\"Duplicate or conflicting Pro League registry entry\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry.py",
+      "line": 96,
+      "text": "            raise ValueError(\"Pro League registry entries must be sorted\")"
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 6,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 16,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Gent (90800c95-58b1-5a21-b919-89fed6318928).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 19,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 29,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Genk (ce9f9bd1-03f9-57d3-97b7-7ea31fb6a559).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 32,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 42,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Kortrijk (bfb32b05-59e6-5648-9b33-7e40ff47bcf8).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 45,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 55,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Mechelen (4d518065-f23c-539a-8050-51a2f6f4ce1f).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 58,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 68,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Westerlo (9610662f-38c0-5a35-b767-b7d655006148).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 71,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 81,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Oud-Heverlee Leuven (4111d7bc-c7e7-5457-971d-092faa24f251).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 84,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 94,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity RAAL La Louviere (4331bd48-bc75-587d-86f7-f3dae1d26f42).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 97,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 107,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Antwerp (f12e95f1-a648-558e-9876-49ad8ccd2041).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 110,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 120,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity St. Gilloise (84cfc556-c7c7-5dc8-b9a4-cd878ad85a13).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 123,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 133,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Anderlecht (43ff030c-9cfd-5071-abfa-f335c1eda2d8).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 136,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 146,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Beveren (7eff0929-689e-5023-8fe9-b389e2395dac).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 149,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 159,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Charleroi (7503e693-b803-570c-aaa0-67ab4adf0574).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 162,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 172,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Standard (ebfcd84f-fa42-5b5a-98cb-5eac04c76ed2).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 175,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 185,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity St Truiden (cd8a896e-ba62-5aec-b3fc-1325a28f9fd4).\""
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 188,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "src/matchvet/pro_league_team_alias_registry_v1.json",
+      "line": 198,
+      "text": "      \"confirmation\": \"LF09 reviewed official matchday 8 whole name against the unique existing belgian_pro_league canonical identity Waregem (0a3eb518-174e-585e-834a-c138cc94d374).\""
+    },
+    {
+      "path": "src/matchvet/research_capture.py",
+      "line": 127,
+      "text": "    \"\"\"Create/replay one exact seven-scope index and gate any CB01 collection.\"\"\""
+    },
+    {
+      "path": "src/matchvet/research_capture.py",
+      "line": 152,
+      "text": "        enrolls at most one CB01 batch per INCLUDED membership in that seven-scope"
+    },
+    {
+      "path": "src/matchvet/research_capture.py",
+      "line": 453,
+      "text": "            if len(freeze.scopes) != 7:"
+    },
+    {
+      "path": "src/matchvet/research_capture.py",
+      "line": 454,
+      "text": "                raise CaptureError(\"Capture requires the exact seven-scope F06 freeze.\")"
+    },
+    {
+      "path": "src/matchvet/research_capture.py",
+      "line": 470,
+      "text": "                raise CaptureError(\"F06 freeze is not the exact canonical seven-scope Friday week.\")"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 858,
+      "text": "            CREATE TABLE target_leagues ("
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 872,
+      "text": "                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 881,
+      "text": "                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 891,
+      "text": "                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 905,
+      "text": "                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 920,
+      "text": "                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 1015,
+      "text": "                league_id TEXT NOT NULL REFERENCES target_leagues(league_id),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 3550,
+      "text": "                (\"target_leagues\", \"sqlite_autoindex_target_leagues_1\", 1, \"pk\", 0),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 3551,
+      "text": "                (\"target_leagues\", \"sqlite_autoindex_target_leagues_2\", 1, \"u\", 0),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 3552,
+      "text": "                (\"target_leagues\", \"sqlite_autoindex_target_leagues_3\", 1, \"u\", 0),"
+    },
+    {
+      "path": "src/matchvet/store.py",
+      "line": 3986,
+      "text": "        \"target_leagues\","
+    },
+    {
+      "path": "src/matchvet/t09.py",
+      "line": 5098,
+      "text": "        JOIN target_leagues AS l ON l.league_id = f.league_id"
+    },
+    {
+      "path": "src/matchvet/t09.py",
+      "line": 5158,
+      "text": "        JOIN target_leagues AS l ON l.league_id = f.league_id"
+    },
+    {
+      "path": "src/matchvet/t16.py",
+      "line": 50,
+      "text": "    \"Belgian Pro League\","
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 24,
+      "text": "from matchvet.ingestion import TARGET_LEAGUES"
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 43,
+      "text": "    \"seven_league_recorded_e2e\","
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 319,
+      "text": "        expected_keys = tuple(league.key for league in TARGET_LEAGUES)"
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 323,
+      "text": "                \"The recorded corpus must cover the exact seven-league Target League Set in order.\""
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 545,
+      "text": "        expected_leagues = tuple(league.key for league in TARGET_LEAGUES)"
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 826,
+      "text": "    \"\"\"Run the rights-safe seven-league corpus through the implemented pipeline.\"\"\""
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 873,
+      "text": "    for pack, league in zip(corpus.leagues, TARGET_LEAGUES, strict=True):"
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 893,
+      "text": "        if report is None or len(report.imports) != len(TARGET_LEAGUES):"
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 894,
+      "text": "            raise T19Error(\"Recorded T06 acquisition did not import all seven league packs.\")"
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 903,
+      "text": "        if len(freeze.target_matches) != len(TARGET_LEAGUES):"
+    },
+    {
+      "path": "src/matchvet/t19.py",
+      "line": 904,
+      "text": "            raise T19Error(\"Recorded T05 freeze did not retain all seven target matches.\")"
+    },
+    {
+      "path": "src/matchvet/workload.py",
+      "line": 1004,
+      "text": "        JOIN target_leagues AS l ON l.league_id = f.league_id"
+    },
+    {
+      "path": "tests/causal_selection_support.py",
+      "line": 62,
+      "text": "    f06 = put(\"F06-seven-scopes-Friday-Monday\", captures, scopes=scopes, included=members)"
+    },
+    {
+      "path": "tests/causal_selection_support.py",
+      "line": 122,
+      "text": "        for role in (\"F06-seven-scopes-Friday-Monday\", \"F11\", \"F13\", \"F14\", \"F16\"):"
+    },
+    {
+      "path": "tests/causal_selection_support.py",
+      "line": 128,
+      "text": "                for role in (\"F06-seven-scopes-Friday-Monday\", \"F11\")"
+    },
+    {
+      "path": "tests/causal_selection_support.py",
+      "line": 133,
+      "text": "            raise MatchweekResearchError(\"Synthetic seven-scope/common-T mismatch\")"
+    },
+    {
+      "path": "tests/fixtures/f01_v2_unknown_2026_09_25.json",
+      "line": 1,
+      "text": "{\"contract_version\":\"fixture-coverage-v2-v2\",\"coverage_evidence\":[],\"digest\":\"sha256:b3b4fada3f37449f48895467fd7f0964679cd31682cc4439bac82fa075c8ee78\",\"fixture_revisions\":[],\"freshness_policy_id\":null,\"freshness_results\":[],\"identity_resolutions\":[],\"provider_attempts\":[],\"schedule_state\":\"UNKNOWN\",\"schema_version\":2,\"scope_assessments\":[{\"coverage_evidence_ids\":[],\"coverage_state\":\"UNKNOWN\",\"current_coverage_evidence_ids\":[],\"fixture_revisions\":[],\"freshness_results\":[],\"identity_blocker_candidate_ids\":[],\"provider_attempt_ids\":[],\"scope\":{\"league_key\":\"premier_league\",\"matchweek_friday\":\"2026-09-25\",\"season\":\"2026-27\"},\"stale_coverage_evidence_ids\":[]},{\"coverage_evidence_ids\":[],\"coverage_state\":\"UNKNOWN\",\"current_coverage_evidence_ids\":[],\"fixture_revisions\":[],\"freshness_results\":[],\"identity_blocker_candidate_ids\":[],\"provider_attempt_ids\":[],\"scope\":{\"league_key\":\"serie_a\",\"matchweek_friday\":\"2026-09-25\",\"season\":\"2026-27\"},\"stale_coverage_evidence_ids\":[]},{\"coverage_evidence_ids\":[],\"coverage_state\":\"UNKNOWN\",\"current_coverage_evidence_ids\":[],\"fixture_revisions\":[],\"freshness_results\":[],\"identity_blocker_candidate_ids\":[],\"provider_attempt_ids\":[],\"scope\":{\"league_key\":\"la_liga\",\"matchweek_friday\":\"2026-09-25\",\"season\":\"2026-27\"},\"stale_coverage_evidence_ids\":[]},{\"coverage_evidence_ids\":[],\"coverage_state\":\"UNKNOWN\",\"current_coverage_evidence_ids\":[],\"fixture_revisions\":[],\"freshness_results\":[],\"identity_blocker_candidate_ids\":[],\"provider_attempt_ids\":[],\"scope\":{\"league_key\":\"bundesliga\",\"matchweek_friday\":\"2026-09-25\",\"season\":\"2026-27\"},\"stale_coverage_evidence_ids\":[]},{\"coverage_evidence_ids\":[],\"coverage_state\":\"UNKNOWN\",\"current_coverage_evidence_ids\":[],\"fixture_revisions\":[],\"freshness_results\":[],\"identity_blocker_candidate_ids\":[],\"provider_attempt_ids\":[],\"scope\":{\"league_key\":\"ligue_1\",\"matchweek_friday\":\"2026-09-25\",\"season\":\"2026-27\"},\"stale_coverage_evidence_ids\":[]},{\"coverage_evidence_ids\":[],\"coverage_state\":\"UNKNOWN\",\"current_coverage_evidence_ids\":[],\"fixture_revisions\":[],\"freshness_results\":[],\"identity_blocker_candidate_ids\":[],\"provider_attempt_ids\":[],\"scope\":{\"league_key\":\"liga_portugal\",\"matchweek_friday\":\"2026-09-25\",\"season\":\"2026-27\"},\"stale_coverage_evidence_ids\":[]},{\"coverage_evidence_ids\":[],\"coverage_state\":\"UNKNOWN\",\"current_coverage_evidence_ids\":[],\"fixture_revisions\":[],\"freshness_results\":[],\"identity_blocker_candidate_ids\":[],\"provider_attempt_ids\":[],\"scope\":{\"league_key\":\"belgian_pro_league\",\"matchweek_friday\":\"2026-09-25\",\"season\":\"2026-27\"},\"stale_coverage_evidence_ids\":[]}]}"
+    },
+    {
+      "path": "tests/fixtures/lf05_v1_observation.json",
+      "line": 1,
+      "text": "{\"digest\":\"sha256:972e8d440d1a1be9a224e9da991e4edc59bd3e74fc2f0c337901f449b89aa8ed\",\"observation\":{\"access_method\":\"MANUAL_CITATION\",\"away_source_name\":\"Synthetic South FC\",\"away_team_id\":\"team-synthetic-south\",\"competition_id\":\"jupiler-pro-league\",\"competition_name\":\"Jupiler Pro League\",\"contract_version\":\"operator-official-fixture-observation-v1\",\"fixture_status\":\"SCHEDULED\",\"home_source_name\":\"Synthetic North FC\",\"home_team_id\":\"team-synthetic-north\",\"kickoff_precision\":\"INSTANT\",\"kickoff_utc\":\"2026-10-09T18:00:00+00:00\",\"league_key\":\"belgian_pro_league\",\"matchweek_friday\":\"2026-10-09\",\"mode\":\"RESEARCH_ONLY\",\"observed_at_utc\":\"2026-09-29T12:00:00+00:00\",\"official_url\":\"https://www.proleague.be/jpl-kalender!\",\"operator_id\":\"operator-test\",\"policy_digest\":\"sha256:3199753d0e0ca48cea0bc30f9ae3d7c13edf7237e95bf9bb2621233b8c232092\",\"policy_id\":\"matchvet:operator-official-fixture-observation\",\"policy_version\":\"1\",\"publication_date\":\"2026-09-29\",\"publication_id\":\"jpl-kalender\",\"publication_type\":\"OFFICIAL_COMPETITION_CALENDAR\",\"publisher_id\":\"pro-league\",\"publisher_name\":\"Pro League\",\"schema_version\":1,\"scope_id\":\"belgian_pro_league:2026-27:2026-10-09\",\"season\":\"2026-27\",\"source_class\":\"OFFICIAL_COMPETITION\",\"source_local_date\":\"2026-10-09\",\"title_or_publication_id\":\"Synthetic test citation\"}}"
+    },
+    {
+      "path": "tests/issue84_support.py",
+      "line": 1,
+      "text": "\"\"\"Synthetic seven-scope Matchweek and cryptographic authority for #84.\"\"\""
+    },
+    {
+      "path": "tests/issue84_support.py",
+      "line": 346,
+      "text": "    from matchvet.ingestion import TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/issue84_support.py",
+      "line": 349,
+      "text": "    # and one Monday fixture while all seven F06 scopes remain in the assessment."
+    },
+    {
+      "path": "tests/issue84_support.py",
+      "line": 355,
+      "text": "    by_key = {league.key: league for league in TARGET_LEAGUES}"
+    },
+    {
+      "path": "tests/issue84_support.py",
+      "line": 366,
+      "text": "    rows[\"belgian_pro_league\"] = ()"
+    },
+    {
+      "path": "tests/issue84_support.py",
+      "line": 480,
+      "text": "            CutoffPolicy(\"issue84-seven-scope\", \"1\", 21600, rule=CORRECTED_RULE)"
+    },
+    {
+      "path": "tests/issue84_support.py",
+      "line": 578,
+      "text": "        assert len(freeze_value.scopes) == 7"
+    },
+    {
+      "path": "tests/recorded/t19-seven-league.json",
+      "line": 17,
+      "text": "    \"withdrawn_league\": \"belgian_pro_league\""
+    },
+    {
+      "path": "tests/recorded/t19-seven-league.json",
+      "line": 75,
+      "text": "      \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_fixture_coverage.py",
+      "line": 107,
+      "text": "def test_v2_scope_factory_uses_the_seven_target_leagues_and_existing_matchweek_window() -> None:"
+    },
+    {
+      "path": "tests/test_fixture_coverage.py",
+      "line": 117,
+      "text": "        \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_fixture_coverage.py",
+      "line": 284,
+      "text": "def test_current_full_scope_evidence_for_all_seven_leagues_is_complete_and_deterministic() -> None:"
+    },
+    {
+      "path": "tests/test_fixture_coverage.py",
+      "line": 345,
+      "text": "def test_all_seven_affirmatively_empty_scopes_produce_confirmed_empty() -> None:"
+    },
+    {
+      "path": "tests/test_fixture_coverage_repository.py",
+      "line": 38,
+      "text": "    TARGET_LEAGUES,"
+    },
+    {
+      "path": "tests/test_fixture_coverage_repository.py",
+      "line": 90,
+      "text": "    for index, league in enumerate(TARGET_LEAGUES):"
+    },
+    {
+      "path": "tests/test_fixture_coverage_repository.py",
+      "line": 122,
+      "text": "        elif league.key == \"belgian_pro_league\":"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 15,
+      "text": "    TARGET_LEAGUES,"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 35,
+      "text": "            \"\"\"INSERT INTO target_leagues ("
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 197,
+      "text": "def test_target_league_set_and_primary_url_cover_exactly_seven_leagues() -> None:"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 198,
+      "text": "    assert tuple(league.key for league in TARGET_LEAGUES) == ("
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 205,
+      "text": "        \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 207,
+      "text": "    assert len(TARGET_LEAGUES) == 7"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 211,
+      "text": "    assert football_data_url(league_by_key(\"belgian_pro_league\"), \"2025-26\") == ("
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 322,
+      "text": "def test_openfootball_fallback_is_not_claimed_for_belgian_pro_league() -> None:"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 326,
+      "text": "        openfootball_url(league_by_key(\"belgian_pro_league\"), \"2026-27\")"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 358,
+      "text": "def test_importer_supports_all_seven_leagues_and_preserves_restricted_rights("
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 373,
+      "text": "        for league in TARGET_LEAGUES:"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 388,
+      "text": "            league.key for league in TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 583,
+      "text": "def test_acquirer_imports_all_seven_leagues_offline(tmp_path: Path) -> None:"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 598,
+      "text": "        for index, league in enumerate(TARGET_LEAGUES)"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 611,
+      "text": "            league.key for league in TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 613,
+      "text": "        assert fetcher.calls == [football_data_url(league, \"2026-27\") for league in TARGET_LEAGUES]"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 674,
+      "text": "        assert len(scheduled.assessment.scope_assessments) == 7"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 723,
+      "text": "        assert len(acquired.assessment.scope_assessments) == 7"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 810,
+      "text": "        for league in TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 813,
+      "text": "    sources = {football_data_url(league, \"2026-27\"): _minimal_csv() for league in TARGET_LEAGUES}"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 819,
+      "text": "            for league in TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 833,
+      "text": "        supported = tuple(league for league in TARGET_LEAGUES if league.openfootball_supported)"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 859,
+      "text": "            if item.scope.league_key == \"belgian_pro_league\""
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 863,
+      "text": "        assert any(\"belgian_pro_league\" in item for item in scheduled.diagnostics)"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1534,
+      "text": "    belgian = league_by_key(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1537,
+      "text": "        football_data_url(belgian, \"2026-27\"): _minimal_csv(),"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1544,
+      "text": "            IngestionPlan(current_season=\"2026-27\", leagues=(premier, belgian))"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1553,
+      "text": "            football_data_url(belgian, \"2026-27\"),"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1560,
+      "text": "        missing_belgian = FixtureHistoryAcquirer(importer, StaticSourceFetcher({})).acquire("
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1561,
+      "text": "            IngestionPlan(current_season=\"2026-27\", leagues=(belgian,))"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1563,
+      "text": "        assert len(missing_belgian.issues) == 1"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1564,
+      "text": "        assert missing_belgian.issues[0].source_kind is SourceKind.FOOTBALL_DATA"
+    },
+    {
+      "path": "tests/test_ingestion.py",
+      "line": 1565,
+      "text": "        assert missing_belgian.issues[0].fallback_attempted is False"
+    },
+    {
+      "path": "tests/test_issue78.py",
+      "line": 73,
+      "text": "        assert len(freeze.scopes) == 7"
+    },
+    {
+      "path": "tests/test_lf03.py",
+      "line": 39,
+      "text": "            \"\"\"INSERT INTO target_leagues ("
+    },
+    {
+      "path": "tests/test_lf03.py",
+      "line": 634,
+      "text": "    league = league_by_key(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_lf06.py",
+      "line": 109,
+      "text": "            \"\"\"INSERT INTO target_leagues ("
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 1,
+      "text": "\"\"\"LF09 official Pro League identity policy at the importer and LF05 boundaries.\"\"\""
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 42,
+      "text": "            league_by_key(\"belgian_pro_league\"), \"2026-27\", \"SK Beveren\""
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 106,
+      "text": "        league = league_by_key(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 113,
+      "text": "            deterministic_identifier(\"team\", f\"belgian_pro_league:{canonical_key(target)}\")"
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 124,
+      "text": "        league = league_by_key(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 152,
+      "text": "                league_by_key(\"belgian_pro_league\"), \"2026-27\", \"SK Beveren\", source_kind=kind"
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 162,
+      "text": "        league = league_by_key(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 182,
+      "text": "        league = league_by_key(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 224,
+      "text": "                league_by_key(\"belgian_pro_league\"), \"2026-27\", \"SK Beveren\""
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 231,
+      "text": "    league = league_by_key(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 323,
+      "text": "    entry[\"team_id\"] = deterministic_identifier(\"team\", \"belgian_pro_league:lommel sk\")"
+    },
+    {
+      "path": "tests/test_lf09.py",
+      "line": 352,
+      "text": "    league = league_by_key(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 28,
+      "text": "    TARGET_LEAGUES,"
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 352,
+      "text": "def test_all_seven_66_decision_freeze_is_atomic_and_idempotent("
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 366,
+      "text": "            for league, count in zip(TARGET_LEAGUES, (10, 10, 10, 9, 9, 9, 9), strict=True)"
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 368,
+      "text": "        belgian_rows = rows.pop(\"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 372,
+      "text": "            tuple(name for _, _, home, away in belgian_rows for name in (home, away)),"
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 373,
+      "text": "            \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 382,
+      "text": "            if item.scope.league_key == \"belgian_pro_league\""
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 384,
+      "text": "        for index, (_, _, home, away) in enumerate(belgian_rows):"
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 387,
+      "text": "                    \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 409,
+      "text": "                    f\"belgian-manual-{index}\","
+    },
+    {
+      "path": "tests/test_lf14.py",
+      "line": 457,
+      "text": "        assert len(frozen.scopes) == 7"
+    },
+    {
+      "path": "tests/test_match_evidence_cutoff.py",
+      "line": 246,
+      "text": "                \"belgian_pro_league\": (),"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 33,
+      "text": "    TARGET_LEAGUES,"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 204,
+      "text": "    for index, (scope, league) in enumerate(zip(scopes, TARGET_LEAGUES, strict=True)):"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 294,
+      "text": "    for index, (scope, league) in enumerate(zip(scopes, TARGET_LEAGUES, strict=True)):"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 297,
+      "text": "        if index == 0 or (rows_by_league and league.key != \"belgian_pro_league\"):"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 922,
+      "text": "    for index, (scope, league) in enumerate(zip(scopes, TARGET_LEAGUES, strict=True)):"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 1014,
+      "text": "def test_all_seven_confirmed_empty_scopes_create_immutable_zero_member_freeze("
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 1038,
+      "text": "    assert len(frozen.scopes) == 7"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 1045,
+      "text": "def test_freeze_exact_accepts_all_seven_persisted_attested_v3_scopes("
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 1071,
+      "text": "        assert len(frozen.scopes) == 7"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 1092,
+      "text": "    \"league_key\", (\"belgian_pro_league\", \"premier_league\", \"serie_a\", \"bundesliga\", \"ligue_1\")"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 1653,
+      "text": "    league = TARGET_LEAGUES[0]"
+    },
+    {
+      "path": "tests/test_matchweek_membership.py",
+      "line": 1876,
+      "text": "    assert len(frozen.scopes) == 7"
+    },
+    {
+      "path": "tests/test_operator_fixture_attestation.py",
+      "line": 1035,
+      "text": "def test_seven_explicit_attestations_derive_a_deterministic_v3_without_changing_v2() -> None:"
+    },
+    {
+      "path": "tests/test_operator_fixture_attestation.py",
+      "line": 1055,
+      "text": "    with pytest.raises(ValueError, match=\"seven distinct exact scope attestations\"):"
+    },
+    {
+      "path": "tests/test_operator_fixture_attestation_cli.py",
+      "line": 494,
+      "text": "def test_assemble_uses_seven_explicit_artifacts_and_prints_compact_freeze_result("
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 45,
+      "text": "    store: object, names: tuple[str, ...], league_key: str = \"belgian_pro_league\""
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 54,
+      "text": "            INSERT INTO target_leagues ("
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 87,
+      "text": "        \"league_key\": \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 116,
+      "text": "        league_key=\"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 119,
+      "text": "        scope_id=\"belgian_pro_league:2026-27:2026-10-09\","
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 217,
+      "text": "        assert recorded.observation.scope_id == \"belgian_pro_league:2026-27:2026-10-09\""
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 471,
+      "text": "        assert recorded.observation.scope_id == \"belgian_pro_league:2026-27:2026-10-16\""
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 472,
+      "text": "        assert repository.list_for_scope(\"belgian_pro_league:2026-27:2026-10-09\") == ()"
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 473,
+      "text": "        records = repository.list_for_scope(\"belgian_pro_league:2026-27:2026-10-16\")"
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 486,
+      "text": "        ({\"official_url\": \"https://example.com/calendar\"}, \"approved Pro League\"),"
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 487,
+      "text": "        ({\"official_url\": \"https://proleague.be.evil.example/calendar\"}, \"approved Pro League\"),"
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 530,
+      "text": "        league_id = deterministic_identifier(\"league\", \"belgian_pro_league\")"
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 534,
+      "text": "                    \"team\", f\"belgian_pro_league:{canonical_key(team_name)}\""
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 594,
+      "text": "        \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 624,
+      "text": "    assert recorded[\"scope_id\"] == \"belgian_pro_league:2026-27:2026-10-09\""
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 644,
+      "text": "                \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 667,
+      "text": "                \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 774,
+      "text": "            if item.scope.league_key == \"belgian_pro_league\""
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 792,
+      "text": "            if scope.scope.league_key != \"belgian_pro_league\""
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 820,
+      "text": "            assessment, \"belgian_pro_league:2026-27:2026-10-09\""
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 848,
+      "text": "                \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_operator_fixture_observation.py",
+      "line": 972,
+      "text": "    if league_key == \"belgian_pro_league\":"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 784,
+      "text": "def test_scheduled_acquisition_persists_one_record_per_attempt_and_no_belgian_record("
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 790,
+      "text": "        TARGET_LEAGUES,"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 810,
+      "text": "        for league in TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 819,
+      "text": "        for league in TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 855,
+      "text": "                tuple(football_data_url(league, \"2026-27\") for league in TARGET_LEAGUES)"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 858,
+      "text": "                    for league in TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 863,
+      "text": "                    for league in TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 871,
+      "text": "        assert len(assessment.scope_assessments) == 7"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 877,
+      "text": "                len(schedule_json) for league in TARGET_LEAGUES if league.openfootball_supported"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 897,
+      "text": "        belgian = next("
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 900,
+      "text": "            if scope_assessment.scope.league_key == \"belgian_pro_league\""
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 902,
+      "text": "        assert belgian.scope.scope_id == \"belgian_pro_league:2026-27:2026-09-25\""
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 903,
+      "text": "        assert belgian.provider_attempt_ids == ()"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 904,
+      "text": "        assert len(assessment.scope_assessments) == 7"
+    },
+    {
+      "path": "tests/test_provider_health_f05.py",
+      "line": 907,
+      "text": "                \"2026-27\", \"2026-09-25\", scope_id=belgian.scope.scope_id"
+    },
+    {
+      "path": "tests/test_research_capture.py",
+      "line": 113,
+      "text": "            CutoffPolicy(\"issue86-seven-scope\", \"1\", 21600, rule=CORRECTED_RULE)"
+    },
+    {
+      "path": "tests/test_research_capture.py",
+      "line": 161,
+      "text": "        assert len(freeze_value.scopes) == 7 and included"
+    },
+    {
+      "path": "tests/test_research_capture.py",
+      "line": 538,
+      "text": "        assert len(value[\"freeze\"][\"scope_ids\"]) == 7"
+    },
+    {
+      "path": "tests/test_source_transport.py",
+      "line": 495,
+      "text": "        TARGET_LEAGUES,"
+    },
+    {
+      "path": "tests/test_source_transport.py",
+      "line": 515,
+      "text": "        leagues=(TARGET_LEAGUES[0],),"
+    },
+    {
+      "path": "tests/test_source_transport.py",
+      "line": 522,
+      "text": "    assert fetcher.urls == [football_data_url(TARGET_LEAGUES[0], \"2026-27\")]"
+    },
+    {
+      "path": "tests/test_t09.py",
+      "line": 602,
+      "text": "        (\"belgian_pro_league\", \"Belgian Pro League\"),"
+    },
+    {
+      "path": "tests/test_t09.py",
+      "line": 807,
+      "text": "def test_store_builder_covers_all_seven_target_league_packs(tmp_path: Path) -> None:"
+    },
+    {
+      "path": "tests/test_t09.py",
+      "line": 808,
+      "text": "    from matchvet.ingestion import TARGET_LEAGUES"
+    },
+    {
+      "path": "tests/test_t09.py",
+      "line": 811,
+      "text": "    for league in TARGET_LEAGUES:"
+    },
+    {
+      "path": "tests/test_t19.py",
+      "line": 31,
+      "text": "CORPUS_PATH = Path(__file__).parent / \"recorded\" / \"t19-seven-league.json\""
+    },
+    {
+      "path": "tests/test_t19.py",
+      "line": 117,
+      "text": "        \"belgian_pro_league\","
+    },
+    {
+      "path": "tests/test_t19.py",
+      "line": 185,
+      "text": "    with pytest.raises(T19ValidationError, match=\"exact seven-league\"):"
+    },
+    {
+      "path": "tests/test_t19.py",
+      "line": 222,
+      "text": "def test_all_seven_league_replay_is_research_only_and_deterministic(tmp_path: Path) -> None:"
+    },
+    {
+      "path": "tests/test_workload_weather.py",
+      "line": 101,
+      "text": "            competition=\"uefa_champions_league\","
+    },
+    {
+      "path": "tests/test_workload_weather.py",
+      "line": 434,
+      "text": "        competition=\"uefa_champions_league\","
+    }
+  ],
+  "retained_golden_digests": [
+    {
+      "path": "tests/fixtures/f01_v2_unknown_2026_09_25.json",
+      "sha256": "6e65800294eff7e8e1d291446288a3c0efe5a675a5b058811f160fa72fbb3b0d",
+      "bytes": 2580,
+      "compressed": false,
+      "seven_scope_markers": 1
+    },
+    {
+      "path": "tests/fixtures/lf05_v1_observation.json",
+      "sha256": "f7cd91f2a9f8e424d434cdd7fb0d57789a262a51d5e34cba86074e56744eb9fd",
+      "bytes": 1309,
+      "compressed": false,
+      "seven_scope_markers": 4
+    },
+    {
+      "path": "tests/fixtures/lf07_v1_conflicting_attestation.json.gz",
+      "sha256": "080ac92f90a131c512bb716ecc32b52b85ec32bb9647c9b51056c5184a567054",
+      "bytes": 3321,
+      "compressed": true,
+      "seven_scope_markers": 10
+    },
+    {
+      "path": "tests/fixtures/lf07_v1_empty_attestations.json.gz",
+      "sha256": "bdce3c13e4de3ba7bf8b8a394a1cf8e66692f583d07b2310954fe95e694dae4a",
+      "bytes": 4572,
+      "compressed": true,
+      "seven_scope_markers": 79
+    },
+    {
+      "path": "tests/fixtures/lf07_v1_v3_empty_assessment.json.gz",
+      "sha256": "0c2c5f3326bbb08df3da25cd47f29ec10061574db348d1543f2ed4c7e5ce173f",
+      "bytes": 6012,
+      "compressed": true,
+      "seven_scope_markers": 83
+    },
+    {
+      "path": "tests/recorded/t19-seven-league.json",
+      "sha256": "6499c8fbd6a009372cc2289a20e251b3e9a34160f2494aa4a757c904f993d9c0",
+      "bytes": 3022,
+      "compressed": false,
+      "seven_scope_markers": 2
+    },
+    {
+      "path": "tests/fixtures/lf07_v1_conflicting_candidate_manifest.json.gz",
+      "sha256": "9dee723134c08fd50669c591a71769f30e1876e72a3c3385c8b09323809f77f3",
+      "bytes": 1230,
+      "compressed": true
+    }
+  ],
+  "regenerate_command": [
+    "git",
+    "grep",
+    "-n",
+    "-i",
+    "-I",
+    "-E",
+    "seven|7[- ](league|scope)|TARGET_LEAGUES|_TARGET_LEAGUE_KEYS|Belgian|belgian_pro_league|Pro League|UEFA|len\\([^)]*scope[^)]*\\).*7",
+    "3a727e3b351fddd1dfb27e29b1a50fe40d17f9d4",
+    "--",
+    "src",
+    "tests",
+    "docs",
+    "scripts",
+    "README.md",
+    "GLOSSARY.md"
+  ]
+}

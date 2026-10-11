@@ -1,5 +1,10 @@
 # Causal Matchweek implementation tickets
 
+Scope update, 2026-10-11: [ADR 0007](../adr/0007-six-active-leagues-without-paid-data.md)
+sets new active scope to ENG/ITA/ESP/GER/FRA/POR. The seven-scope contracts below
+retain their historical meanings. The [successor audit](../research/six-scope-blast-radius-2026-10-11.md)
+and #98–#101 govern explicit six-scope implementation, still pending.
+
 [Parent #80](https://github.com/Awisalas/match-vet/issues/80) is complete; its
 original acceptance matrix and final evidence are in the #84 audit record.
 [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md) and the

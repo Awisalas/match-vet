@@ -1,5 +1,10 @@
 # Causal Matchweek selection architecture
 
+Scope update, 2026-10-11: [ADR 0007](../adr/0007-six-active-leagues-without-paid-data.md)
+sets new active scope to ENG/ITA/ESP/GER/FRA/POR. The seven-scope contracts below
+retain their historical meanings. The [successor audit](../research/six-scope-blast-radius-2026-10-11.md)
+and #98–#101 govern explicit six-scope implementation, still pending.
+
 This is the prospective design accepted in [ADR 0003](../adr/0003-causal-matchweek-selection-witness.md)
 for #79, retained as the architecture contract. Its original sketches below
 predate the completed #80 implementation and #84 integrated proofs. Runtime

@@ -1,6 +1,14 @@
 # MatchVet
 
-MatchVet is a zero-cost, local-first football research and betting-preference vetting engine. The initial product runs in Termux and remains in RESEARCH_ONLY mode until its Selection Policy earns Production Promotion.
+MatchVet is a local-first football research and betting-preference vetting engine with no required paid data dependency. The initial product runs in Termux and remains in RESEARCH_ONLY mode until its Selection Policy earns Production Promotion.
+
+The active product scope is now exactly ENG Premier League, ITA Serie A, ESP LaLiga,
+GER Bundesliga, FRA Ligue 1, and POR Primeira Liga. The
+[six-scope successor](docs/research/six-scope-blast-radius-2026-10-11.md) is pending
+implementation. Seven-league capabilities and release records below describe
+retained historical contracts. Runtime must require no paid football/data provider
+or paid API subscription; ordinary hosting, device, and network costs are outside
+that constraint. Default live acquisition remains disabled.
 
 T01 provides the installable command-line baseline only. It does not create a database, ingest football data, or make recommendations.
 

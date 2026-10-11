@@ -2,9 +2,15 @@
 
 This document defines the target architecture and the boundary between V1 and V2. It does not require a rewrite. V2 adds versioned contracts alongside V1, then moves one proven responsibility at a time after the live workflow works.
 
-Keep historical V1 artifacts and readers under their original versions. Keep SQLite and the Termux CLI. Use free, open, or official data sources and replaceable provider adapters. Do not add paid data or infrastructure, subscriptions, or an external app API in this phase.
+Keep historical V1 artifacts and readers under their original versions. Keep SQLite and the Termux CLI. Use free, open, or official data sources and replaceable provider adapters. Runtime must require no paid football/data provider or paid API subscription. Ordinary hosting, device, and network costs are outside that constraint. Subscriptions and an external app API remain deferred.
 
 This architecture follows [Product V2 direction](PRODUCT-DIRECTION.md). The [cutoff correction decision](../adr/0001-matchweek-wide-evidence-cutoff.md) supersedes the independent-cutoff direction recorded in the historical [V1 migration audit](V1-MIGRATION-AUDIT.md). The #73/#74–#78 correction is historically complete under its deterministic trusted-clock premise. Its default production clock still refuses.
+
+[ADR 0007](../adr/0007-six-active-leagues-without-paid-data.md) fixes new active
+scope at ENG/ITA/ESP/GER/FRA/POR. The six-scope successor is pending; existing
+seven-scope contracts and historical replay remain intact. See the
+[scope audit](../research/six-scope-blast-radius-2026-10-11.md) and #98–#101 for
+version dispatch, cohort separation, and implementation boundaries.
 
 ## Production timing boundary
 
@@ -143,7 +149,7 @@ These are logical ownership boundaries. The first live implementation can call e
 
 ## Incremental migration boundaries
 
-1. Improve fixture acquisition and semantic completeness in the existing T06 path. Keep source adapters replaceable and use no paid data or infrastructure.
+1. Improve fixture acquisition and semantic completeness in the existing T06 path. Keep source adapters replaceable and require no paid football/data provider or paid API subscription.
 2. Add provider-health and live-source contracts that report capability, scope, freshness, rights, coverage, and failures.
 3. Retain V2 Matchweek Membership Freeze and exact per-match Match Evidence Cutoff contracts. Add the shared-earliest-kickoff rule and explicit initial 21600-second policy without reinterpreting historical per-match policies.
 4. Complete all contextual research and the selected recommendation state before that common boundary. Record source attempts and retain historical provenance and evidence-state rules; later information belongs only to permitted audit/evaluation/settlement paths.

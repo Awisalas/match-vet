@@ -8,10 +8,13 @@ MatchVet evaluates upcoming football matches in configured domestic top-flight l
 A configured domestic top-flight competition and season whose upcoming fixtures are eligible for recommendations. Cups, continental competitions, friendlies, and lower divisions are excluded unless separately configured.
 
 **2026/27 Target League Set**:
-The fixed recommendation scope for the 2026/27 season: Premier League, Serie A, La Liga, Bundesliga, Ligue 1, Liga Portugal, and Belgian Pro League. The set is based on the UEFA five-year association ranking and does not change during the configured season.
+The fixed active recommendation scope for the 2026/27 season: ENG Premier League, ITA Serie A, ESP LaLiga, GER Bundesliga, FRA Ligue 1, and POR Primeira Liga. Belgian Pro League is outside active scope under the [six-league product decision](docs/adr/0007-six-active-leagues-without-paid-data.md).
+
+**Historical Target League Set**:
+The exact recommendation scope retained with an earlier Matchweek and its evidence. Historical seven-league Matchweeks include Belgian Pro League and keep their original membership and meaning.
 
 **Matchweek**:
-The user-facing Friday-through-Monday calendar slate containing every eligible Target Match in the seven configured Target Leagues whose scheduled kickoff falls within that window. Official league round numbers do not control membership; a rescheduled fixture outside the window belongs to another Matchweek.
+The user-facing Friday-through-Monday calendar slate containing every eligible Target Match in its declared Target League Set whose scheduled kickoff falls within that window. Official league round numbers do not control membership; a rescheduled fixture outside the window belongs to another Matchweek.
 
 **Fixture Scope**:
 One configured Target League, season, and requested Matchweek window.
@@ -32,10 +35,10 @@ The F01 result that records whether a source candidate is linked to a canonical 
 The result of applying a versioned freshness policy to identified Provider Coverage Evidence. The policy identity and result are retained; F01 chooses no numeric freshness threshold.
 
 **Fixture Coverage Assessment**:
-The immutable, versioned F01 result for all seven Fixture Scopes in one season and Matchweek. It retains scope states, provider attempts and coverage evidence, Fixture Revision references, fixture identity results, freshness results, aggregate Matchweek Schedule State, and a stable digest.
+The immutable, versioned F01 result for every Fixture Scope in the declared Target League Set for one season and Matchweek. It retains scope states, provider attempts and coverage evidence, Fixture Revision references, fixture identity results, freshness results, aggregate Matchweek Schedule State, and a stable digest.
 
 **Matchweek Schedule State**:
-The F01 aggregate coverage state for the seven Fixture Scopes: COMPLETE, CONFIRMED_EMPTY, PARTIAL, UNKNOWN, or STALE.
+The F01 aggregate coverage state for every declared Fixture Scope: COMPLETE, CONFIRMED_EMPTY, PARTIAL, UNKNOWN, or STALE.
 
 **Fixture Revision**:
 An append-only, source-backed statement of a fixture's canonical identity, teams, competition, venue, kickoff, and status as known at a particular time. A later revision may supersede the current view but never overwrites an earlier revision.
@@ -44,7 +47,7 @@ An append-only, source-backed statement of a fixture's canonical identity, teams
 The V1 T05 immutable set of Target Matches established at the Matchweek Research Cutoff from each fixture's highest-authority, latest cutoff-valid Fixture Revision. It retains the controlling revision ID and digest and never changes when later schedule information arrives.
 
 **V2 Matchweek Membership Freeze**:
-An immutable, assessment-specific record of the fixtures assigned to one Friday-through-Monday Matchweek from its seven Fixture Scopes. It names the exact Fixture Coverage Assessment, versioned membership policy, and controlling Fixture Revision for each resolved candidate. Later observations and later freezes do not change it. Its creation time is not a Match Evidence Cutoff.
+An immutable, assessment-specific record of the fixtures assigned to one Friday-through-Monday Matchweek from every declared Fixture Scope. It names the exact Fixture Coverage Assessment, versioned membership policy, and controlling Fixture Revision for each resolved candidate. Later observations and later freezes do not change it. Its creation time is not a Match Evidence Cutoff.
 
 **V2 Matchweek Membership Observation**:
 An append-only link from a V2 Matchweek Membership Freeze to a later exact Fixture Coverage Assessment, retaining later fixture facts and any determinable changes without changing original membership.

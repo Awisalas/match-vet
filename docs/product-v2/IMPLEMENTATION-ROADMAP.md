@@ -2,13 +2,36 @@
 
 Each entry is one proposed implementation ticket. `Blocked by` uses the roadmap IDs below. Keep V1 artifacts and readers under their original versions. Add V2 contracts alongside them and migrate one boundary at a time.
 
-Require no paid football data or infrastructure. For private RESEARCH_ONLY sources, apply ADR 0006 below; commercial/Product Promotion source requirements remain separate. Keep provider boundaries replaceable.
+Runtime must require no paid football/data provider or paid API subscription. Ordinary hosting, device, and network costs are outside this data-dependency constraint. For private RESEARCH_ONLY sources, apply ADR 0006 below; commercial/Product Promotion source requirements remain separate. Keep provider boundaries replaceable.
 
 The original roadmap total remains 53 numbered tickets. Corrective `LF` entries are outside that total; keep F01–F21 numbering unchanged.
 
-## Current RESEARCH_ONLY source policy, 2026-10-10
+## Six-league successor plan, 2026-10-11
 
-[ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) supersedes publisher permission as a prerequisite for private RESEARCH_ONLY public automation. It accepts legal/terms/database-rights risk without asserting a licence or external grant. Technical access refusals, bounded transport, lineage, private retention and unchanged evidence gates remain mandatory. The [automated closure assessment](../research/automated-prospective-source-closure-2026-10-10.md) defines current corrective work; no live collection is activated.
+[ADR 0007](../adr/0007-six-active-leagues-without-paid-data.md) fixes active scope
+at ENG/ITA/ESP/GER/FRA/POR, without Belgium or a replacement. Existing production
+contracts still use seven; successor implementation is pending. The
+[blast-radius audit](../research/six-scope-blast-radius-2026-10-11.md) preserves old
+bytes/readers and recommends a new scope/F01 contract plus F06 policy3 in the
+existing SQLite envelope. No migration is shown necessary; future domain admission
+and old/new replay must be proved by implementation.
+
+| Corrective successor ticket | Boundary / prerequisites |
+| --- | --- |
+| [#98](https://github.com/Awisalas/match-vet/issues/98) | OPEN ready-for-agent; active-scope identity, F01/F02/F03 and CLI dispatch |
+| [#99](https://github.com/Awisalas/match-vet/issues/99) | OPEN ready-for-agent; F06 policy3 and F07, blocked by #98 |
+| [#100](https://github.com/Awisalas/match-vet/issues/100) | OPEN ready-for-agent; six capture/cohort/causal/source/F19 identity, blocked by #98/#99/#93/#94 |
+| [#101](https://github.com/Awisalas/match-vet/issues/101) | OPEN ready-for-agent; separate six offline release qualification, blocked by #98/#99/#100 |
+
+These tickets are outside the original 53-ticket count. #92 is NOT_PLANNED under
+the product decision; #91/#95/#96/#97 remain historical completed research. #70
+remains OPEN needs-info and gains #100 as an explicit native blocker. #86 remains
+CLOSED as historical seven-scope offline work. No provider, source/causal authority,
+collection, fitting, F17/F18/F20, PLAY, or promotion is activated.
+
+## RESEARCH_ONLY source policy retained from 2026-10-10
+
+[ADR 0006](../adr/0006-research-only-public-source-automation-risk.md) supersedes publisher permission as a prerequisite for private RESEARCH_ONLY public automation. It accepts legal/terms/database-rights risk without asserting a licence or external grant. Technical access refusals, bounded transport, lineage, private retention and unchanged evidence gates remain mandatory. The [earlier automated closure assessment](../research/automated-prospective-source-closure-2026-10-10.md) retains the seven-family source plan; ADR 0007 governs new active scope. No live collection is activated.
 
 LF01/LF02/LF05 and the earlier F08 permission inventory below retain their historical decisions. Manual bridges are compatibility/emergency research paths, not the target prospective architecture. Earlier automated/licensed requirements for Product Promotion remain separate and unchanged; they are not the current RESEARCH_ONLY permission gate. Source families can be risk-eligible while their capability, freshness or completeness remains UNKNOWN.
 
@@ -20,7 +43,7 @@ LF01/LF02/LF05 and the earlier F08 permission inventory below retain their histo
 | [#95](https://github.com/Awisalas/match-vet/issues/95) Belgium replacement fixture-source qualification | CLOSED under B; [public edition JSON and filtered terminal offset proven](../research/pro-league-replacement-fixture-source-2026-10-10.md), complete-current status/replacement coverage and automatic identity persistence unqualified |
 | [#96](https://github.com/Awisalas/match-vet/issues/96) final official date-window qualification | CLOSED under B; [exact calendar handler traced](../research/pro-league-date-window-calendar-qualification-2026-10-10.md), JPL events preset/window/completeness/currentness/automatic namespace unqualified; no fixture requests; further official probing stops |
 | [#97](https://github.com/Awisalas/match-vet/issues/97) free third-party Belgian fixture qualification | CLOSED under B; [Football Charts documentation insufficient](../research/football-charts-belgium-free-contract-2026-10-10.md), zero fixture requests, full-window/currentness/empty/UTC/status/automatic mapping unproved; paid disclaimer not automatically applied to free; no qualified replacement |
-| [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | OPEN needs-info after #97 outcome B; zero open native dependencies, substantive complete-current Belgian source contract still missing; contract-first source/design decision required, no adapter readiness |
+| [#92](https://github.com/Awisalas/match-vet/issues/92) first automatic Pro League schedule slice | CLOSED NOT_PLANNED, superseded by ADR 0007 six-league decision; no Belgian adapter is implemented or claimed complete |
 | [#93](https://github.com/Awisalas/match-vet/issues/93) retained FT-to-F13 projection | OPEN ready-for-agent; exact chronology and unchanged model support |
 | [#94](https://github.com/Awisalas/match-vet/issues/94) retained FT-to-F19 projection | OPEN ready-for-agent; post-kickoff evidence and unchanged settlement hierarchy |
 
