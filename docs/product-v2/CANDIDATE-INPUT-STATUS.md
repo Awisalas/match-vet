@@ -15,26 +15,38 @@ all fixed-scope validators, retained digests, LF14 policy branches, unfiltered T
 membership risk, prospective denominator/cohort changes, and source/causal lineage.
 Its offline proof confirms old F01 bytes/digest and old policy1 F06 replay, and
 shows that the recommended F06 policy3 storage shape fits without a migration.
-Successor domain readers, policy2 compatibility, and six integrated replay remain
-unimplemented and require their own proofs. No production module, test fixture,
-released migration, historical manifest, or ADR 0006 bytes changed.
+#98 adds the immutable scope v2, automatic F01 v4, explicit six acquisition plan,
+and F03 replay in the existing SQLite representation. The new read-only T05
+admission route excludes retained BEL revisions and unresolved rows. Historical
+T05 freeze publication, F06/F07 policies, captures, migrations, manifests, golden
+bytes/digests, Belgian identities/mappings, and ADR 0006 remain unchanged.
+See the [contract reference](../active-fixture-scope.md).
 
-Implementation tickets are #98 scope/F01/F02/F03, #99 F06/F07, #100 six prospective
+Implementation tickets after #98 are #99 F06/F07, #100 six prospective
 capture/cohort and graph identity, and #101 separate offline release qualification.
-All are OPEN ready-for-agent with native prerequisite edges; only #98 is unblocked.
+They remain OPEN under their native prerequisite edges. #98 focused validation
+and two-axis review passed. The broader run and its limits are recorded below.
+The delivery entry will record the implementation commit SHA.
 #92 is CLOSED NOT_PLANNED, superseded by this product decision, with no adapter
 claimed complete. #91/#95/#96/#97 remain CLOSED historical insufficient research.
 #70 remains OPEN needs-info, now also blocked by #100. #86 remains CLOSED as the
 historical seven-scope offline implementation; no prospective cohort is qualified.
 
-Checks: offline real-code proof with sockets disabled and synthetic temporary
-Store; retained golden digests and exact locators; canonical league/team-target
-consistency; current issue states/native dependencies; documentation links and
-static checks; proof formatter/Ruff; unchanged production/tests/migrations and
-ADR 0006 pinned digest; `git diff --check`. The delivery entry below records
-the audit commit identity.
+Checks: 288 focused tests passed, including old F01/LF02 byte/digest/replay checks,
+successor states, acquisition/refusals, and mixed Store F03/T05 compatibility.
+All seven retained golden file hashes and ADR 0006 bytes match the audit baseline.
+Formatter, Ruff, strict mypy on eight changed production modules and five new test
+files, documentation links/fences, and `git diff --check` passed. Both review axes
+are clear after the minor version-constant cleanup. No migration was needed.
 
-Next implementation boundary is #98. Qualified zero-cost complete-current source
+The full suite was attempted with sockets blocked, then stopped at the unrelated
+CB01 integrated cases under #98's focused testing boundary. It reached 260 passes
+and two refusals caused by the guard blocking local Unix checkpoint sockets.
+Both checkpoint tests pass when local sockets are allowed. Separately reproduced
+the known unchanged `test_cb01_sources` failure: `_support` lacks `f14_digest`.
+No clean full-suite result is claimed, and the excluded CB01 defect is not fixed.
+
+Next implementation boundary is #99. Qualified zero-cost complete-current source
 contracts for all six and independently supplied current source/causal authority
 remain operational blockers. #70 numerical support/evidence remains unresolved.
 Default live acquisition remains disabled. No fitting, F17/F18/F20, PLAY, or

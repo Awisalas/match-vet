@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol, cast, runtime_checkable
 
+from matchvet.active_scope import ActiveScopeContract
 from matchvet.ingestion import TARGET_LEAGUES
 from matchvet.matchweek import MatchweekWindow
 
@@ -857,6 +858,26 @@ def assess_fixture_coverage(
     freshness_results: tuple[CoverageFreshnessResult, ...],
 ) -> FixtureCoverageAssessment:
     """Assess all seven scopes, treating an omitted requested scope as unknown."""
+    return _assess_fixture_coverage(
+        scopes=scopes,
+        provider_attempts=provider_attempts,
+        coverage_evidence=coverage_evidence,
+        fixture_revisions=fixture_revisions,
+        identity_resolutions=identity_resolutions,
+        freshness_results=freshness_results,
+    )
+
+
+def _assess_fixture_coverage(
+    *,
+    scopes: tuple[FixtureScope, ...],
+    provider_attempts: tuple[ProviderAttempt, ...],
+    coverage_evidence: tuple[ProviderCoverageEvidence, ...],
+    fixture_revisions: tuple[FixtureRevisionReference, ...],
+    identity_resolutions: tuple[FixtureIdentityResolution, ...],
+    freshness_results: tuple[CoverageFreshnessResult, ...],
+    active_scope: ActiveScopeContract | None = None,
+) -> FixtureCoverageAssessment:
     freshness_policy_id = _single_freshness_policy_id(freshness_results)
     if not scopes:
         raise ValueError("Fixture Coverage Assessment requires at least one Fixture Scope.")
@@ -869,9 +890,18 @@ def assess_fixture_coverage(
         for scope in scopes
     ):
         raise ValueError("Fixture Coverage Assessment scopes must share season and Matchweek.")
-    ordered_scopes = fixture_scopes_for_matchweek(
-        first_scope.matchweek_friday, season=first_scope.season
-    )
+    if active_scope is None:
+        ordered_scopes = fixture_scopes_for_matchweek(
+            first_scope.matchweek_friday, season=first_scope.season
+        )
+    else:
+        from matchvet.active_fixture_coverage import active_fixture_scopes_for_matchweek
+
+        ordered_scopes = active_fixture_scopes_for_matchweek(
+            first_scope.matchweek_friday, active_scope=active_scope
+        )
+        if scopes != ordered_scopes:
+            raise ValueError("Successor assessment requires exactly six ordered scopes.")
     scope_by_id = {scope.scope_id: scope for scope in ordered_scopes}
 
     attempts_by_id: dict[str, ProviderAttempt] = {}
@@ -1086,7 +1116,7 @@ def assess_fixture_coverage(
     else:
         schedule_state = MatchweekScheduleState.UNKNOWN
 
-    return FixtureCoverageAssessment(
+    assessment = FixtureCoverageAssessment(
         contract_version=FIXTURE_COVERAGE_CONTRACT_VERSION,
         schema_version=FIXTURE_COVERAGE_SCHEMA_VERSION,
         freshness_policy_id=freshness_policy_id,
@@ -1105,4 +1135,26 @@ def assess_fixture_coverage(
         ),
         freshness_results=tuple(sorted(freshness_results, key=lambda item: item.evidence_id)),
         schedule_state=schedule_state,
+    )
+
+    if active_scope is None:
+        return assessment
+    from matchvet.active_fixture_coverage import (
+        FIXTURE_COVERAGE_V4_CONTRACT_VERSION,
+        FIXTURE_COVERAGE_V4_SCHEMA_VERSION,
+        ActiveFixtureCoverageAssessment,
+    )
+
+    return ActiveFixtureCoverageAssessment(
+        contract_version=FIXTURE_COVERAGE_V4_CONTRACT_VERSION,
+        schema_version=FIXTURE_COVERAGE_V4_SCHEMA_VERSION,
+        active_scope=active_scope,
+        freshness_policy_id=assessment.freshness_policy_id,
+        scope_assessments=assessment.scope_assessments,
+        provider_attempts=assessment.provider_attempts,
+        coverage_evidence=assessment.coverage_evidence,
+        fixture_revisions=assessment.fixture_revisions,
+        identity_resolutions=assessment.identity_resolutions,
+        freshness_results=assessment.freshness_results,
+        schedule_state=assessment.schedule_state,
     )

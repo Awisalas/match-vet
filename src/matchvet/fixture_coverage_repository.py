@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, cast
 
+from matchvet.active_fixture_coverage import (
+    ActiveFixtureCoverageAssessment,
+    active_fixture_scopes_for_matchweek,
+)
 from matchvet.artifacts import ArtifactError, ArtifactStore
 from matchvet.fixture_coverage import (
     FixtureCoverageAssessment,
@@ -712,13 +716,17 @@ def _assessment_metadata(assessment: SupportedFixtureCoverageAssessment) -> _Ass
     if not is_supported_f01_assessment(assessment):
         raise FixtureCoverageIntegrityError("Fixture Coverage F01 version is unsupported.")
     scopes = tuple(item.scope for item in assessment.scope_assessments)
-    expected_leagues = tuple(league.key for league in TARGET_LEAGUES)
+    expected_leagues = (
+        assessment.active_scope.league_keys
+        if type(assessment) is ActiveFixtureCoverageAssessment
+        else tuple(league.key for league in TARGET_LEAGUES)
+    )
     if (
         len(scopes) != len(expected_leagues)
         or tuple(scope.league_key for scope in scopes) != expected_leagues
     ):
         raise FixtureCoverageIntegrityError(
-            "Fixture Coverage Assessment must retain all seven ordered Fixture Scopes."
+            "Fixture Coverage Assessment must retain its exact ordered Fixture Scopes."
         )
     first_scope = scopes[0]
     if any(
@@ -728,8 +736,12 @@ def _assessment_metadata(assessment: SupportedFixtureCoverageAssessment) -> _Ass
         raise FixtureCoverageIntegrityError(
             "Fixture Coverage scopes must share one season and Matchweek Friday."
         )
-    canonical_scopes = fixture_scopes_for_matchweek(
-        first_scope.matchweek_friday, season=first_scope.season
+    canonical_scopes = (
+        active_fixture_scopes_for_matchweek(
+            first_scope.matchweek_friday, active_scope=assessment.active_scope
+        )
+        if type(assessment) is ActiveFixtureCoverageAssessment
+        else fixture_scopes_for_matchweek(first_scope.matchweek_friday, season=first_scope.season)
     )
     if scopes != canonical_scopes:
         raise FixtureCoverageIntegrityError("Fixture Coverage Fixture Scopes are inconsistent.")

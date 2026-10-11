@@ -16,6 +16,7 @@ from datetime import UTC, date, datetime, time, timedelta, timezone, tzinfo
 from enum import StrEnum
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from matchvet.active_scope import SUCCESSOR_SIX_SCOPE, ActiveScopeContract
 from matchvet.artifacts import (
     ArtifactStore,
     ManifestArtifact,
@@ -904,6 +905,45 @@ def _load_revision_candidates(store: Store, season: str) -> tuple[_RevisionCandi
                 )
             )
     return tuple(candidates)
+
+
+@dataclass(frozen=True)
+class ActiveFixtureAdmission:
+    """Read-only T05 successor admission, separate from historical freeze publication."""
+
+    active_scope: ActiveScopeContract
+    revision_candidates: tuple[_RevisionCandidate, ...]
+    unresolved_fixtures: tuple[_UnresolvedFixture, ...]
+    contract_id: str = "t05-active-fixture-admission-v2"
+
+    @property
+    def fixture_ids(self) -> tuple[str, ...]:
+        return tuple(sorted({item.fixture_id for item in self.revision_candidates}))
+
+
+def load_active_fixture_admission(
+    store: Store, *, active_scope: ActiveScopeContract
+) -> ActiveFixtureAdmission:
+    """Admit retained rows only for the explicit six contract, including unresolved rows.
+
+    F06 successor membership publication belongs to #99. This route never calls
+    the unfiltered historical T05 freeze loader or changes its replay semantics.
+    """
+    if type(active_scope) is not ActiveScopeContract or active_scope != SUCCESSOR_SIX_SCOPE:
+        raise ValueError("Active fixture admission requires the exact six scope contract.")
+    return ActiveFixtureAdmission(
+        active_scope=active_scope,
+        revision_candidates=tuple(
+            item
+            for item in _load_revision_candidates(store, active_scope.season)
+            if item.league_key in active_scope.league_keys
+        ),
+        unresolved_fixtures=tuple(
+            item
+            for item in _load_unresolved_fixtures(store, active_scope.season)
+            if item.league_key in active_scope.league_keys
+        ),
+    )
 
 
 def _load_unresolved_fixtures(store: Store, season: str) -> tuple[_UnresolvedFixture, ...]:

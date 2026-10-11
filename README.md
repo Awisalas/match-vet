@@ -4,8 +4,10 @@ MatchVet is a local-first football research and betting-preference vetting engin
 
 The active product scope is now exactly ENG Premier League, ITA Serie A, ESP LaLiga,
 GER Bundesliga, FRA Ligue 1, and POR Primeira Liga. The
-[six-scope successor](docs/research/six-scope-blast-radius-2026-10-11.md) is pending
-implementation. Seven-league capabilities and release records below describe
+[six-scope F01 acquisition and replay contract](docs/active-fixture-scope.md) is
+implemented offline. F06/F07, capture/cohort integration, and separate release
+qualification remain pending in #99 through #101. Seven-league capabilities and
+release records below describe
 retained historical contracts. Runtime must require no paid football/data provider
 or paid API subscription; ordinary hosting, device, and network costs are outside
 that constraint. Default live acquisition remains disabled.

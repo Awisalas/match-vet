@@ -32,12 +32,14 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import unquote, urljoin, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from matchvet.active_scope import SUCCESSOR_SIX_SCOPE, ActiveScopeContract
 from matchvet.artifacts import ArtifactStore
 from matchvet.runs import (
     MIB,
@@ -4946,8 +4948,16 @@ class IngestionPlan:
     use_openfootball_fallback: bool = True
     refresh_current: bool = False
     matchweek_friday: str | None = None
+    active_scope: ActiveScopeContract | None = None
 
     def __post_init__(self) -> None:
+        if self.active_scope is not None and (
+            type(self.active_scope) is not ActiveScopeContract
+            or self.active_scope != SUCCESSOR_SIX_SCOPE
+            or self.current_season != self.active_scope.season
+            or self.leagues != tuple(league_by_key(key) for key in self.active_scope.league_keys)
+        ):
+            raise ValueError("Successor plan must bind the exact six active scope contract.")
         season_code(self.current_season)
         for season in self.historical_seasons:
             season_code(season)
@@ -4963,6 +4973,32 @@ class IngestionPlan:
             window = MatchweekWindow.for_friday(self.matchweek_friday)
             if window.friday_local.isoformat() != self.matchweek_friday:
                 raise ValueError("Matchweek Friday must use YYYY-MM-DD.")
+
+    @classmethod
+    def for_active_scope(
+        cls,
+        *,
+        active_scope: ActiveScopeContract,
+        historical_seasons: tuple[str, ...] = (),
+        refresh_current: bool = False,
+        matchweek_friday: str | None = None,
+    ) -> IngestionPlan:
+        return cls(
+            current_season=active_scope.season,
+            historical_seasons=historical_seasons,
+            leagues=tuple(league_by_key(key) for key in active_scope.league_keys),
+            refresh_current=refresh_current,
+            matchweek_friday=matchweek_friday,
+            active_scope=active_scope,
+        )
+
+    @property
+    def contract_id(self) -> str:
+        return (
+            "t06-acquisition-plan-v2"
+            if self.active_scope is not None
+            else "t06-acquisition-plan-v1"
+        )
 
     @property
     def seasons(self) -> tuple[str, ...]:
@@ -4981,6 +5017,10 @@ class IngestionPlan:
         if self.matchweek_friday is not None:
             payload["matchweek_friday"] = self.matchweek_friday
             payload["scheduled_fixture_capability"] = "openfootball-json-and-text-schedule-v1"
+        if self.active_scope is not None:
+            payload["contract_id"] = self.contract_id
+            payload["active_scope_id"] = self.active_scope.contract_id
+            payload["active_scope_digest"] = self.active_scope.digest
         return sha256_bytes(_canonical_json(payload))
 
     @property
@@ -5417,11 +5457,22 @@ class FixtureHistoryAcquirer:
         from matchvet.matchweek import MatchweekWindow
 
         assert plan.matchweek_friday is not None
-        scopes = fixture_scopes_for_matchweek(plan.matchweek_friday, season=plan.current_season)
+        if plan.active_scope is None:
+            scopes = fixture_scopes_for_matchweek(plan.matchweek_friday, season=plan.current_season)
+        else:
+            from matchvet.active_fixture_coverage import active_fixture_scopes_for_matchweek
+
+            scopes = active_fixture_scopes_for_matchweek(
+                plan.matchweek_friday, active_scope=plan.active_scope
+            )
         scopes_by_league = {scope.league_key: scope for scope in scopes}
         attempts: list[ProviderAttempt] = []
         imports: list[ImportResult] = []
-        diagnostics = ["belgian_pro_league: no approved schedule source configured"]
+        diagnostics = (
+            ["belgian_pro_league: no approved schedule source configured"]
+            if plan.active_scope is None
+            else []
+        )
         attempt_diagnostics: dict[str, str] = {}
         downloads: dict[str, DownloadedSource] = {}
         capture_scopes: dict[str, str] = {}
@@ -5609,7 +5660,13 @@ class FixtureHistoryAcquirer:
             )
             for (scope_id, fixture_id), revision_ids in fixture_revisions.items()
         ]
-        assessment = assess_fixture_coverage(
+        if plan.active_scope is None:
+            assess = assess_fixture_coverage
+        else:
+            from matchvet.active_fixture_coverage import assess_active_fixture_coverage
+
+            assess = partial(assess_active_fixture_coverage, active_scope=plan.active_scope)
+        assessment = assess(
             scopes=scopes,
             provider_attempts=tuple(attempts),
             coverage_evidence=(),

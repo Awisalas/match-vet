@@ -111,7 +111,19 @@ def _parser() -> argparse.ArgumentParser:
         "--matchweek-friday",
         help="schedule window in YYYY-MM-DD form; defaults to the upcoming Friday",
     )
+    ingest.add_argument(
+        "--scope-version",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="1: historical seven; 2: explicit 2026-27 six successor",
+    )
     _add_run_options(ingest)
+    admission = commands.add_parser(
+        "fixture-admission", help="inspect six-scope T05 admission without publishing a freeze"
+    )
+    admission.add_argument("--scope-version", type=int, choices=(2,), required=True)
+    _add_run_options(admission)
     freeze = commands.add_parser(
         "freeze", help="freeze T05 Matchweek membership from acquired Fixture Revisions"
     )
@@ -301,7 +313,18 @@ def main(arguments: Sequence[str] | None = None) -> int:
             parsed.resume_run_id,
             parsed.refresh_current,
             parsed.matchweek_friday,
+            parsed.scope_version,
         )
+    if parsed.command == "fixture-admission":
+        from matchvet.active_scope import SUCCESSOR_SIX_SCOPE
+        from matchvet.matchweek import load_active_fixture_admission
+
+        with open_store(
+            parsed.store or default_database_path(), private_root=termux_private_root()
+        ) as store:
+            admitted = load_active_fixture_admission(store, active_scope=SUCCESSOR_SIX_SCOPE)
+            print(json.dumps(asdict(admitted), sort_keys=True))
+        return 0
     if parsed.command == "freeze":
         return _freeze_command(
             parsed.date,
@@ -1148,6 +1171,7 @@ def _ingest_command(
     resume_run_id: str | None,
     refresh_current: bool,
     matchweek_friday: str | None = None,
+    scope_version: int = 1,
 ) -> int:
     from matchvet.ingestion import (
         FixtureHistoryAcquirer,
@@ -1160,12 +1184,26 @@ def _ingest_command(
 
     database_path = store_path or default_database_path()
     try:
-        plan = IngestionPlan(
-            current_season=season,
-            historical_seasons=historical_seasons,
-            refresh_current=refresh_current,
-            matchweek_friday=_matchweek_key(matchweek_friday),
-        )
+        if scope_version == 1:
+            plan = IngestionPlan(
+                current_season=season,
+                historical_seasons=historical_seasons,
+                refresh_current=refresh_current,
+                matchweek_friday=_matchweek_key(matchweek_friday),
+            )
+        elif scope_version == 2:
+            from matchvet.active_scope import SUCCESSOR_SIX_SCOPE
+
+            if season != SUCCESSOR_SIX_SCOPE.season:
+                raise ValueError("The successor active scope requires season 2026-27.")
+            plan = IngestionPlan.for_active_scope(
+                active_scope=SUCCESSOR_SIX_SCOPE,
+                historical_seasons=historical_seasons,
+                refresh_current=refresh_current,
+                matchweek_friday=_matchweek_key(matchweek_friday),
+            )
+        else:
+            raise ValueError("Unsupported acquisition scope version.")
         private_root = termux_private_root()
         with open_store(database_path, private_root=private_root) as store:
             if store.status.mode is not StoreMode.READ_WRITE:

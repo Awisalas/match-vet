@@ -5,6 +5,13 @@ from __future__ import annotations
 import json
 from typing import TypeGuard, cast
 
+from matchvet.active_fixture_coverage import (
+    FIXTURE_COVERAGE_V4_CONTRACT_VERSION,
+    FIXTURE_COVERAGE_V4_SCHEMA_VERSION,
+    ActiveFixtureCoverageAssessment,
+    decode_active_f01,
+    encode_active_f01,
+)
 from matchvet.fixture_coverage import (
     FIXTURE_COVERAGE_CONTRACT_VERSION,
     FIXTURE_COVERAGE_SCHEMA_VERSION,
@@ -22,12 +29,18 @@ FIXTURE_COVERAGE_V3_SCHEMA_VERSION = 3
 def is_supported_f01_assessment(
     value: object,
 ) -> TypeGuard[SupportedFixtureCoverageAssessment]:
-    """Accept only the two concrete F01 assessment classes and exact version pairs."""
+    """Accept only the three concrete F01 assessment classes and exact version pairs."""
     if type(value) is FixtureCoverageAssessment:
         return (
             value.contract_version == FIXTURE_COVERAGE_CONTRACT_VERSION
             and type(value.schema_version) is int
             and value.schema_version == FIXTURE_COVERAGE_SCHEMA_VERSION
+        )
+    if type(value) is ActiveFixtureCoverageAssessment:
+        return (
+            value.contract_version == FIXTURE_COVERAGE_V4_CONTRACT_VERSION
+            and type(value.schema_version) is int
+            and value.schema_version == FIXTURE_COVERAGE_V4_SCHEMA_VERSION
         )
     from matchvet.operator_fixture_attestation import AttestedFixtureCoverageAssessment
 
@@ -43,6 +56,8 @@ def encode_f01(assessment: SupportedFixtureCoverageAssessment) -> str:
     """Encode one exact supported F01 value without changing legacy v2 bytes."""
     if not is_supported_f01_assessment(assessment):
         raise FixtureCoveragePayloadError("Fixture Coverage assessment version is unsupported.")
+    if type(assessment) is ActiveFixtureCoverageAssessment:
+        return encode_active_f01(assessment)
     if assessment.contract_version == FIXTURE_COVERAGE_CONTRACT_VERSION:
         return fixture_coverage_assessment_to_canonical_json(
             cast(FixtureCoverageAssessment, assessment)
@@ -90,6 +105,12 @@ def decode_f01(encoded: str) -> SupportedFixtureCoverageAssessment:
             )
 
             return attested_fixture_coverage_assessment_from_canonical_json(encoded)
+        if (
+            contract_version == FIXTURE_COVERAGE_V4_CONTRACT_VERSION
+            and type(schema_version) is int
+            and schema_version == FIXTURE_COVERAGE_V4_SCHEMA_VERSION
+        ):
+            return decode_active_f01(encoded)
         raise FixtureCoveragePayloadError("Fixture Coverage payload uses unsupported F01 versions.")
     except FixtureCoveragePayloadError:
         raise
