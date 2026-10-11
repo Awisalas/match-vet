@@ -24,9 +24,9 @@ See the [contract reference](../active-fixture-scope.md).
 
 Implementation tickets after #98 are #99 F06/F07, #100 six prospective
 capture/cohort and graph identity, and #101 separate offline release qualification.
-They remain OPEN under their native prerequisite edges. #98 focused validation
-and two-axis review passed. The broader run and its limits are recorded below.
-The delivery entry will record the implementation commit SHA.
+They remain OPEN under their native prerequisite edges. #98 is CLOSED as completed.
+Focused validation and two-axis review passed. The delivery entry records the
+implementation SHA, and the broader test-run limits are recorded below.
 #92 is CLOSED NOT_PLANNED, superseded by this product decision, with no adapter
 claimed complete. #91/#95/#96/#97 remain CLOSED historical insufficient research.
 #70 remains OPEN needs-info, now also blocked by #100. #86 remains CLOSED as the
@@ -51,6 +51,28 @@ contracts for all six and independently supplied current source/causal authority
 remain operational blockers. #70 numerical support/evidence remains unresolved.
 Default live acquisition remains disabled. No fitting, F17/F18/F20, PLAY, or
 Product Promotion is authorized.
+
+## Six-scope F01 acquisition/replay delivery, #98, 2026-10-11
+
+Implementation commit: `836f64d8d96b1b5f40a2dd9ca17d1b003b626ebc`, pushed to `main`.
+[#98](https://github.com/Awisalas/match-vet/issues/98) is CLOSED as completed.
+The delivery includes immutable scope v2, automatic F01 v4, explicit F02 plan/CLI
+routing, F03 retained-identity replay, and the read-only T05 six admission filter.
+A real mixed temporary Store retains seven fixture graphs for old replay and six
+for successor replay, without BEL admission or schema changes. No migration was needed.
+
+All 288 focused tests, retained golden/digest checks, formatter, Ruff, strict
+mypy, documentation/static checks, and `git diff --check` passed. Standards and
+spec reviews are clear after the constant cleanup. The full-suite attempt and
+excluded baseline CB01 test failure are documented in the current state above.
+
+Next ticket is #99. #99 through #101 integration and qualification, qualified
+zero-cost complete-current source contracts for all six, independently supplied
+current source/causal authority and operational configuration/checkpoint, and
+#70 numerical/cohort evidence remain blockers. Historical BEL evidence and
+released contracts are intact. Default live acquisition remains disabled.
+No provider activation, paid source, live acquisition, fitting, PLAY, or Product
+Promotion was required or performed.
 
 ## Six-scope audit delivery, 2026-10-11
 
