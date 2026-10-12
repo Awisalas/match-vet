@@ -747,6 +747,29 @@ def test_successor_candidate_and_index_identity_mismatches_fail_closed(
         assert six_scope_cohort_digest() == six_scope_graph.cohort_digest
 
 
+def test_f16_replay_resolves_the_candidate_once_for_all_match_rows(
+    six_scope_graph: SixScopeGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with open_store(
+        six_scope_graph.root / "store.sqlite3", private_root=six_scope_graph.root
+    ) as store:
+        processor = F16MatchweekProcessor(store)
+        original_resolve = processor.research.resolve_candidate
+        candidate_resolutions: list[str] = []
+
+        def count_candidate_resolutions(candidate_digest: str) -> Any:
+            candidate_resolutions.append(candidate_digest)
+            return original_resolve(candidate_digest)
+
+        monkeypatch.setattr(processor.research, "resolve_candidate", count_candidate_resolutions)
+        with store._capture_verified_artifacts() as verified_artifacts:
+            manifest = processor.replay_manifest(six_scope_graph.f16_manifest_digest)
+
+        assert len(manifest.match_results) > 1
+        assert candidate_resolutions == [six_scope_graph.candidate_digest]
+        assert six_scope_graph.candidate_digest in verified_artifacts
+
+
 def test_successor_cb01_batch_binds_exact_scope_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

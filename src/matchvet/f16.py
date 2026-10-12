@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from matchvet.artifacts import ArtifactError, ArtifactStore
 from matchvet.f11 import F11Error, F11EvidenceRepository
@@ -32,6 +32,9 @@ from matchvet.matchweek_research import MatchweekResearchRepository, TrustedUTCC
 from matchvet.runs import RunInputContract, RunPhase, WorkContext, WorkInterrupted, WorkResult
 from matchvet.store import Store
 from matchvet.t15 import PolicyStatus, PolicyVersion
+
+if TYPE_CHECKING:
+    from matchvet.causal_candidate import CausalCandidateContract
 
 MATCH_RESULT_MEDIA_TYPE = "application/vnd.matchvet.f16-match-result.v1+json"
 MANIFEST_MEDIA_TYPE = "application/vnd.matchvet.f16-processing-manifest.v1+json"
@@ -445,7 +448,7 @@ class F16MatchweekProcessor:
                 ):
                     raise F16Error("F16 candidate descriptor differs.")
                 scope_identity = candidate.scope_identity_value()
-                self._replay_run_identity(value["run_identity_digest"], candidate_digest)
+                self._replay_run_identity(value["run_identity_digest"], candidate)
             else:
                 scope_identity = {}
             if (
@@ -534,7 +537,9 @@ class F16MatchweekProcessor:
                     causal and row.get("run_identity_digest") != value["run_identity_digest"]
                 ):
                     raise F16Error("F16 manifest has a mixed candidate graph.")
-                child = self._replay_match_result(row["match_result_digest"])
+                child = self._replay_match_result(
+                    row["match_result_digest"], manifest_candidate=candidate
+                )
                 if child.get("candidate_contract_digest") != candidate_digest or (
                     causal and child.get("run_identity_digest") != value["run_identity_digest"]
                 ):
@@ -627,13 +632,13 @@ class F16MatchweekProcessor:
         }
         return artifacts.publish_artifact(_bytes(value), CAUSAL_RUN_MEDIA_TYPE).digest
 
-    def _replay_run_identity(self, digest: str, candidate_digest: str) -> None:
+    def _replay_run_identity(self, digest: str, candidate: CausalCandidateContract) -> None:
+        candidate_digest = candidate.digest
         identity = (digest, candidate_digest)
         if identity in self._replayed_run_identities:
             return
         value = self._read(digest, CAUSAL_RUN_MEDIA_TYPE)
         inputs = self._run_inputs(candidate_digest)
-        candidate = self.research.resolve_candidate(candidate_digest)
         expected = {
             "schema_version": 1,
             "candidate_contract_digest": candidate_digest,
@@ -825,16 +830,27 @@ class F16MatchweekProcessor:
         ):
             raise F16Error("F07 cutoff differs from the exact F06 membership or policy.")
 
-    def _replay_match_result(self, digest: str) -> dict[str, Any]:
+    def _replay_match_result(
+        self,
+        digest: str,
+        *,
+        manifest_candidate: CausalCandidateContract | None = None,
+    ) -> dict[str, Any]:
         value = self._read(digest, MATCH_RESULT_MEDIA_TYPE)
         try:
             causal = value.get("schema_version") == 2
             candidate_digest = value.get("candidate_contract_digest") if causal else None
-            candidate = (
-                self.research.resolve_candidate(candidate_digest)
-                if isinstance(candidate_digest, str)
-                else None
-            )
+            candidate: CausalCandidateContract | None
+            if manifest_candidate is not None:
+                if candidate_digest != manifest_candidate.digest:
+                    raise F16Error("F16 match result candidate differs from its manifest.")
+                candidate = manifest_candidate
+            else:
+                candidate = (
+                    self.research.resolve_candidate(candidate_digest)
+                    if isinstance(candidate_digest, str)
+                    else None
+                )
             scope_identity = candidate.scope_identity_value() if candidate is not None else {}
             if (
                 type(value.get("schema_version")) is not int
@@ -895,7 +911,8 @@ class F16MatchweekProcessor:
             ):
                 raise F16Error("F16 decision candidate differs.")
             if causal:
-                self._replay_run_identity(value["run_identity_digest"], candidate_digest)
+                assert candidate is not None
+                self._replay_run_identity(value["run_identity_digest"], candidate)
             if (
                 lineage.get("profile_digest"),
                 lineage.get("evidence_digest"),
