@@ -67,12 +67,26 @@ class F16MatchResult:
     match_result_digest: str
     candidate_contract_digest: str | None = None
     run_identity_digest: str | None = None
+    active_scope_contract_id: str | None = None
+    active_scope_contract_version: str | None = None
+    active_scope_digest: str | None = None
+    cohort_descriptor_digest: str | None = None
 
     def to_dict(self) -> dict[str, str]:
         if self.candidate_contract_digest is not None and not isinstance(
             self.run_identity_digest, str
         ):
             raise F16Error("Successor match row requires an exact F15 run identity.")
+        scope_values = (
+            self.active_scope_contract_id,
+            self.active_scope_contract_version,
+            self.active_scope_digest,
+            self.cohort_descriptor_digest,
+        )
+        if any(item is not None for item in scope_values) and not all(
+            isinstance(item, str) and item for item in scope_values
+        ):
+            raise F16Error("Successor match row has an incomplete scope identity.")
         return {
             "membership_id": self.membership_id,
             "membership_digest": self.membership_digest,
@@ -88,6 +102,16 @@ class F16MatchResult:
                     "run_identity_digest": str(self.run_identity_digest),
                 }
                 if self.candidate_contract_digest is not None
+                else {}
+            ),
+            **(
+                {
+                    "active_scope_contract_id": str(self.active_scope_contract_id),
+                    "active_scope_contract_version": str(self.active_scope_contract_version),
+                    "active_scope_digest": str(self.active_scope_digest),
+                    "cohort_descriptor_digest": str(self.cohort_descriptor_digest),
+                }
+                if self.active_scope_contract_id is not None
                 else {}
             ),
         }
@@ -149,6 +173,7 @@ class F16MatchweekProcessor:
             else MATCH_RESULT_MEDIA_TYPE
         )
         self._run_identity_digest: str | None = None
+        self._replayed_run_identities: set[tuple[str, str]] = set()
 
     def process_phase(
         self,
@@ -402,6 +427,7 @@ class F16MatchweekProcessor:
             manifest = F16Manifest(_bytes(value))
             causal = value.get("schema_version") == 2
             candidate_digest = value.get("candidate_contract_digest") if causal else None
+            candidate = None
             if causal:
                 if not isinstance(candidate_digest, str):
                     raise F16Error("Explicit candidate descriptor is missing.")
@@ -418,14 +444,21 @@ class F16MatchweekProcessor:
                     value["policy_digest"],
                 ):
                     raise F16Error("F16 candidate descriptor differs.")
+                scope_identity = candidate.scope_identity_value()
                 self._replay_run_identity(value["run_identity_digest"], candidate_digest)
+            else:
+                scope_identity = {}
             if (
                 manifest.digest != digest
                 or type(value.get("schema_version")) is not int
                 or value.get("schema_version") != (2 if causal else 1)
                 or value.get("status") != "RESEARCH_ONLY"
                 or set(value)
-                != ({"candidate_contract_digest", "run_identity_digest"} if causal else set())
+                != (
+                    {"candidate_contract_digest", "run_identity_digest", *scope_identity}
+                    if causal
+                    else set()
+                )
                 | {
                     "schema_version",
                     "status",
@@ -439,6 +472,8 @@ class F16MatchweekProcessor:
                 }
             ):
                 raise F16Error("F16 manifest identity or schema is invalid.")
+            if any(value.get(key) != expected for key, expected in scope_identity.items()):
+                raise F16Error("F16 manifest successor scope differs from its candidate.")
             typed_rows = [row.to_dict() for row in manifest.match_results]
             if typed_rows != value["matches"]:
                 raise F16Error("F16 manifest match result schema is invalid.")
@@ -593,6 +628,9 @@ class F16MatchweekProcessor:
         return artifacts.publish_artifact(_bytes(value), CAUSAL_RUN_MEDIA_TYPE).digest
 
     def _replay_run_identity(self, digest: str, candidate_digest: str) -> None:
+        identity = (digest, candidate_digest)
+        if identity in self._replayed_run_identities:
+            return
         value = self._read(digest, CAUSAL_RUN_MEDIA_TYPE)
         inputs = self._run_inputs(candidate_digest)
         candidate = self.research.resolve_candidate(candidate_digest)
@@ -606,6 +644,7 @@ class F16MatchweekProcessor:
         }
         if value != expected:
             raise F16Error("Exact F15 candidate run identity differs.")
+        self._replayed_run_identities.add(identity)
 
     def _build_models(
         self, evidence_digest: str, cutoffs: tuple[MatchEvidenceCutoff, ...]
@@ -636,6 +675,11 @@ class F16MatchweekProcessor:
             self.research.require_candidate_write(freeze.freeze_id, cutoffs[0].policy_digest)
             return existing
         memberships = {m.membership_id: m for m in freeze.memberships}
+        candidate_scope_identity = (
+            self.research.resolve_candidate(self.candidate_contract_digest).scope_identity_value()
+            if self.candidate_contract_digest is not None
+            else {}
+        )
         model_repository = ModelContractRepository(
             self.store, clock=self._clock, candidate_contract_digest=self.candidate_contract_digest
         )
@@ -683,6 +727,7 @@ class F16MatchweekProcessor:
                     schema_version=2,
                     candidate_contract_digest=self.candidate_contract_digest,
                     run_identity_digest=self._run_identity_digest,
+                    **candidate_scope_identity,
                 )
             record = artifacts.publish_artifact(_bytes(child), self.match_media_type)
             rows.append(
@@ -697,6 +742,7 @@ class F16MatchweekProcessor:
                     match_result_digest=record.digest,
                     candidate_contract_digest=self.candidate_contract_digest,
                     run_identity_digest=self._run_identity_digest,
+                    **candidate_scope_identity,
                 ).to_dict()
             )
         payload = {
@@ -715,6 +761,7 @@ class F16MatchweekProcessor:
                 schema_version=2,
                 candidate_contract_digest=self.candidate_contract_digest,
                 run_identity_digest=self._run_identity_digest,
+                **candidate_scope_identity,
             )
         content = _bytes(payload)
         record = artifacts.publish_artifact(content, self.manifest_media_type)
@@ -783,12 +830,22 @@ class F16MatchweekProcessor:
         try:
             causal = value.get("schema_version") == 2
             candidate_digest = value.get("candidate_contract_digest") if causal else None
+            candidate = (
+                self.research.resolve_candidate(candidate_digest)
+                if isinstance(candidate_digest, str)
+                else None
+            )
+            scope_identity = candidate.scope_identity_value() if candidate is not None else {}
             if (
                 type(value.get("schema_version")) is not int
                 or value.get("schema_version") != (2 if causal else 1)
                 or value.get("status") != "RESEARCH_ONLY"
                 or set(value)
-                != ({"candidate_contract_digest", "run_identity_digest"} if causal else set())
+                != (
+                    {"candidate_contract_digest", "run_identity_digest", *scope_identity}
+                    if causal
+                    else set()
+                )
                 | {
                     "schema_version",
                     "status",
@@ -809,6 +866,10 @@ class F16MatchweekProcessor:
                 }
             ):
                 raise F16Error("Unsupported F16 match result.")
+            if causal and candidate is None:
+                raise F16Error("F16 match result has no exact candidate descriptor.")
+            if any(value.get(key) != expected for key, expected in scope_identity.items()):
+                raise F16Error("F16 match result successor scope differs from its candidate.")
             cutoff = MatchEvidenceCutoffRepository(self.store).replay(value["cutoff_id"])
             if (
                 cutoff.membership_id,

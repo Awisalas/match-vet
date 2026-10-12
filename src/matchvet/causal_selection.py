@@ -64,9 +64,13 @@ class _CausalGraph(_Graph):
     model_digest: str
     engine_digest: str
     decision_policy_digest: str
+    active_scope_contract_id: str | None = None
+    active_scope_contract_version: str | None = None
+    active_scope_digest: str | None = None
+    cohort_descriptor_digest: str | None = None
 
     def binding_fields(self, selection_digest: str) -> dict[str, str | int]:
-        return {
+        value: dict[str, str | int] = {
             "purpose": _PURPOSE,
             "schema_version": 2,
             "logical_matchweek_id": self.logical_id,
@@ -92,10 +96,27 @@ class _CausalGraph(_Graph):
             "candidate_contract_digest": self.candidate_digest,
             "witness_profile_digest": _PROFILE_DIGEST,
         }
+        if self.active_scope_contract_id is not None:
+            if any(
+                item is None
+                for item in (
+                    self.active_scope_contract_version,
+                    self.active_scope_digest,
+                    self.cohort_descriptor_digest,
+                )
+            ):
+                raise MatchweekResearchError("Successor graph scope identity is incomplete.")
+            value.update(
+                active_scope_contract_id=str(self.active_scope_contract_id),
+                active_scope_contract_version=str(self.active_scope_contract_version),
+                active_scope_digest=str(self.active_scope_digest),
+                cohort_descriptor_digest=str(self.cohort_descriptor_digest),
+            )
+        return value
 
     def check(self, artifacts: ArtifactStore) -> None:
         digests = tuple(ref.digest for ref in self.references)
-        if digests != tuple(sorted(set(digests))) or not {
+        required = {
             self.f16_digest,
             self.candidate_digest,
             self.freeze_digest,
@@ -104,7 +125,11 @@ class _CausalGraph(_Graph):
             self.model_digest,
             self.engine_digest,
             self.decision_policy_digest,
-        }.issubset(digests):
+        }
+        if self.cohort_descriptor_digest is not None:
+            required.add(self.cohort_descriptor_digest)
+        missing = required.difference(digests)
+        if digests != tuple(sorted(set(digests))) or missing:
             raise MatchweekResearchError(
                 "Causal successor graph lacks its exact complete identity closure."
             )

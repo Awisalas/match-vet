@@ -312,7 +312,12 @@ class MatchweekResearchRepository:
                     c.cutoff_id for c in boundaries
                 } or len({row.evidence_digest for row in manifest.match_results}) != 1:
                     raise MatchweekResearchError("Incomplete homogeneous causal graph.")
-                closure = tuple(_reference(self._artifacts, item) for item in sorted(digests))
+                closure_digests = set(digests)
+                if candidate.cohort_descriptor_digest is not None:
+                    closure_digests.add(candidate.cohort_descriptor_digest)
+                closure = tuple(
+                    _reference(self._artifacts, item) for item in sorted(closure_digests)
+                )
                 if references is not None and closure != references:
                     raise MatchweekResearchError(
                         "Causal bound references differ from the actual complete graph."
@@ -331,6 +336,7 @@ class MatchweekResearchRepository:
                     manifest.match_results[0].model_digest,
                     candidate.engine_contract_digest,
                     candidate.decision_policy_artifact_digest,
+                    **candidate.scope_identity_value(),
                 )
                 graph.check(self._artifacts)
                 return graph
@@ -368,6 +374,31 @@ class MatchweekResearchRepository:
             decision_policy=decision_policy,
             engine_version=engine_version,
             witness_profile_digest=witness_profile_digest,
+        )
+
+    def publish_successor_six_scope_candidate(
+        self,
+        *,
+        freeze_id: str,
+        policy_digest: str,
+        profile_digest: str,
+        decision_policy: PolicyVersion,
+        engine_version: str,
+        witness_profile_digest: str,
+        cohort_descriptor_digest: str,
+    ) -> str:
+        """Publish only the exact policy3 prospective six-scope candidate contract."""
+        from matchvet.causal_candidate import publish_successor_six_scope
+
+        return publish_successor_six_scope(
+            self._store,
+            freeze_id=freeze_id,
+            policy_digest=policy_digest,
+            profile_digest=profile_digest,
+            decision_policy=decision_policy,
+            engine_version=engine_version,
+            witness_profile_digest=witness_profile_digest,
+            cohort_descriptor_digest=cohort_descriptor_digest,
         )
 
     def resolve_candidate(self, digest: str) -> CausalCandidateContract:

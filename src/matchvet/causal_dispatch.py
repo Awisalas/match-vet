@@ -51,7 +51,7 @@ class QualifiedCausalSelection:
 
     def lineage_value(self) -> dict[str, object]:
         reader = self.selection_reader
-        return {
+        value: dict[str, object] = {
             "selection_digest": self.selection_digest,
             "completion_receipt_digest": self.completion_receipt_digest,
             "candidate_contract_digest": self.candidate_contract_digest,
@@ -67,6 +67,9 @@ class QualifiedCausalSelection:
                 "canonical_contract_version": reader.canonical_contract_version,
             },
         }
+        if self.candidate.is_successor_six_scope:
+            value.update(self.candidate.scope_identity_value())
+        return value
 
 
 @dataclass(frozen=True)

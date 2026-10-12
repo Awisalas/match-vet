@@ -11,6 +11,7 @@ from matchvet.causal_candidate import CAUSAL_CONTRACT
 from matchvet.causal_dispatch import (
     InspectedCausalSelection,
     QualifiedCausalSelection,
+    inspect_causal_selection,
     resolve_qualified_causal_selection,
 )
 from matchvet.cb01 import CaseView, DenominatorRow, DenominatorView
@@ -27,6 +28,13 @@ from matchvet.matchweek_research import (
     FrozenMatchweekResearch,
     MatchweekResearchError,
     MatchweekResearchRepository,
+)
+from matchvet.research_identity import logical_matchweek_id
+from matchvet.research_successor import (
+    SIX_SCOPE_EVALUATION_COHORT,
+    SuccessorIdentityError,
+    resolve_six_scope_cohort,
+    validate_six_scope_freeze,
 )
 from matchvet.store import Store
 
@@ -62,6 +70,7 @@ class MatchweekEvaluation:
     selection_contract: str = HISTORICAL_SELECTION_CONTRACT
     methodology_version: str = "0.1.0"
     qualification_status: str = "NOT_QUALIFIED"
+    population_metadata: dict[str, Any] | None = None
 
     @property
     def included_count(self) -> int:
@@ -119,6 +128,140 @@ class MatchweekEvaluationRepository:
                 historical_inspection=True,
             )
         except (ArtifactError, ValueError) as error:
+            raise CB01EvaluationError(str(error), denominator=view) from error
+
+    def inspect_successor_cohort(
+        self,
+        freeze_digest: str,
+        profile_digest: str,
+        policy_digest: str,
+        *,
+        selection_digest: str,
+        exact_publication_digests: tuple[str, ...] = (),
+        exact_attachment_digests: tuple[str, ...] = (),
+    ) -> MatchweekEvaluation:
+        """Inspect the explicit prospective six-scope cohort and full F06 denominator."""
+        return self._inspect_successor_cohort(
+            freeze_digest,
+            profile_digest,
+            policy_digest,
+            selection_digest=selection_digest,
+            exact_publication_digests=exact_publication_digests,
+            exact_attachment_digests=exact_attachment_digests,
+            historical_inspection=False,
+        )
+
+    def inspect_historical_successor_cohort(
+        self,
+        freeze_digest: str,
+        profile_digest: str,
+        policy_digest: str,
+        *,
+        selection_digest: str,
+        exact_publication_digests: tuple[str, ...] = (),
+        exact_attachment_digests: tuple[str, ...] = (),
+    ) -> MatchweekEvaluation:
+        """Replay a retained six-scope cohort without asserting present qualification."""
+        return self._inspect_successor_cohort(
+            freeze_digest,
+            profile_digest,
+            policy_digest,
+            selection_digest=selection_digest,
+            exact_publication_digests=exact_publication_digests,
+            exact_attachment_digests=exact_attachment_digests,
+            historical_inspection=True,
+        )
+
+    def _inspect_successor_cohort(
+        self,
+        freeze_digest: str,
+        profile_digest: str,
+        policy_digest: str,
+        *,
+        selection_digest: str,
+        exact_publication_digests: tuple[str, ...],
+        exact_attachment_digests: tuple[str, ...],
+        historical_inspection: bool,
+    ) -> MatchweekEvaluation:
+        view = self.inspect_denominator(freeze_digest, profile_digest)
+        try:
+            freeze = MatchweekMembershipRepository(self.store).get_by_digest(freeze_digest)
+            if freeze is None:
+                raise CB01EvaluationError("Exact six-scope F06 freeze is unavailable.")
+            validate_six_scope_freeze(freeze)
+            selection = (
+                inspect_causal_selection(self.store, selection_digest)
+                if historical_inspection
+                else resolve_qualified_causal_selection(self.store, selection_digest)
+            )
+            if not selection.candidate.is_successor_six_scope:
+                raise CB01EvaluationError(
+                    "Six-scope evaluation requires its exact successor candidate."
+                )
+            cohort_digest = selection.candidate.cohort_descriptor_digest
+            if not isinstance(cohort_digest, str):
+                raise CB01EvaluationError("Six-scope candidate has no exact cohort descriptor.")
+            cohort = resolve_six_scope_cohort(self.store, cohort_digest)
+            if cohort["cohort_id"] != "matchvet:prospective-six-scope":
+                raise CB01EvaluationError("Selection belongs to another cohort identity.")
+            result = self._inspect_cohort(
+                view,
+                policy_digest,
+                selection_digest,
+                exact_publication_digests,
+                exact_attachment_digests,
+                historical_inspection=historical_inspection,
+                successor_six_scope=True,
+                validated_causal_selection=selection,
+            )
+            members = {item.membership_id: item for item in freeze.memberships}
+            profile = PreferenceProfileRepository(self.store).replay(profile_digest)
+            subgroup_rows = []
+            for scope in freeze.scopes:
+                scope_members = [
+                    member for member in freeze.memberships if member.scope_id == scope.scope_id
+                ]
+                scope_pairs = [
+                    row
+                    for row in result.denominator.rows
+                    if members[row.membership_id].scope_id == scope.scope_id
+                ]
+                included = sum(row.membership_state == "INCLUDED" for row in scope_pairs)
+                subgroup_rows.append(
+                    {
+                        "audit_pair_count": len(scope_pairs),
+                        "excluded_membership_count": len(scope_members)
+                        - sum(member.decision.value == "INCLUDED" for member in scope_members),
+                        "included_membership_count": sum(
+                            member.decision.value == "INCLUDED" for member in scope_members
+                        ),
+                        "scope_id": scope.scope_id,
+                        "statistical_pair_count": included,
+                    }
+                )
+            metadata = {
+                "active_scope_identity": selection.candidate.scope_identity_value(),
+                "audit_denominator": "all_f06_memberships_x_enabled_preferences",
+                "audit_pair_count": len(result.denominator.rows),
+                "cohort_contract": cohort["contract"],
+                "cohort_descriptor_digest": cohort_digest,
+                "cohort_id": SIX_SCOPE_EVALUATION_COHORT,
+                "correlation_groups": cohort["correlation_groups"],
+                "fixture_unit": "F06_membership_fixture_within_logical_matchweek",
+                "logical_matchweek_id": logical_matchweek_id(
+                    selection.selection.season, selection.selection.matchweek_friday
+                ),
+                "preference_count": len(profile.enabled_preferences),
+                "scope_subgroups": subgroup_rows,
+                "statistical_denominator": "included_f06_memberships_x_enabled_preferences",
+                "statistical_pair_count": result.included_count,
+            }
+            return replace(
+                result,
+                cohort=SIX_SCOPE_EVALUATION_COHORT,
+                population_metadata=metadata,
+            )
+        except (ArtifactError, MatchweekResearchError, SuccessorIdentityError, ValueError) as error:
             raise CB01EvaluationError(str(error), denominator=view) from error
 
     def inspect_denominator(self, freeze_digest: str, profile_digest: str) -> DenominatorView:
@@ -263,6 +406,10 @@ class MatchweekEvaluationRepository:
         exact_attachment_digests: tuple[str, ...],
         *,
         historical_inspection: bool = False,
+        successor_six_scope: bool = False,
+        validated_causal_selection: QualifiedCausalSelection
+        | InspectedCausalSelection
+        | None = None,
     ) -> MatchweekEvaluation:
         freeze_digest, profile_digest = view.freeze_digest, view.profile_digest
         freeze = MatchweekMembershipRepository(self.store).get_by_digest(freeze_digest)
@@ -297,7 +444,23 @@ class MatchweekEvaluationRepository:
                 if len(f16_refs) != 1:
                     raise CB01EvaluationError("Selection must identify one exact F16 manifest.")
                 if f16_refs[0].media_type == CAUSAL_MANIFEST_MEDIA_TYPE:
-                    if historical_inspection:
+                    if validated_causal_selection is not None:
+                        qualified = validated_causal_selection
+                        if (
+                            qualified.selection_digest != selection_digest
+                            or (
+                                historical_inspection
+                                and not isinstance(qualified, InspectedCausalSelection)
+                            )
+                            or (
+                                not historical_inspection
+                                and isinstance(qualified, InspectedCausalSelection)
+                            )
+                        ):
+                            raise CB01EvaluationError(
+                                "Prevalidated causal selection differs from the exact selection."
+                            )
+                    elif historical_inspection:
                         from matchvet.causal_dispatch import inspect_causal_selection
 
                         qualified = inspect_causal_selection(self.store, selection_digest)
@@ -326,7 +489,9 @@ class MatchweekEvaluationRepository:
             ):
                 raise CB01EvaluationError("Evaluation selection/freeze/Profile/policy/T differ.")
             if causal_cohort and (
-                qualified is None or qualified.candidate.contract_version != CAUSAL_CONTRACT
+                qualified is None
+                or qualified.candidate.contract_version != CAUSAL_CONTRACT
+                or qualified.candidate.is_successor_six_scope != successor_six_scope
             ):
                 raise CB01EvaluationError("Unsupported causal selection candidate contract.")
         if exact_publication_digests and selection is None:
@@ -480,7 +645,13 @@ class MatchweekEvaluationRepository:
             selection=selection,
             denominator=replace(view, rows=rows),
             cases=tuple(cases),
-            cohort=CAUSAL_COHORT if causal_cohort else COHORT,
+            cohort=(
+                SIX_SCOPE_EVALUATION_COHORT
+                if successor_six_scope
+                else CAUSAL_COHORT
+                if causal_cohort
+                else COHORT
+            ),
             chronology_version=CHRONOLOGY_VERSION,
             selection_contract=(
                 CAUSAL_CONTRACT if causal_cohort else HISTORICAL_SELECTION_CONTRACT

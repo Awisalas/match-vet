@@ -223,6 +223,14 @@ CAUSAL_SELECTION_KEYS = frozenset(
         "selection_reader",
     }
 )
+SUCCESSOR_CAUSAL_SELECTION_KEYS = CAUSAL_SELECTION_KEYS | frozenset(
+    {
+        "active_scope_contract_id",
+        "active_scope_contract_version",
+        "active_scope_digest",
+        "cohort_descriptor_digest",
+    }
+)
 SELECTION_READER_KEYS = frozenset(
     {
         "version_id",
@@ -701,7 +709,11 @@ def _validate_lineage(value: object) -> None:
     for reference in refs.values():
         _validate_reference(reference)
     if "causal_selection" in value:
-        causal = _keys(value["causal_selection"], CAUSAL_SELECTION_KEYS, "CausalSelection")
+        if not isinstance(value["causal_selection"], dict) or frozenset(
+            value["causal_selection"]
+        ) not in {CAUSAL_SELECTION_KEYS, SUCCESSOR_CAUSAL_SELECTION_KEYS}:
+            raise CB01SchemaError("CausalSelection has unsupported exact keys.")
+        causal = cast(dict[str, Any], value["causal_selection"])
         for key in (
             "selection_digest",
             "completion_receipt_digest",
@@ -712,6 +724,14 @@ def _validate_lineage(value: object) -> None:
             _digest(causal[key], f"causal selection {key}")
         if causal["candidate_contract_version"] != "matchvet-causal-selection-v2":
             raise CB01SchemaError("Unsupported causal candidate contract version.")
+        if frozenset(causal) == SUCCESSOR_CAUSAL_SELECTION_KEYS:
+            if (
+                causal["active_scope_contract_id"] != "matchvet-active-scope-v2"
+                or causal["active_scope_contract_version"] != "2"
+            ):
+                raise CB01SchemaError("Unsupported prospective active-scope contract.")
+            for key in ("active_scope_digest", "cohort_descriptor_digest"):
+                _digest(causal[key], f"causal selection {key}")
         reader = _keys(causal["selection_reader"], SELECTION_READER_KEYS, "SelectionReader")
         for key in ("version_id", "definition_id", "kind", "name", "content_sha256"):
             _nonempty_string(reader[key], f"selection reader {key}")

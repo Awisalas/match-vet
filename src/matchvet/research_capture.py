@@ -12,7 +12,12 @@ from typing import Any, Protocol, cast
 
 from matchvet.artifacts import ArtifactError, ArtifactStore
 from matchvet.candidate_support import SupportState
-from matchvet.causal_candidate import resolve as resolve_causal_candidate
+from matchvet.causal_candidate import (
+    CANDIDATE_V2_MEDIA_TYPE,
+)
+from matchvet.causal_candidate import (
+    resolve as resolve_causal_candidate,
+)
 from matchvet.causal_dispatch import resolve_qualified_causal_selection
 from matchvet.causal_selection import _PROVENANCE
 from matchvet.cb01 import BatchResult, BootstrapRepository, CB01Error
@@ -33,6 +38,7 @@ from matchvet.matchweek_membership_repository import (
     MatchweekMembershipRepository,
 )
 from matchvet.matchweek_research import MatchweekResearchError, MatchweekResearchRepository
+from matchvet.research_identity import logical_matchweek_id
 from matchvet.source_authorization import SourceAuthorizationRepository, replay_decision
 from matchvet.source_manifest import (
     DECISION_CONTRACT,
@@ -45,6 +51,7 @@ from matchvet.t15 import PolicyStatus, PolicyVersion
 CAPTURE_INDEX_MEDIA_TYPE = "application/vnd.matchvet.research-capture-index.v1+json"
 CAPTURE_SCHEMA_VERSION = 1
 CAPTURE_V2_MEDIA_TYPE = "application/vnd.matchvet.research-capture-index.v2+json"
+CAPTURE_V3_MEDIA_TYPE = "application/vnd.matchvet.research-capture-index.v3+json"
 SOURCE_USE_DECISION_CONTRACT = "research-real-source-use-decision-v1"
 
 
@@ -124,7 +131,7 @@ class CaptureIndex:
 
 
 class ResearchCaptureRepository:
-    """Create/replay one exact seven-scope index and gate any CB01 collection."""
+    """Create/replay exact capture indexes and gate any CB01 collection."""
 
     def __init__(
         self,
@@ -146,12 +153,16 @@ class ResearchCaptureRepository:
         enroll: bool = False,
         source_manifest_digest: str | None = None,
     ) -> CaptureIndex:
-        """Build an offline index or append one gated, bounded CB01 enrollment pass.
+        """Build a legacy seven-scope index or append one gated CB01 enrollment pass.
 
         An enrollment continuation must name the exact index it extends. One call
         enrolls at most one CB01 batch per INCLUDED membership in that seven-scope
         freeze; CB01 itself permits only its normal single attempt here.
         """
+        if self._has_successor_six_scope_candidate(selection_digest):
+            raise CaptureError(
+                "Capture entry point differs from the exact candidate scope contract."
+            )
         if prior_index_digest is None:
             if enroll:
                 raise CaptureError("CB01 enrollment requires an exact prior capture-index digest.")
@@ -162,6 +173,8 @@ class ResearchCaptureRepository:
 
         prior = self.replay(prior_index_digest)
         prior_value = prior.to_dict()
+        if prior_value.get("schema_version") == 3:
+            raise CaptureError("Six-scope continuation requires the explicit successor method.")
         if prior_value["selection"]["digest"] != selection_digest:
             raise CaptureError("Capture continuation must name the prior exact selection.")
         decision = self._source_use_decision(prior_value, source_manifest_digest)
@@ -233,6 +246,104 @@ class ResearchCaptureRepository:
         )
         return self._publish(value, source_decision_digest=decision.decision_digest)
 
+    def _has_successor_six_scope_candidate(self, selection_digest: str) -> bool:
+        """Dispatch by the exact selection closure before expensive graph replay."""
+        try:
+            selection = self.artifacts.verify_manifest(selection_digest)
+        except ArtifactError, TypeError, ValueError, KeyError, AttributeError:
+            return False
+        return any(
+            reference.media_type == CANDIDATE_V2_MEDIA_TYPE for reference in selection.artifacts
+        )
+
+    def capture_successor_week(
+        self,
+        selection_digest: str,
+        *,
+        prior_index_digest: str | None = None,
+        enroll: bool = False,
+        source_manifest_digest: str | None = None,
+    ) -> CaptureIndex:
+        """Create or extend an explicit schema3 six-scope prospective capture."""
+        if prior_index_digest is None:
+            if enroll:
+                raise CaptureError("CB01 enrollment requires an exact prior capture-index digest.")
+            value = self._base_value(selection_digest, successor_six_scope=True)
+            return self._publish(value)
+        if not enroll:
+            raise CaptureError("A continuation requires explicit CB01 enrollment mode.")
+
+        prior = self.replay(prior_index_digest)
+        prior_value = prior.to_dict()
+        if (
+            prior_value.get("schema_version") != 3
+            or prior_value["selection"]["digest"] != selection_digest
+        ):
+            raise CaptureError("Six-scope continuation requires its exact schema3 selection.")
+        decision = self._source_use_decision(prior_value, source_manifest_digest)
+        if decision.state is SourceUseState.WITHDRAWN:
+            raise CaptureError("Current source authorization is withdrawn.")
+
+        try:
+            qualified = resolve_qualified_causal_selection(self.store, selection_digest)
+        except MatchweekResearchError as error:
+            raise CaptureError(
+                "The exact six-scope causal-witness profile is not currently authorized."
+            ) from error
+        if (
+            not qualified.candidate.is_successor_six_scope
+            or qualified.f16_manifest_digest != prior_value["graph"]["f16_manifest_digest"]
+            or qualified.candidate_contract_digest != prior_value["graph"]["candidate_digest"]
+            or qualified.candidate.scope_identity_value() != prior_value["active_scope_identity"]
+            or qualified.candidate.witness_profile_digest
+            != prior_value["chronology"]["witness_profile_digest"]
+        ):
+            raise CaptureError("Current causal authorization differs from exact six-scope graph.")
+
+        value = self._successor_value(prior_value, prior_index_digest)
+        value["source_use"] = self._source_use_value(decision)
+        source_authority = SourceAuthorizationRepository(self.store)
+        for membership_id in sorted(
+            {
+                row["membership_id"]
+                for row in value["denominator_rows"]
+                if row["membership_state"] == "INCLUDED"
+            }
+        ):
+            member_rows = [
+                row for row in value["denominator_rows"] if row["membership_id"] == membership_id
+            ]
+            if all(row["cb01"]["batch_digest"] is not None for row in member_rows):
+                continue
+            first = member_rows[0]
+            with self.bootstrap._guarded_operation(
+                lambda: source_authority.require_current(decision.decision_digest)
+            ):
+                result = self.bootstrap.enroll_fixture(
+                    FixtureEnrollmentInput(
+                        freeze_id=value["freeze"]["freeze_id"],
+                        membership_id=membership_id,
+                        cutoff_id=first["lineage"]["f07_cutoff_id"],
+                        profile_digest=value["profile"]["digest"],
+                        f16_manifest_digest=value["graph"]["f16_manifest_digest"],
+                        selection_digest=selection_digest,
+                    )
+                )
+            self._apply_batch_result(value, member_rows, result)
+        row_states = {
+            row["capture_state"]
+            for row in value["denominator_rows"]
+            if row["membership_state"] == "INCLUDED"
+        }
+        value["capture_state"] = (
+            CaptureState.FAILED.value
+            if CaptureState.FAILED.value in row_states
+            else CaptureState.ENROLLED.value
+            if row_states == {CaptureState.ENROLLED.value}
+            else CaptureState.INCOMPLETE.value
+        )
+        return self._publish(value, source_decision_digest=decision.decision_digest)
+
     def attach_outcome(
         self,
         index_digest: str,
@@ -249,6 +360,8 @@ class ResearchCaptureRepository:
             raise CaptureError("F19 attachment requires an exact settlement digest, never latest.")
         current = self.replay(index_digest)
         value = current.to_dict()
+        if value.get("schema_version") == 3:
+            raise CaptureError("Six-scope F19 outcomes require the explicit successor method.")
         row = self._denominator_row(value, membership_id, preference_id)
         if row["capture_state"] != CaptureState.ENROLLED.value:
             raise CaptureError("An F19 outcome requires this exact row's live CB01 enrollment.")
@@ -324,6 +437,98 @@ class ResearchCaptureRepository:
             source_decision_digest=source_decision.decision_digest,
         )
 
+    def attach_successor_outcome(
+        self,
+        index_digest: str,
+        *,
+        membership_id: str,
+        preference_id: str,
+        settlement_digest: str,
+        exact_fact_evidence: tuple[str, ...] | None = None,
+        predecessor_attachment_digest: str | None = None,
+        source_manifest_digest: str | None = None,
+    ) -> CaptureIndex:
+        """Append one F19 v3 outcome to its exact six-scope enrollment lineage."""
+        if settlement_digest == "latest":
+            raise CaptureError("F19 attachment requires an exact settlement digest, never latest.")
+        current = self.replay(index_digest)
+        value = current.to_dict()
+        if value.get("schema_version") != 3:
+            raise CaptureError("Six-scope F19 outcome requires an exact schema3 capture index.")
+        row = self._denominator_row(value, membership_id, preference_id)
+        if row["capture_state"] != CaptureState.ENROLLED.value:
+            raise CaptureError("An F19 outcome requires this exact row's live CB01 enrollment.")
+        enrollment_digest = row["cb01"]["enrollment_digest"]
+        if not isinstance(enrollment_digest, str):
+            raise CaptureError("The selected denominator row has no exact enrollment record.")
+        if exact_fact_evidence is not None and len(exact_fact_evidence) != len(
+            set(exact_fact_evidence)
+        ):
+            raise CaptureError("Exact F19 fact-evidence selection contains duplicate digests.")
+
+        settlement = SettlementRepository(self.store).replay(settlement_digest).to_dict()
+        expected_identity = {
+            "selection_digest": value["selection"]["digest"],
+            "manifest_digest": value["graph"]["f16_manifest_digest"],
+            "match_result_digest": row["lineage"]["f16_match_result_digest"],
+            "preference_id": preference_id,
+            **value["active_scope_identity"],
+        }
+        if any(settlement.get(key) != expected for key, expected in expected_identity.items()):
+            raise CaptureError("F19 record differs from this exact six-scope enrollment lineage.")
+        _require_source_backed_post_kickoff(
+            settlement,
+            _time(
+                self._membership_kickoff(value, membership_id),
+                "F06 controlling kickoff",
+            ),
+        )
+        source_decision = self._outcome_source_decision(
+            value, settlement_digest, source_manifest_digest, exact_fact_evidence
+        )
+        history = row["outcome_history"]
+        if not isinstance(history, list):
+            raise CaptureError("Capture index outcome history is malformed.")
+        if predecessor_attachment_digest is None:
+            if history or settlement["correction_sequence"] != 0:
+                raise CaptureError("An F19 correction requires its exact attachment predecessor.")
+        elif (
+            not history or history[-1]["outcome_attachment_digest"] != predecessor_attachment_digest
+        ):
+            raise CaptureError("Outcome correction requires the exact last attached predecessor.")
+        try:
+            source_authority = SourceAuthorizationRepository(self.store)
+            with self.bootstrap._guarded_operation(
+                lambda: source_authority.require_current(source_decision.decision_digest)
+            ):
+                outcome_digest, fact_digest = self.bootstrap.attach_outcome(
+                    enrollment_digest,
+                    settlement_digest,
+                    exact_fact_evidence,
+                    predecessor_attachment_digest,
+                )
+        except (CB01Error, F19Error) as error:
+            raise CaptureError("Exact CB01/F19 outcome attachment failed replay.") from error
+        row["outcome_history"].append(
+            {
+                "correction_sequence": settlement["correction_sequence"],
+                "fact_attachment_digest": fact_digest,
+                "outcome_attachment_digest": outcome_digest,
+                "predecessor_attachment_digest": predecessor_attachment_digest,
+                "settlement_digest": settlement_digest,
+                "source_provenance": _source_provenance(settlement),
+                "source_use": self._source_use_value(source_decision),
+                "active_scope_identity": value["active_scope_identity"],
+                "cohort_descriptor_digest": value["cohort"]["descriptor_digest"],
+            }
+        )
+        row["outcome_state"] = "PRESENT"
+        value["capture_state"] = "OUTCOMES_ATTACHED"
+        return self._publish(
+            self._successor_value(value, index_digest),
+            source_decision_digest=source_decision.decision_digest,
+        )
+
     def replay(self, index_digest: str) -> CaptureIndex:
         """Replay one explicitly named protected index and all exact listed lineage."""
         return self._replay(index_digest, set())
@@ -336,7 +541,8 @@ class ResearchCaptureRepository:
         if (
             metadata is None
             or metadata.retention_class != "PROTECTED"
-            or metadata.media_type not in {CAPTURE_INDEX_MEDIA_TYPE, CAPTURE_V2_MEDIA_TYPE}
+            or metadata.media_type
+            not in {CAPTURE_INDEX_MEDIA_TYPE, CAPTURE_V2_MEDIA_TYPE, CAPTURE_V3_MEDIA_TYPE}
         ):
             raise CaptureError("Exact protected capture index is unavailable.")
         content = self.artifacts.read_artifact(index_digest)
@@ -352,11 +558,16 @@ class ResearchCaptureRepository:
             not in {
                 (1, "research-capture-index-v1", CAPTURE_INDEX_MEDIA_TYPE),
                 (2, "research-capture-index-v2", CAPTURE_V2_MEDIA_TYPE),
+                (3, "research-capture-index-v3", CAPTURE_V3_MEDIA_TYPE),
             }
         ):
             raise CaptureError("Capture index is noncanonical or has an unsupported identity.")
 
-        expected = self._base_value(value["selection"]["digest"])
+        expected = (
+            self._base_value(value["selection"]["digest"], successor_six_scope=True)
+            if value["schema_version"] == 3
+            else self._base_value(value["selection"]["digest"])
+        )
         if value["schema_version"] == 2:
             expected["schema_version"], expected["contract"] = 2, "research-capture-index-v2"
         _same_base_identity(value, expected)
@@ -372,7 +583,7 @@ class ResearchCaptureRepository:
                     )
             if len(value["denominator_rows"]) != len(prior["denominator_rows"]):
                 raise CaptureError("Capture index successor changed its full denominator size.")
-            if value["schema_version"] == 2:
+            if value["schema_version"] in (2, 3):
                 prior_rows = {
                     (row["membership_id"], row["preference_id"]): row
                     for row in prior["denominator_rows"]
@@ -402,6 +613,10 @@ class ResearchCaptureRepository:
             raise CaptureError(
                 "V2 source-use continuation requires its exact immutable predecessor."
             )
+        elif value["schema_version"] == 3 and (
+            value.get("source_use") is not None or value.get("capture_state") != "INDEXED"
+        ):
+            raise CaptureError("V3 continuation requires its exact immutable predecessor.")
 
         self._verify_rows(value)
         if value.get("source_use") is not None:
@@ -414,7 +629,7 @@ class ResearchCaptureRepository:
             if not isinstance(decision_digest, str):
                 raise CaptureError("Capture index source-use artifact identity is malformed.")
             if source_use.get("contract") == DECISION_CONTRACT:
-                if value["schema_version"] != 2:
+                if value["schema_version"] not in (2, 3):
                     raise CaptureError("V1 capture index cannot contain a V2 source-use decision.")
                 self._verify_v2_source_use(value, source_use, stage="SELECTED_GRAPH")
             else:
@@ -430,7 +645,9 @@ class ResearchCaptureRepository:
                     )
         return CaptureIndex(content)
 
-    def _base_value(self, selection_digest: str) -> dict[str, Any]:
+    def _base_value(
+        self, selection_digest: str, *, successor_six_scope: bool = False
+    ) -> dict[str, Any]:
         try:
             selected = MatchweekResearchRepository(self.store).inspect_causal(selection_digest)
             manifest_value = _read_protected_json(self.store, selected.f16_manifest_digest)
@@ -438,6 +655,10 @@ class ResearchCaptureRepository:
             if not isinstance(candidate_digest, str):
                 raise CaptureError("Selected F16 lacks its exact causal candidate identity.")
             candidate = resolve_causal_candidate(self.store, candidate_digest)
+            if candidate.is_successor_six_scope != successor_six_scope:
+                raise CaptureError(
+                    "Capture entry point differs from the exact candidate scope contract."
+                )
             if (
                 candidate.digest != candidate_digest
                 or candidate.freeze_id != selected.freeze_id
@@ -450,7 +671,36 @@ class ResearchCaptureRepository:
             freeze = MatchweekMembershipRepository(self.store).get_by_id(selected.freeze_id)
             if freeze is None:
                 raise CaptureError("Selected graph F06 freeze is missing.")
-            if len(freeze.scopes) != 7:
+            active_scope_identity: dict[str, str] = {}
+            cohort_value: dict[str, Any] | None = None
+            if successor_six_scope:
+                from matchvet.research_successor import (
+                    SuccessorIdentityError,
+                    resolve_six_scope_cohort,
+                    six_scope_binding,
+                    validate_six_scope_freeze,
+                )
+
+                if candidate.cohort_descriptor_digest is None:
+                    raise CaptureError("Six-scope candidate lacks its exact cohort descriptor.")
+                try:
+                    validate_six_scope_freeze(freeze)
+                    cohort_value = resolve_six_scope_cohort(
+                        self.store, candidate.cohort_descriptor_digest
+                    )
+                except SuccessorIdentityError as error:
+                    raise CaptureError(
+                        "Selected F06/cohort differs from six-scope contract."
+                    ) from error
+                active_scope_identity = candidate.scope_identity_value()
+                if any(
+                    active_scope_identity.get(key) != expected
+                    for key, expected in six_scope_binding().items()
+                ) or cohort_value["active_scope"]["digest"] != (
+                    "sha256:" + active_scope_identity["active_scope_digest"]
+                ):
+                    raise CaptureError("Candidate does not bind the exact six-scope contract.")
+            elif len(freeze.scopes) != 7:
                 raise CaptureError("Capture requires the exact seven-scope F06 freeze.")
             profile = PreferenceProfileRepository(self.store).replay(candidate.profile_digest)
             preferences = tuple(item.preference_id for item in profile.enabled_preferences)
@@ -464,7 +714,9 @@ class ResearchCaptureRepository:
             common_t = cutoffs[0].cutoff_at_utc
             if common_t != selected.cutoff_at_utc:
                 raise CaptureError("Selected F16 and exact F07 rows disagree on common T.")
-            if tuple(scope.scope_id for scope in freeze.scopes) != tuple(
+            if not successor_six_scope and tuple(
+                scope.scope_id for scope in freeze.scopes
+            ) != tuple(
                 scope.scope_id for scope in _expected_scopes(freeze.matchweek_friday, freeze.season)
             ):
                 raise CaptureError("F06 freeze is not the exact canonical seven-scope Friday week.")
@@ -531,7 +783,9 @@ class ResearchCaptureRepository:
                 raise CaptureError("#80 signed binding differs from the complete exact F16 graph.")
 
             included_members = tuple(
-                member for member in freeze.memberships if member.decision.value == "INCLUDED"
+                member
+                for member in freeze.memberships
+                if successor_six_scope or member.decision.value == "INCLUDED"
             )
             excluded_memberships = [
                 {
@@ -552,6 +806,11 @@ class ResearchCaptureRepository:
                         "capture_reasons": ["CB01_NOT_ATTEMPTED"],
                         "capture_state": CaptureState.UNATTEMPTED.value,
                         "cb01": _empty_cb01(),
+                        **(
+                            {"active_scope_identity": active_scope_identity}
+                            if successor_six_scope
+                            else {}
+                        ),
                         "candidate_input": {
                             "reason_codes": [
                                 "F14_CANDIDATE_INPUT_SUPPORT_NOT_VERSIONED_IN_SELECTED_F16"
@@ -586,9 +845,9 @@ class ResearchCaptureRepository:
                         "preference_id": preference.preference_id,
                         "scope_id": scope.scope_id,
                     }
-                    cutoff = cutoffs_by_membership[member.membership_id]
-                    match = matches[member.membership_id]
                     if member.decision.value == "INCLUDED":
+                        cutoff = cutoffs_by_membership[member.membership_id]
+                        match = matches[member.membership_id]
                         decision = _read_protected_json(self.store, match.decision_digest)
                         model = _read_protected_json(self.store, match.model_digest)
                         preference_rows = [
@@ -667,9 +926,70 @@ class ResearchCaptureRepository:
                             "f16_manifest_digest": selected.f16_manifest_digest,
                             "f16_match_result_digest": match.match_result_digest,
                         }
+                    elif successor_six_scope:
+                        base["capture_state"] = CaptureState.EXCLUDED.value
+                        base["capture_reasons"] = list(member.reason_codes or (member.reason_code,))
+                        base["outcome_state"] = "NOT_APPLICABLE"
                     rows.append(base)
 
             policy_value = cast(dict[str, Any], json.loads(canonical_json(policy.to_dict())))
+            all_membership_count = len(freeze.memberships)
+            included_membership_count = len(included_ids)
+            preference_count = len(preferences)
+            full_row_count = all_membership_count * preference_count
+            statistical_row_count = included_membership_count * preference_count
+            if successor_six_scope:
+                assert cohort_value is not None
+                scope_subgroups = []
+                for scope in freeze.scopes:
+                    scope_members = [
+                        member for member in freeze.memberships if member.scope_id == scope.scope_id
+                    ]
+                    included_count = sum(
+                        member.decision.value == "INCLUDED" for member in scope_members
+                    )
+                    scope_subgroups.append(
+                        {
+                            "audit_membership_count": len(scope_members),
+                            "audit_pair_count": len(scope_members) * preference_count,
+                            "excluded_membership_count": len(scope_members) - included_count,
+                            "included_membership_count": included_count,
+                            "scope_id": scope.scope_id,
+                            "statistical_pair_count": included_count * preference_count,
+                        }
+                    )
+                population = {
+                    "audit_denominator": cohort_value["audit_denominator"],
+                    "audit_membership_count": all_membership_count,
+                    "audit_pair_count": full_row_count,
+                    "cohort_id": cohort_value["cohort_id"],
+                    "cohort_contract": cohort_value["contract"],
+                    "correlation_groups": cohort_value["correlation_groups"],
+                    "fixture_unit": "F06_membership_fixture_within_logical_matchweek",
+                    "included_membership_count": included_membership_count,
+                    "logical_matchweek_id": logical_matchweek_id(
+                        selected.season, selected.matchweek_friday
+                    ),
+                    "preference_count": preference_count,
+                    "scope_subgroups": scope_subgroups,
+                    "statistical_denominator": cohort_value["statistical_denominator"],
+                    "statistical_pair_count": statistical_row_count,
+                }
+            else:
+                population = None
+            successor_identity: dict[str, Any] = {}
+            if successor_six_scope:
+                assert cohort_value is not None
+                successor_identity = {
+                    "active_scope": cohort_value["active_scope"],
+                    "active_scope_identity": active_scope_identity,
+                    "cohort": {
+                        "contract": cohort_value["contract"],
+                        "descriptor_digest": candidate.cohort_descriptor_digest,
+                        "id": cohort_value["cohort_id"],
+                    },
+                    "population": population,
+                }
             return {
                 "capture_state": "INDEXED",
                 "chronology": {
@@ -683,14 +1003,30 @@ class ResearchCaptureRepository:
                         "upper_bound_utc": provenance["upper_bound_utc"],
                     },
                     "witness_profile_digest": candidate.witness_profile_digest,
+                    **({"version": "0.2.0"} if successor_six_scope else {}),
                 },
-                "contract": "research-capture-index-v1",
-                "denominator": {
-                    "included_membership_count": len(included_ids),
-                    "membership_count": len(included_ids),
-                    "preference_count": len(preferences),
-                    "row_count": len(included_ids) * len(preferences),
-                },
+                "contract": (
+                    "research-capture-index-v3"
+                    if successor_six_scope
+                    else "research-capture-index-v1"
+                ),
+                "denominator": (
+                    {
+                        "included_membership_count": included_membership_count,
+                        "membership_count": all_membership_count,
+                        "preference_count": preference_count,
+                        "row_count": full_row_count,
+                        "statistical_membership_count": included_membership_count,
+                        "statistical_row_count": statistical_row_count,
+                    }
+                    if successor_six_scope
+                    else {
+                        "included_membership_count": included_membership_count,
+                        "membership_count": included_membership_count,
+                        "preference_count": preference_count,
+                        "row_count": statistical_row_count,
+                    }
+                ),
                 "denominator_rows": rows,
                 "excluded_memberships": excluded_memberships,
                 "freeze": {
@@ -704,6 +1040,7 @@ class ResearchCaptureRepository:
                 },
                 "graph": {
                     "candidate_digest": candidate.digest,
+                    **active_scope_identity,
                     "f16_manifest_digest": selected.f16_manifest_digest,
                     "selection_digest": selection_digest,
                 },
@@ -718,7 +1055,8 @@ class ResearchCaptureRepository:
                     "fitting": None,
                     "validation": None,
                 },
-                "schema_version": CAPTURE_SCHEMA_VERSION,
+                **successor_identity,
+                "schema_version": 3 if successor_six_scope else CAPTURE_SCHEMA_VERSION,
                 "selection": {
                     "digest": selection_digest,
                     "completion_receipt_digest": selected.completion_receipt_digest,
@@ -913,6 +1251,7 @@ class ResearchCaptureRepository:
                 row["capture_reasons"] = list(reasons)
 
     def _verify_rows(self, value: dict[str, Any]) -> None:
+        successor_six_scope = value.get("schema_version") == 3
         rows = value.get("denominator_rows")
         if not isinstance(rows, list) or len(rows) != value["denominator"]["row_count"]:
             raise CaptureError("Capture index lost or duplicated a denominator row.")
@@ -948,18 +1287,28 @@ class ResearchCaptureRepository:
                 raise CaptureError("Capture index contains a duplicate denominator pair.")
             seen.add(key)
             member = memberships.get(membership_id)
-            if (
-                member is None
-                or member.decision.value != "INCLUDED"
-                or row.get("membership_state") != member.decision.value
-            ):
-                raise CaptureError("Capture denominator row is not an exact INCLUDED F06 member.")
+            if member is None or row.get("membership_state") != member.decision.value:
+                raise CaptureError("Capture denominator row is not an exact F06 member.")
             state_value = row.get("capture_state")
             if not isinstance(state_value, str):
                 raise CaptureError("Capture row state is malformed.")
             state = CaptureState(state_value)
             if row.get("candidate_input", {}).get("state") != SupportState.UNKNOWN.value:
                 raise CaptureError("Unsupported CandidateInput must remain UNKNOWN.")
+            if member.decision.value != "INCLUDED":
+                if (
+                    not successor_six_scope
+                    or state is not CaptureState.EXCLUDED
+                    or row.get("capture_reasons")
+                    != list(member.reason_codes or (member.reason_code or "F06_EXCLUDED",))
+                    or row.get("cb01") != _empty_cb01()
+                    or row.get("outcome_state") != "NOT_APPLICABLE"
+                    or row.get("outcome_history") != []
+                    or row.get("f13") != {"families": [], "result_digest": None}
+                    or row.get("f14") is not None
+                ):
+                    raise CaptureError("Excluded six-scope row changed its exact F06-only state.")
+                continue
             if row.get("outcome_state") not in {"MISSING", "PRESENT", "NOT_APPLICABLE"}:
                 raise CaptureError("Capture row outcome availability state is malformed.")
             reasons = row.get("capture_reasons")
@@ -1119,21 +1468,34 @@ class ResearchCaptureRepository:
         expected_pairs = {
             (member.membership_id, preference_id)
             for member in memberships.values()
-            if member.decision.value == "INCLUDED"
+            if successor_six_scope or member.decision.value == "INCLUDED"
             for preference_id in value["profile"]["enabled_preference_ids"]
         }
         if seen != expected_pairs:
             raise CaptureError(
                 "Capture index denominator differs from exact INCLUDED F06 and Profile."
             )
-        if value["denominator"] != {
-            "included_membership_count": len(expected_pairs)
-            // len(value["profile"]["enabled_preference_ids"]),
-            "membership_count": len(expected_pairs)
-            // len(value["profile"]["enabled_preference_ids"]),
-            "preference_count": len(value["profile"]["enabled_preference_ids"]),
-            "row_count": len(expected_pairs),
-        }:
+        included_count = sum(item.decision.value == "INCLUDED" for item in memberships.values())
+        membership_count = len(memberships) if successor_six_scope else included_count
+        preference_count = len(value["profile"]["enabled_preference_ids"])
+        expected_denominator = (
+            {
+                "included_membership_count": included_count,
+                "membership_count": membership_count,
+                "preference_count": preference_count,
+                "row_count": membership_count * preference_count,
+                "statistical_membership_count": included_count,
+                "statistical_row_count": included_count * preference_count,
+            }
+            if successor_six_scope
+            else {
+                "included_membership_count": included_count,
+                "membership_count": included_count,
+                "preference_count": preference_count,
+                "row_count": included_count * preference_count,
+            }
+        )
+        if value["denominator"] != expected_denominator:
             raise CaptureError(
                 "Capture index denominator counts differ from exact F06 and Profile."
             )
@@ -1279,6 +1641,13 @@ class ResearchCaptureRepository:
             == value["selection"]["completion_receipt_digest"]
             and causal.get("candidate_contract_digest") == value["graph"]["candidate_digest"]
         )
+        if value.get("schema_version") == 3:
+            scope_identity = value["active_scope_identity"]
+            exact_causal_selection = (
+                exact_causal_selection
+                and isinstance(causal, Mapping)
+                and all(causal.get(key) == expected for key, expected in scope_identity.items())
+            )
         if not expected_anchor or not expected_lineage or not exact_causal_selection:
             raise CaptureError("CB01 batch differs from the exact selected freeze or graph.")
 
@@ -1308,6 +1677,15 @@ class ResearchCaptureRepository:
                 raise CaptureError(
                     "Attached F19 settlement no longer matches the exact denominator row."
                 )
+            if value.get("schema_version") == 3 and (
+                any(
+                    settlement.get(key) != expected
+                    for key, expected in value["active_scope_identity"].items()
+                )
+                or item.get("active_scope_identity") != value["active_scope_identity"]
+                or item.get("cohort_descriptor_digest") != value["cohort"]["descriptor_digest"]
+            ):
+                raise CaptureError("F19 outcome changed exact six-scope identity references.")
             _require_source_backed_post_kickoff(
                 settlement,
                 _time(
@@ -1423,7 +1801,11 @@ class ResearchCaptureRepository:
         )
         record = artifacts.publish_artifact(
             encoded,
-            CAPTURE_V2_MEDIA_TYPE if value["schema_version"] == 2 else CAPTURE_INDEX_MEDIA_TYPE,
+            {
+                1: CAPTURE_INDEX_MEDIA_TYPE,
+                2: CAPTURE_V2_MEDIA_TYPE,
+                3: CAPTURE_V3_MEDIA_TYPE,
+            }[value["schema_version"]],
             retention_class="PROTECTED",
         )
         if record.digest != _digest(encoded):
@@ -1514,6 +1896,10 @@ def _same_base_identity(value: Mapping[str, Any], expected: Mapping[str, Any]) -
         "denominator",
         "excluded_memberships",
         "roles",
+        "active_scope",
+        "active_scope_identity",
+        "cohort",
+        "population",
     ):
         if value.get(key) != expected.get(key):
             raise CaptureError(f"Capture index changed exact immutable {key} lineage.")
@@ -1538,6 +1924,7 @@ def _same_base_identity(value: Mapping[str, Any], expected: Mapping[str, Any]) -
             "preference_id",
             "scope_id",
             "candidate_input",
+            "active_scope_identity",
         ):
             if row.get(key) != base.get(key):
                 raise CaptureError("Capture successor changed an exact upstream denominator row.")

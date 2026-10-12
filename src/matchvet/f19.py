@@ -39,8 +39,10 @@ from matchvet.t10 import (
 
 SETTLEMENT_MEDIA_TYPE = "application/vnd.matchvet.f19-settlement.v1+json"
 CAUSAL_SETTLEMENT_MEDIA_TYPE = "application/vnd.matchvet.f19-settlement.v2+json"
+SUCCESSOR_SETTLEMENT_MEDIA_TYPE = "application/vnd.matchvet.f19-settlement.v3+json"
 SCHEMA_VERSION = 1
 CAUSAL_SCHEMA_VERSION = 2
+SUCCESSOR_SCHEMA_VERSION = 3
 _CAUSAL_IDENTITY_KEYS = {
     "selection_digest",
     "completion_receipt_digest",
@@ -53,6 +55,12 @@ _CAUSAL_IDENTITY_KEYS = {
     "selection_reader_name",
     "selection_reader_content_digest",
     "selection_reader_contract_version",
+}
+_SUCCESSOR_IDENTITY_KEYS = {
+    "active_scope_contract_id",
+    "active_scope_contract_version",
+    "active_scope_digest",
+    "cohort_descriptor_digest",
 }
 
 
@@ -182,7 +190,11 @@ class SettlementRepository:
             "grade": grade.to_dict(),
             "predecessor_digest": previous.digest if previous is not None else None,
             "schema_version": (
-                CAUSAL_SCHEMA_VERSION if "selection_digest" in identity else SCHEMA_VERSION
+                SUCCESSOR_SCHEMA_VERSION
+                if "active_scope_contract_id" in identity
+                else CAUSAL_SCHEMA_VERSION
+                if "selection_digest" in identity
+                else SCHEMA_VERSION
             ),
             "settlement_result": grade.settlement_result.value
             if grade.settlement_result is not None
@@ -191,7 +203,9 @@ class SettlementRepository:
         }
         content = _bytes(value)
         media_type = (
-            CAUSAL_SETTLEMENT_MEDIA_TYPE
+            SUCCESSOR_SETTLEMENT_MEDIA_TYPE
+            if "active_scope_contract_id" in identity
+            else CAUSAL_SETTLEMENT_MEDIA_TYPE
             if "selection_digest" in identity
             else SETTLEMENT_MEDIA_TYPE
         )
@@ -225,6 +239,7 @@ class SettlementRepository:
                 not in {
                     SETTLEMENT_MEDIA_TYPE,
                     CAUSAL_SETTLEMENT_MEDIA_TYPE,
+                    SUCCESSOR_SETTLEMENT_MEDIA_TYPE,
                 }
                 or metadata.retention_class != "PROTECTED"
             ):
@@ -237,7 +252,11 @@ class SettlementRepository:
                 or _digest(content) != digest
             ):
                 raise F19Error("F19 settlement artifact is malformed or noncanonical.")
-            causal = metadata.media_type == CAUSAL_SETTLEMENT_MEDIA_TYPE
+            successor = metadata.media_type == SUCCESSOR_SETTLEMENT_MEDIA_TYPE
+            causal = metadata.media_type in {
+                CAUSAL_SETTLEMENT_MEDIA_TYPE,
+                SUCCESSOR_SETTLEMENT_MEDIA_TYPE,
+            }
             expected_keys = {
                 "manifest_digest",
                 "match_result_digest",
@@ -255,9 +274,18 @@ class SettlementRepository:
             }
             if causal:
                 expected_keys |= _CAUSAL_IDENTITY_KEYS
+            if successor:
+                expected_keys |= _SUCCESSOR_IDENTITY_KEYS
             if set(value) != expected_keys or type(value["schema_version"]) is not int:
                 raise F19Error("F19 settlement artifact schema is invalid.")
-            if value["schema_version"] != (CAUSAL_SCHEMA_VERSION if causal else SCHEMA_VERSION):
+            expected_schema = (
+                SUCCESSOR_SCHEMA_VERSION
+                if successor
+                else CAUSAL_SCHEMA_VERSION
+                if causal
+                else SCHEMA_VERSION
+            )
+            if value["schema_version"] != expected_schema:
                 raise F19Error("Unsupported F19 settlement schema.")
             identity, fixture_id, preference = self._lineage(
                 value["manifest_digest"],
@@ -390,6 +418,8 @@ class SettlementRepository:
                     selected.selection_reader.canonical_contract_version
                 ),
             }
+            if selected.candidate.is_successor_six_scope:
+                causal_identity.update(selected.candidate.scope_identity_value())
         elif owner.is_corrected(manifest_value["cutoff_policy_digest"]):
             if metadata.media_type == CAUSAL_MANIFEST_MEDIA_TYPE:
                 raise F19Error("Causal F16 requires the corrected common-cutoff policy.")
@@ -566,7 +596,11 @@ class SettlementRepository:
     def _versions(self, identity: Mapping[str, str]) -> tuple[SettlementRecord, ...]:
         records: list[SettlementRecord] = []
         for metadata in self.store.artifact_catalog():
-            if metadata.media_type in {SETTLEMENT_MEDIA_TYPE, CAUSAL_SETTLEMENT_MEDIA_TYPE}:
+            if metadata.media_type in {
+                SETTLEMENT_MEDIA_TYPE,
+                CAUSAL_SETTLEMENT_MEDIA_TYPE,
+                SUCCESSOR_SETTLEMENT_MEDIA_TYPE,
+            }:
                 record = self._replay(metadata.digest)
                 if _identity(record.to_dict()) == identity:
                     records.append(record)
@@ -589,6 +623,8 @@ def _identity(value: Mapping[str, object]) -> dict[str, str]:
     }
     if "selection_digest" in value:
         identity.update({key: cast(str, value[key]) for key in _CAUSAL_IDENTITY_KEYS})
+    if "active_scope_contract_id" in value:
+        identity.update({key: cast(str, value[key]) for key in _SUCCESSOR_IDENTITY_KEYS})
     return identity
 
 

@@ -7,6 +7,7 @@ import json
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
+from matchvet.active_scope import SUCCESSOR_SIX_SCOPE
 from matchvet.artifacts import ArtifactError, ArtifactStore
 from matchvet.match_evidence_cutoff import MatchEvidenceCutoffRepository
 from matchvet.matchweek_membership import freeze_payload
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 CAUSAL_CONTRACT = "matchvet-causal-selection-v2"
 HISTORICAL_CONTRACT = "postcommit-upper-bound-v1"
 CANDIDATE_MEDIA_TYPE = "application/vnd.matchvet.causal-candidate.v1+json"
+CANDIDATE_V2_MEDIA_TYPE = "application/vnd.matchvet.causal-candidate.v2+json"
 ENGINE_MEDIA_TYPE = "application/vnd.matchvet.causal-engine.v1+json"
 POLICY_MEDIA_TYPE = "application/vnd.matchvet.causal-decision-policy.v1+json"
 FREEZE_MEDIA_TYPE = "application/vnd.matchvet.f06-freeze-canonical.v1+json"
@@ -60,9 +62,46 @@ class CausalCandidateContract:
     engine_contract_digest: str
     engine_version: str
     witness_profile_digest: str
+    active_scope_contract_id: str | None = None
+    active_scope_contract_version: str | None = None
+    active_scope_digest: str | None = None
+    cohort_descriptor_digest: str | None = None
 
     def to_bytes(self) -> bytes:
-        return canonical(asdict(self))
+        value = asdict(self)
+        if self.schema_version == 1:
+            for key in (
+                "active_scope_contract_id",
+                "active_scope_contract_version",
+                "active_scope_digest",
+                "cohort_descriptor_digest",
+            ):
+                value.pop(key)
+        return canonical(value)
+
+    @property
+    def is_successor_six_scope(self) -> bool:
+        return self.schema_version == 2
+
+    def scope_identity_value(self) -> dict[str, str]:
+        if not self.is_successor_six_scope:
+            return {}
+        if any(
+            value is None
+            for value in (
+                self.active_scope_contract_id,
+                self.active_scope_contract_version,
+                self.active_scope_digest,
+                self.cohort_descriptor_digest,
+            )
+        ):
+            raise MatchweekResearchError("Successor candidate scope identity is incomplete.")
+        return {
+            "active_scope_contract_id": str(self.active_scope_contract_id),
+            "active_scope_contract_version": str(self.active_scope_contract_version),
+            "active_scope_digest": str(self.active_scope_digest),
+            "cohort_descriptor_digest": str(self.cohort_descriptor_digest),
+        }
 
     @property
     def digest(self) -> str:
@@ -79,6 +118,78 @@ def publish(
     engine_version: str,
     witness_profile_digest: str,
 ) -> str:
+    return _publish(
+        store,
+        freeze_id=freeze_id,
+        policy_digest=policy_digest,
+        profile_digest=profile_digest,
+        decision_policy=decision_policy,
+        engine_version=engine_version,
+        witness_profile_digest=witness_profile_digest,
+        cohort_descriptor_digest=None,
+    )
+
+
+def publish_successor_six_scope(
+    store: Store,
+    *,
+    freeze_id: str,
+    policy_digest: str,
+    profile_digest: str,
+    decision_policy: PolicyVersion,
+    engine_version: str,
+    witness_profile_digest: str,
+    cohort_descriptor_digest: str,
+) -> str:
+    """Publish a closed schema2 candidate for the exact prospective six-scope cohort."""
+    from matchvet.matchweek_research import MatchweekResearchRepository
+    from matchvet.research_identity import completion_slot, selection_slot
+    from matchvet.research_successor import (
+        SuccessorIdentityError,
+        resolve_six_scope_cohort,
+        validate_six_scope_freeze,
+    )
+
+    try:
+        resolve_six_scope_cohort(store, cohort_descriptor_digest)
+        freeze = MatchweekMembershipRepository(store).get_by_id(freeze_id)
+        if freeze is None:
+            raise MatchweekResearchError("Exact candidate F06 freeze is missing.")
+        validate_six_scope_freeze(freeze)
+        logical = _logical_identity(freeze.season, freeze.matchweek_friday)
+        MatchweekResearchRepository(store)._candidate_conflicts(logical, None)
+        if (
+            store.snapshot_manifest_digest_for_snapshot(selection_slot(logical)) is not None
+            or store.snapshot_manifest_digest_for_snapshot(completion_slot(logical)) is not None
+        ):
+            raise MatchweekResearchError(
+                "The logical Matchweek selection or completion slot is already occupied."
+            )
+    except SuccessorIdentityError as error:
+        raise MatchweekResearchError("Invalid prospective six-scope candidate identity.") from error
+    return _publish(
+        store,
+        freeze_id=freeze_id,
+        policy_digest=policy_digest,
+        profile_digest=profile_digest,
+        decision_policy=decision_policy,
+        engine_version=engine_version,
+        witness_profile_digest=witness_profile_digest,
+        cohort_descriptor_digest=cohort_descriptor_digest,
+    )
+
+
+def _publish(
+    store: Store,
+    *,
+    freeze_id: str,
+    policy_digest: str,
+    profile_digest: str,
+    decision_policy: PolicyVersion,
+    engine_version: str,
+    witness_profile_digest: str,
+    cohort_descriptor_digest: str | None,
+) -> str:
     from matchvet.candidate_primitives import retain_health
     from matchvet.causal_trust import _PROFILE_DIGEST
     from matchvet.f13 import causal_engine_contract, causal_engine_version_identity
@@ -89,6 +200,24 @@ def publish(
     freeze = MatchweekMembershipRepository(store).get_by_id(freeze_id)
     if freeze is None:
         raise MatchweekResearchError("Exact candidate F06 freeze is missing.")
+    successor_six_scope = cohort_descriptor_digest is not None
+    if successor_six_scope:
+        from matchvet.research_successor import (
+            SuccessorIdentityError,
+            resolve_six_scope_cohort,
+            validate_six_scope_freeze,
+        )
+
+        try:
+            assert cohort_descriptor_digest is not None
+            resolve_six_scope_cohort(store, cohort_descriptor_digest)
+            validate_six_scope_freeze(freeze)
+        except SuccessorIdentityError as error:
+            raise MatchweekResearchError(
+                "Candidate differs from the exact six-scope cohort."
+            ) from error
+        if freeze.policy.policy_version != "3":
+            raise MatchweekResearchError("Six-scope candidate requires exact F06 policy3.")
     cutoffs = MatchEvidenceCutoffRepository(store)
     policy = cutoffs.read_policy(policy_digest)
     boundaries = cutoffs.replay_for_freeze(freeze_id, policy_digest)
@@ -118,7 +247,7 @@ def publish(
     engine = artifacts.publish_artifact(canonical(causal_engine_contract()), ENGINE_MEDIA_TYPE)
     decision = artifacts.publish_artifact(canonical(checked.to_dict()), POLICY_MEDIA_TYPE)
     candidate = CausalCandidateContract(
-        1,
+        2 if successor_six_scope else 1,
         CAUSAL_CONTRACT,
         _logical_identity(freeze.season, freeze.matchweek_friday),
         freeze_id,
@@ -131,8 +260,19 @@ def publish(
         engine.digest,
         engine_version,
         witness_profile_digest,
+        *(
+            (
+                "matchvet-active-scope-v2",
+                "2",
+                SUCCESSOR_SIX_SCOPE.digest.removeprefix("sha256:"),
+                cohort_descriptor_digest,
+            )
+            if successor_six_scope
+            else (None, None, None, None)
+        ),
     )
-    return artifacts.publish_artifact(candidate.to_bytes(), CANDIDATE_MEDIA_TYPE).digest
+    media_type = CANDIDATE_V2_MEDIA_TYPE if successor_six_scope else CANDIDATE_MEDIA_TYPE
+    return artifacts.publish_artifact(candidate.to_bytes(), media_type).digest
 
 
 def resolve(store: Store, candidate_digest: str) -> CausalCandidateContract:
@@ -153,20 +293,66 @@ def resolve(store: Store, candidate_digest: str) -> CausalCandidateContract:
         return artifacts.read_artifact(reference)
 
     try:
-        content = read(candidate_digest, CANDIDATE_MEDIA_TYPE)
-        value = CausalCandidateContract(**json.loads(content))
+        metadata = store.artifact_metadata(candidate_digest)
+        if metadata is None or metadata.media_type not in {
+            CANDIDATE_MEDIA_TYPE,
+            CANDIDATE_V2_MEDIA_TYPE,
+        }:
+            raise MatchweekResearchError("Unsupported candidate descriptor media type.")
+        content = read(candidate_digest, metadata.media_type)
+        raw_value = json.loads(content)
+        value = CausalCandidateContract(**raw_value)
+        candidate_identity = (value.schema_version, metadata.media_type)
         if (
             value.to_bytes() != content
             or type(value.schema_version) is not int
-            or (value.schema_version != 1 or value.contract_version != CAUSAL_CONTRACT)
+            or candidate_identity
+            not in {
+                (1, CANDIDATE_MEDIA_TYPE),
+                (2, CANDIDATE_V2_MEDIA_TYPE),
+            }
+            or value.contract_version != CAUSAL_CONTRACT
         ):
             raise MatchweekResearchError("Unsupported candidate descriptor contract.")
+        if value.schema_version == 1:
+            if any(
+                field is not None
+                for field in (
+                    value.active_scope_contract_id,
+                    value.active_scope_contract_version,
+                    value.active_scope_digest,
+                    value.cohort_descriptor_digest,
+                )
+            ):
+                raise MatchweekResearchError("Legacy candidate contains successor scope fields.")
+        else:
+            from matchvet.research_successor import (
+                SuccessorIdentityError,
+                resolve_six_scope_cohort,
+                six_scope_binding,
+                validate_six_scope_freeze,
+            )
+
+            binding = six_scope_binding()
+            if any(
+                getattr(value, key) != expected for key, expected in binding.items()
+            ) or not isinstance(value.cohort_descriptor_digest, str):
+                raise MatchweekResearchError("Successor candidate lacks exact scope identity.")
+            try:
+                resolve_six_scope_cohort(store, value.cohort_descriptor_digest)
+            except SuccessorIdentityError as error:
+                raise MatchweekResearchError("Successor candidate cohort differs.") from error
         freeze = MatchweekMembershipRepository(store).get_by_id(value.freeze_id)
         if freeze is None or (
             freeze.freeze_digest.removeprefix("sha256:"),
             _logical_identity(freeze.season, freeze.matchweek_friday),
         ) != (value.freeze_digest, value.logical_matchweek_id):
             raise MatchweekResearchError("Candidate differs from exact logical Matchweek/F06.")
+        if value.schema_version == 2:
+            try:
+                validate_six_scope_freeze(freeze)
+            except SuccessorIdentityError as error:
+                raise MatchweekResearchError("Successor candidate F06 scope differs.") from error
         if read(value.freeze_digest, FREEZE_MEDIA_TYPE) != canonical(
             freeze_payload(freeze, include_digest=False)
         ):
