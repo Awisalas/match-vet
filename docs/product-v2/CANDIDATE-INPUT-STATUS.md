@@ -1,8 +1,8 @@
 # CandidateInput blocker status
 
-Status date: 2026-10-11.
+Status date: 2026-10-12.
 
-## Current state: six-league product decision
+## Current state: six-scope prospective capture
 
 [ADR 0007](../adr/0007-six-active-leagues-without-paid-data.md) removes Belgium
 from active scope without replacement. The exact active set is ENG Premier League,
@@ -23,17 +23,67 @@ change was needed. The delivery entry below records the implementation SHA,
 checks, issue state, and remaining blockers. The broader suite retains unchanged
 baseline failures and an unresolved SIGKILL limitation in its #84 end-to-end test.
 
-Next ticket is #100 for prospective capture/cohort and graph identity; #101 adds
-separate offline release qualification. Neither is implemented here. Qualified
-zero-cost complete-current source contracts for all six and independently supplied
-current source/causal authority remain operational blockers. #70 numerical
-support/evidence remains unresolved. Default live acquisition remains disabled.
-No fitting, F17/F18/F20, PLAY, or Product Promotion is authorized.
+#100 adds an explicit six-scope prospective capture/cohort and graph identity
+path. Its implementation is pushed, but acceptance remains incomplete: the mixed
+Store historical replay and focused identity/occupancy tests pass, while the full
+six-scope CB01/F19 correction replay remains CPU-bound in repeated exact
+F06/F16 health verification. #100 remains OPEN and is not closed. The broad suite
+has not been run; it remains required before closure. See the delivery record
+below for checks and the exact blocker.
+
+#101 adds separate offline release qualification and remains deferred until #100
+acceptance is complete. Qualified zero-cost complete-current source contracts for
+all six and independently supplied current source/causal authority remain
+operational blockers. #70 numerical support/evidence remains unresolved. Default
+live acquisition remains disabled. No fitting, F17/F18/F20, PLAY, or Product
+Promotion is authorized.
 
 #92 remains CLOSED NOT_PLANNED under ADR 0007, with no Belgian adapter claimed
 complete. #91/#95/#96/#97 retain their historical insufficiency outcomes. #86
 remains the completed historical seven-scope implementation. The known unchanged
 CB01 `_support` / missing `f14_digest` baseline defect is outside #99.
+
+## Six-scope prospective capture and graph identity, #100, 2026-10-12
+
+Implementation commit: `9bf26277e6a01292affa92d56d26c53ba6dd8dd9`, pushed to
+`main`. [#100](https://github.com/Awisalas/match-vet/issues/100) remains OPEN;
+it is not closed because the complete integrated acceptance path is not proven.
+
+The implementation adds protected `research-capture-index-v3` with the exact
+active-scope contract/digest and immutable prospective six-scope cohort
+descriptor. The same identity follows the policy3 candidate, F16 rows and
+manifest, selected/completion graph, CB01 lineage, evaluation population, and
+F19 v3 settlement/outcome history. Selection and completion continue to occupy
+the shared season-plus-Friday logical Matchweek. Six-scope evaluation keeps all
+F06 memberships and enabled preferences in the audit denominator, uses actual
+INCLUDED pairs for statistics, and records fixture/Matchweek correlation and
+scope subgroup counts. Six/seven dispatch is explicit; no latest/default lookup
+or pooled cohort path was added.
+
+Legacy capture/index v1/v2 and seven-scope cohort/reference bytes retain their
+existing paths. New graph/outcome source use still requires its exact #89 manifest
+and separately supplied CURRENT authority. F19 correction history remains
+append-only and binds the exact enrollment and predecessor attachments. No
+provider adapter, live acquisition, migration, fitting, PLAY, promotion, or
+production activation was added.
+
+Checks passed: formatter, Ruff, strict mypy for 10 changed production modules
+and `tests/test_issue100.py`, compileall, and `git diff --check`. Documentation
+links/fences, seven retained golden hashes and lengths, pinned ADR 0006 bytes,
+and the unchanged baseline CB01 defect, migrations, legacy catalog, T05 and F01
+meanings passed the static checks. Three focused #100 identity/occupancy/CB01
+reference tests passed; the mixed-Store v1/v2 and v3 replay test passed; seven
+targeted historical capture, CB01 denominator and F19 correction tests passed.
+
+The complete six-scope integration test reached candidate selection, schema3
+capture, denominator/evaluation checks, exact source-manifest/CURRENT-authority
+checks, and one CB01 enrollment batch. It was interrupted after repeated
+candidate/F06/F16 health-artifact verification stayed CPU-bound; no assertion
+failure was reported. A targeted historical CB01 outcome-replay case was also
+interrupted after 15:38 while still in exact health replay. Full six-scope F19
+correction replay and the broader suite remain unproven. The implementation
+leaves `source_manifest.py`, #89 authority behavior, and F06/F07 contracts
+unchanged. Run the remaining integrated and broader checks before closing #100.
 
 ## Six-scope F06/F07 delivery, #99, 2026-10-11
 
