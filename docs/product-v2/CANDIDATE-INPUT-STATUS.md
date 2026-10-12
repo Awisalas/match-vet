@@ -24,12 +24,12 @@ checks, issue state, and remaining blockers. The broader suite retains unchanged
 baseline failures and an unresolved SIGKILL limitation in its #84 end-to-end test.
 
 #100 adds an explicit six-scope prospective capture/cohort and graph identity
-path. Its implementation is pushed, but acceptance remains incomplete: the mixed
-Store historical replay and focused identity/occupancy tests pass, while the full
-six-scope CB01/F19 correction replay remains CPU-bound in repeated exact
-F06/F16 health verification. #100 remains OPEN and is not closed. The broad suite
-has not been run; it remains required before closure. See the delivery record
-below for checks and the exact blocker.
+path. A focused F16 replay correction removes repeated candidate construction;
+the mixed Store replay passes. Full six-scope CB01/F19 acceptance remains
+incomplete because the existing per-write CURRENT authority guard repeatedly
+replays the exact source graph and stays CPU-bound. #100 remains OPEN. The broad
+suite has not been run; it remains required before closure. See the delivery
+record below for checks and the remaining blocker.
 
 #101 adds separate offline release qualification and remains deferred until #100
 acceptance is complete. Qualified zero-cost complete-current source contracts for
@@ -46,8 +46,10 @@ CB01 `_support` / missing `f14_digest` baseline defect is outside #99.
 ## Six-scope prospective capture and graph identity, #100, 2026-10-12
 
 Implementation commit: `9bf26277e6a01292affa92d56d26c53ba6dd8dd9`, pushed to
-`main`. [#100](https://github.com/Awisalas/match-vet/issues/100) remains OPEN;
-it is not closed because the complete integrated acceptance path is not proven.
+`main`. Diagnostic fix commit: `60a95d3f4036e3cead4d8940340f7f4930653a18`,
+pushed to `main`.
+[#100](https://github.com/Awisalas/match-vet/issues/100) remains OPEN because
+the complete integrated acceptance path is not proven.
 
 The implementation adds protected `research-capture-index-v3` with the exact
 active-scope contract/digest and immutable prospective six-scope cohort
@@ -67,23 +69,46 @@ append-only and binds the exact enrollment and predecessor attachments. No
 provider adapter, live acquisition, migration, fitting, PLAY, promotion, or
 production activation was added.
 
-Checks passed: formatter, Ruff, strict mypy for 10 changed production modules
-and `tests/test_issue100.py`, compileall, and `git diff --check`. Documentation
-links/fences, seven retained golden hashes and lengths, pinned ADR 0006 bytes,
-and the unchanged baseline CB01 defect, migrations, legacy catalog, T05 and F01
-meanings passed the static checks. Three focused #100 identity/occupancy/CB01
-reference tests passed; the mixed-Store v1/v2 and v3 replay test passed; seven
-targeted historical capture, CB01 denominator and F19 correction tests passed.
+The original #100 implementation checks passed formatter, Ruff, strict mypy for
+10 changed production modules and `tests/test_issue100.py`, compileall, and
+`git diff --check`. Documentation links and fences, seven retained golden hashes
+and lengths, pinned ADR 0006 bytes, and the unchanged baseline CB01 defect,
+migrations, legacy catalog, T05, and F01 meanings passed their static checks.
+Three focused #100 identity/occupancy/CB01 reference tests and seven targeted
+historical capture, CB01 denominator, and F19 correction tests passed.
 
-The complete six-scope integration test reached candidate selection, schema3
-capture, denominator/evaluation checks, exact source-manifest/CURRENT-authority
-checks, and one CB01 enrollment batch. It was interrupted after repeated
-candidate/F06/F16 health-artifact verification stayed CPU-bound; no assertion
-failure was reported. A targeted historical CB01 outcome-replay case was also
-interrupted after 15:38 while still in exact health replay. Full six-scope F19
-correction replay and the broader suite remain unproven. The implementation
-leaves `source_manifest.py`, #89 authority behavior, and F06/F07 contracts
-unchanged. Run the remaining integrated and broader checks before closing #100.
+The replay diagnosis found two layers. In F16 schema2 replay, #100's per-row
+scope checks resolved the same exact candidate for the manifest, run identity,
+and each child match. A multi-row regression observed four candidate resolutions
+before the correction. F16 now reuses the manifest-verified candidate through
+run-identity and child-row validation; it still checks each digest and scope
+identity. The regression asserts more than one child row, exactly one candidate
+resolution, and capture of the candidate dependency.
+
+The larger integrated slowdown remains in the existing #89 per-write CURRENT
+guard. An instrumented 442-second run before the F16 correction counted 16
+`require_current` calls, 37 selected projections, 50 F16 replays, 33
+source-manifest verifications, and 45,746 artifact verifications; these counts
+are nested and overlap. Stack samples landed in provider-health JSON
+serialization, source-closure verification, and the unchanged T09 `_jsonable`
+traversal. Each guarded protected-artifact write
+replays the historical source decision and separately verifies CURRENT against
+the exact selected graph. `source_manifest.py`, `source_authorization.py`,
+`cb01.py`, and `cb01_sources.py` are byte-identical to the parent of #100's
+implementation commit. No source-authority, health, or replay check was weakened.
+
+Checks on the diagnostic fix passed: `ruff format` and Ruff for `f16.py` and
+`test_issue100.py`, strict mypy for those modules, and `git diff --check`. The
+multi-row F16 regression passed in 32.68 seconds. The final-code mixed-Store
+historical v1/v2 plus successor-v3 byte replay passed in 464.62 seconds. A
+historical CB01/F19 outcome replay passed in 372.08 seconds after the initial
+row-reuse correction; a final-code rerun was interrupted after 691.73 seconds
+inside T09 `_jsonable`, with no test result. The six-scope integration test
+reached candidate selection, schema3 capture, denominator/evaluation checks,
+source-manifest/CURRENT checks, and a CB01 enrollment batch, then was interrupted
+after 569.59 seconds during the existing CURRENT guard; no assertion failed.
+The integrated six-scope F19 correction path and broader suite remain unproven.
+The full suite has not been run. Keep #100 open until those checks complete.
 
 ## Six-scope F06/F07 delivery, #99, 2026-10-11
 
