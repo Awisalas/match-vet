@@ -62,10 +62,13 @@ class SlateFixtureCoverageAcquirer:
         fetcher: SourceFetcher,
         *,
         attempted_at: Callable[[], str],
+        current_authority: Callable[[], object],
     ) -> None:
         self._importer = importer
         self._fetcher = fetcher
         self._attempted_at = attempted_at
+        self._current_authority = current_authority
+        self._importer.set_write_guard(current_authority)
         self._json_parser = OpenFootballJSONParser()
         self._text_parser = OpenFootballTextParser()
 
@@ -108,6 +111,8 @@ class SlateFixtureCoverageAcquirer:
                 if diagnostic is not None:
                     diagnostics[attempt.attempt_id] = diagnostic
 
+        self._current_authority()
+
         revisions, identities = _retained_candidates(
             self._importer,
             window,
@@ -122,9 +127,13 @@ class SlateFixtureCoverageAcquirer:
             identity_resolutions=identities,
             freshness_results=(),
         )
-        FixtureCoverageRepository(self._importer._store).persist_slate(assessment)
+        FixtureCoverageRepository(self._importer._store).persist_slate(
+            assessment, write_guard=self._current_authority
+        )
         records = build_slate_provider_health_records(assessment, attempt_diagnostics=diagnostics)
-        health_digests = ProviderHealthRepository(self._importer._store).persist_many(records)
+        health_digests = ProviderHealthRepository(
+            self._importer._store, write_guard=self._current_authority
+        ).persist_many(records)
         return SlateFixtureAcquisition(
             assessment, health_digests, tuple(sorted(diagnostics.values()))
         )
@@ -140,6 +149,7 @@ class SlateFixtureCoverageAcquirer:
         source_kind: SourceKind,
         parser: OpenFootballJSONParser | OpenFootballTextParser,
     ) -> tuple[ProviderAttempt, tuple[str, ...], str | None]:
+        self._current_authority()
         try:
             downloaded = self._fetcher.fetch(url, cache_key=f"{provider_id}:{league.key}:{season}")
         except SourceUnavailable as error:
@@ -170,6 +180,7 @@ class SlateFixtureCoverageAcquirer:
         try:
             dataset = parser.parse(downloaded.content, league=league, season=season)
         except SourceParseError as error:
+            self._current_authority()
             retained = self._importer.retain_capture(
                 source_kind=source_kind,
                 league=league,
@@ -194,6 +205,7 @@ class SlateFixtureCoverageAcquirer:
             dataset,
             rows=tuple(row for row in dataset.rows if _fixture_status(row) != "COMPLETED"),
         )
+        self._current_authority()
         imported = self._importer.import_dataset(
             scheduled_dataset,
             downloaded.content,
@@ -270,9 +282,9 @@ def _retained_candidates(
         for observation in importer.observations_for_capture(capture_id):
             if observation.source_row_key not in capture_rows[capture_id]:
                 continue
-            if not _observation_in_window(observation, start, end, league.timezone):
+            if not _observation_may_affect_window(observation, start, end, league.timezone):
                 continue
-            if observation.fixture_id is None:
+            if observation.fixture_id is None or observation.kickoff_utc is None:
                 candidate_id = deterministic_identifier(
                     "fixture_candidate", f"{capture_id}:{observation.source_row_key}"
                 )
@@ -280,7 +292,11 @@ def _retained_candidates(
                     candidate_id=candidate_id,
                     scope_id=scope_id,
                     state=FixtureIdentityState.UNRESOLVED_FIXTURE_IDENTITY,
-                    reason_code=observation.reason_code or "TEAM_MAPPING_UNRESOLVED",
+                    reason_code=(
+                        "KICKOFF_TIME_UNRESOLVED"
+                        if observation.kickoff_utc is None
+                        else observation.reason_code or "TEAM_MAPPING_UNRESOLVED"
+                    ),
                     source_capture_ids=(capture_id,),
                     source_assertion_ids=observation.source_assertion_ids,
                 )
@@ -322,7 +338,7 @@ def _retained_candidates(
     return tuple(revisions_by_id.values()), (*resolved, *unresolved.values())
 
 
-def _observation_in_window(
+def _observation_may_affect_window(
     observation: FixtureCaptureObservation,
     start: datetime,
     end: datetime,
@@ -332,7 +348,7 @@ def _observation_in_window(
         kickoff = datetime.fromisoformat(observation.kickoff_utc.replace("Z", "+00:00"))
         return start <= kickoff < end
     if observation.kickoff_local_date is None:
-        return False
+        return True
     local_date: date = observation.kickoff_local_date
     zone = _source_timezone(zone_name, local_date)
     day_start = datetime.combine(local_date, time.min, zone).astimezone(UTC)
@@ -340,4 +356,4 @@ def _observation_in_window(
     day_end = datetime.combine(
         next_date, time.min, _source_timezone(zone_name, next_date)
     ).astimezone(UTC)
-    return day_start >= start and day_end <= end
+    return day_start < end and start < day_end

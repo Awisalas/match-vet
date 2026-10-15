@@ -209,14 +209,21 @@ class FixtureCoverageRepository:
                 )
         return assessment.digest
 
-    def persist_slate(self, assessment: object) -> str:
+    def persist_slate(
+        self,
+        assessment: object,
+        *,
+        write_guard: Callable[[], object] | None = None,
+    ) -> str:
         """Append one exact interval successor through its closed additive repository."""
         from matchvet.slate_fixture_coverage import SlateFixtureCoverageAssessment
         from matchvet.slate_fixture_coverage_repository import SlateFixtureCoverageRepository
 
         if type(assessment) is not SlateFixtureCoverageAssessment:
             raise TypeError("F01 interval persistence requires the exact slate assessment type.")
-        return SlateFixtureCoverageRepository(self._store).persist(assessment)
+        return SlateFixtureCoverageRepository(self._store, write_guard=write_guard).persist(
+            assessment
+        )
 
     def persist_attestation(
         self, attestation: OperatorCoverageAttestation

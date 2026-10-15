@@ -1602,6 +1602,7 @@ class FixtureHistoryImporter:
             raise PermissionError("Fixture history import requires a healthy writable store.")
         self._store = store
         self._private_root = private_root.resolve()
+        self._write_guard: Callable[[], object] | None = None
         from dataclasses import asdict
 
         from matchvet.pro_league_team_alias_registry import (
@@ -1637,6 +1638,11 @@ class FixtureHistoryImporter:
                 )
             )
         self._artifacts = ArtifactStore(store)
+
+    def set_write_guard(self, write_guard: Callable[[], object] | None) -> None:
+        """Apply an operation's current-authority checkpoint to capture persistence."""
+        self._write_guard = write_guard
+        self._artifacts._write_guard = write_guard
 
     def import_dataset(
         self,
@@ -1703,6 +1709,8 @@ class FixtureHistoryImporter:
         media_type = capture.content_type or (
             "text/csv" if dataset.source_kind is SourceKind.FOOTBALL_DATA else "application/json"
         )
+        if self._write_guard is not None:
+            self._write_guard()
         artifact = self._artifacts.publish_artifact(
             content,
             media_type,
@@ -1725,7 +1733,11 @@ class FixtureHistoryImporter:
             "duplicate_rows": 0,
             "unresolved_rows": 0,
         }
+        if self._write_guard is not None:
+            self._write_guard()
         with self._store.transaction() as transaction:
+            if self._write_guard is not None:
+                self._write_guard()
             self._ensure_source(transaction, source_id, source_rights, captured_at)
             self._ensure_origin(transaction, origin_id, source_rights)
             self._ensure_league(transaction, league_id, dataset.league, captured_at)
@@ -1815,6 +1827,8 @@ class FixtureHistoryImporter:
                         else identity_policy
                     ),
                 )
+            if self._write_guard is not None:
+                self._write_guard()
         conflict_count = self._count_conflicts_for_dataset(dataset, league_id, season_id)
         return ImportResult(
             capture_id,

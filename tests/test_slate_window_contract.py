@@ -112,6 +112,75 @@ def test_slate_f01_persists_and_reopens_without_a_friday_projection(tmp_path: Pa
         assert SlateFixtureCoverageRepository(store).get(assessment.digest) == assessment
 
 
+def test_slate_f01_rejects_unretained_capture_provenance_on_write_and_replay(
+    tmp_path: Path,
+) -> None:
+    from matchvet.fixture_coverage import ProviderAttempt, ProviderAttemptState
+    from matchvet.slate_fixture_coverage import assess_slate_fixture_coverage, encode_slate_f01
+    from matchvet.slate_fixture_coverage_repository import (
+        SlateFixtureCoverageIntegrityError,
+        SlateFixtureCoverageRepository,
+    )
+    from matchvet.slate_window import SlateWindow
+    from matchvet.store import open_store
+
+    window = SlateWindow.from_owner_bounds("2026-10-16T00:00:00Z", "2026-10-17T00:00:00Z")
+    attempt = ProviderAttempt(
+        attempt_id="attempt-invented-capture",
+        scope_id=f"premier_league:2026-27:{window.slate_id}",
+        provider_id="openfootball-json",
+        capability_id="scheduled-fixtures",
+        state=ProviderAttemptState.CAPTURED,
+        retrieved_at_utc="2026-10-15T12:00:00.000000+00:00",
+        capture_id="missing-capture",
+        capture_digest="a" * 64,
+    )
+    assessment = assess_slate_fixture_coverage(
+        window=window,
+        provider_attempts=(attempt,),
+        coverage_evidence=(),
+        fixture_revisions=(),
+        identity_resolutions=(),
+        freshness_results=(),
+    )
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    with open_store(private_root / "store.sqlite3", private_root=private_root) as store:
+        repository = SlateFixtureCoverageRepository(store)
+        with pytest.raises(SlateFixtureCoverageIntegrityError, match="capture"):
+            repository.persist(assessment)
+
+        # Simulate an older writer that stored canonical bytes without validating links.
+        with store.transaction() as transaction:
+            transaction.execute(
+                """INSERT INTO slate_fixture_coverage_assessments (
+                       assessment_digest, assessment_json, contract_version, schema_version,
+                       active_scope_id, active_scope_digest, season, window_contract_id,
+                       window_version, window_id, window_digest, start_utc, end_utc,
+                       schedule_state, first_persisted_at_utc
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    assessment.digest,
+                    encode_slate_f01(assessment),
+                    assessment.contract_version,
+                    assessment.schema_version,
+                    assessment.active_scope.contract_id,
+                    assessment.active_scope.digest,
+                    assessment.active_scope.season,
+                    window.contract_id,
+                    window.version,
+                    window.slate_id,
+                    window.digest,
+                    window.start_utc,
+                    window.end_utc,
+                    assessment.schedule_state.value,
+                    "2026-10-15T12:00:00+00:00",
+                ),
+            )
+        with pytest.raises(SlateFixtureCoverageIntegrityError, match="capture"):
+            repository.get(assessment.digest)
+
+
 def test_provider_health_v2_binds_failed_attempt_to_exact_interval_f01() -> None:
     from matchvet.fixture_coverage import ProviderAttempt, ProviderAttemptState
     from matchvet.provider_health import (
@@ -168,6 +237,92 @@ def test_provider_health_v2_binds_failed_attempt_to_exact_interval_f01() -> None
         from matchvet.provider_health import provider_health_record_from_canonical_json
 
         provider_health_record_from_canonical_json(provider_health_record_to_canonical_json(record))
+
+
+def test_provider_health_v1_and_v2_codecs_keep_closed_scope_and_f01_shapes() -> None:
+    import hashlib
+    import json
+    from dataclasses import fields
+
+    from matchvet.fixture_coverage import ProviderAttempt, ProviderAttemptState
+    from matchvet.provider_health import (
+        FixtureCoverageAssessmentReference,
+        ProviderHealthPayloadError,
+        ProviderHealthRecord,
+        ProviderHealthRecordV2,
+        SlateF01FixtureScopeReference,
+        _canonical_json,
+        provider_health_record_from_canonical_json,
+        provider_health_record_to_canonical_json,
+        provider_health_v2_record_from_canonical_json,
+    )
+    from matchvet.provider_health_acquisition import build_slate_provider_health_records
+    from matchvet.slate_fixture_coverage import assess_slate_fixture_coverage
+    from matchvet.slate_window import SlateWindow
+
+    window = SlateWindow.from_owner_bounds("2026-10-16T00:00:00Z", "2026-10-17T00:00:00Z")
+    attempt = ProviderAttempt(
+        attempt_id="attempt-closed-codecs",
+        scope_id=f"premier_league:2026-27:{window.slate_id}",
+        provider_id="openfootball-json",
+        capability_id="scheduled-fixtures",
+        state=ProviderAttemptState.UNAVAILABLE,
+        retrieved_at_utc="2026-10-15T12:00:00.000000+00:00",
+    )
+    assessment = assess_slate_fixture_coverage(
+        window=window,
+        provider_attempts=(attempt,),
+        coverage_evidence=(),
+        fixture_revisions=(),
+        identity_resolutions=(),
+        freshness_results=(),
+    )
+    record = build_slate_provider_health_records(assessment)[0]
+    assert isinstance(record, ProviderHealthRecordV2)
+    slate_scope = record.requested_scope.fixture_scope
+    assert isinstance(slate_scope, SlateF01FixtureScopeReference)
+    with pytest.raises(ValueError, match="typed FixtureScope"):
+        FixtureCoverageAssessmentReference.from_f01(assessment, slate_scope)  # type: ignore[arg-type]
+    assert (
+        FixtureCoverageAssessmentReference.from_slate_f01(assessment, slate_scope)
+        in record.provenance
+    )
+    v1_record = ProviderHealthRecord(
+        **{
+            item.name: getattr(record, item.name)
+            for item in fields(ProviderHealthRecord)
+            if item.init
+        }
+    )
+    with pytest.raises(ProviderHealthPayloadError):
+        provider_health_record_from_canonical_json(
+            provider_health_record_to_canonical_json(v1_record)
+        )
+
+    legacy_payload = json.loads(provider_health_record_to_canonical_json(record))
+
+    def replace_f01_pair(value: object) -> None:
+        if isinstance(value, dict):
+            if value.get("contract_version") == "fixture-coverage-v5-slate-v1":
+                value["contract_version"] = "fixture-coverage-v4-v4"
+                value["schema_version"] = 4
+            for child in value.values():
+                replace_f01_pair(child)
+        elif isinstance(value, list):
+            for child in value:
+                replace_f01_pair(child)
+
+    replace_f01_pair(legacy_payload)
+    legacy_payload["digest"] = (
+        "sha256:"
+        + hashlib.sha256(
+            _canonical_json(
+                {key: value for key, value in legacy_payload.items() if key != "digest"}
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    with pytest.raises(ProviderHealthPayloadError):
+        provider_health_v2_record_from_canonical_json(_canonical_json(legacy_payload))
 
 
 def test_interval_f01_preserves_every_state_and_health_keeps_dimensions_separate() -> None:
@@ -498,11 +653,7 @@ def test_provider_health_v2_persists_replays_and_inspects_exact_attempts(
             capture_digest=(f"{index:064x}" if state is ProviderAttemptState.CAPTURED else None),
         )
         for index, league in enumerate(SUCCESSOR_FIVE_SCOPE.league_keys)
-        for state in (
-            ProviderAttemptState.CAPTURED,
-            ProviderAttemptState.UNAVAILABLE,
-            ProviderAttemptState.MALFORMED,
-        )
+        for state in (ProviderAttemptState.UNAVAILABLE, ProviderAttemptState.MALFORMED)
     )
     assessment = assess_slate_fixture_coverage(
         window=window,
@@ -513,7 +664,7 @@ def test_provider_health_v2_persists_replays_and_inspects_exact_attempts(
         freshness_results=(),
     )
     records = build_slate_provider_health_records(assessment)
-    assert len(records) == len(attempts) == 15
+    assert len(records) == len(attempts) == 10
     private_root = tmp_path / "private"
     private_root.mkdir()
     with open_store(private_root / "store.sqlite3", private_root=private_root) as store:
@@ -539,8 +690,11 @@ def test_provider_health_v2_persists_replays_and_inspects_exact_attempts(
 def test_provider_health_v2_inspection_reports_missing_and_pair_conflicts_refuse(
     tmp_path: Path,
 ) -> None:
+    from dataclasses import replace
+
     from matchvet.fixture_coverage import ProviderAttempt, ProviderAttemptState
     from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.provider_health import FailureReasonCode
     from matchvet.provider_health_acquisition import build_slate_provider_health_records
     from matchvet.provider_health_repository import (
         ProviderHealthIntegrityError,
@@ -558,10 +712,8 @@ def test_provider_health_v2_inspection_reports_missing_and_pair_conflicts_refuse
             scope_id=scope_id,
             provider_id="openfootball-json",
             capability_id="scheduled-fixtures",
-            state=ProviderAttemptState.CAPTURED,
+            state=ProviderAttemptState.UNAVAILABLE,
             retrieved_at_utc=f"2026-10-15T12:0{index}:00.000000+00:00",
-            capture_id=f"capture-{index}",
-            capture_digest=f"{index + 1:064x}",
         )
         for index, suffix in enumerate(("a", "b"))
     )
@@ -592,19 +744,14 @@ def test_provider_health_v2_inspection_reports_missing_and_pair_conflicts_refuse
         assert len(inspection.missing_attempt_ids) == 1
         assert inspection.missing_attempt_ids[0] != attempts[0].attempt_id
 
-        changed = build_slate_provider_health_records(
-            assessment,
-            attempt_diagnostics={attempts[0].attempt_id: "retained adapter diagnostic"},
+        changed_record = replace(
+            first_record,
+            failure=replace(
+                first_record.failure,
+                reason_codes=(FailureReasonCode("CHANGED_FAILURE_REASON"),),
+            ),
         )
-        changed_record = next(
-            record
-            for record in changed
-            if any(
-                getattr(reference, "attempt_id", None) == attempts[0].attempt_id
-                for reference in record.provenance
-            )
-        )
-        with pytest.raises(ProviderHealthIntegrityError, match="key cannot retain changed"):
+        with pytest.raises(ProviderHealthIntegrityError):
             repository.persist_many((changed_record,))
 
 
@@ -711,6 +858,7 @@ def test_standard_acquisition_uses_supported_controlled_feeds_for_all_five_scope
             FixtureHistoryImporter(store, private_root=private_root),
             fetcher,
             attempted_at=lambda: "2026-10-15T12:00:00+00:00",
+            current_authority=lambda: None,
         )
         acquired = acquirer.acquire(
             SlateWindow.from_owner_bounds("2026-10-16T00:00:00+01:00", "2026-10-19T00:00:00+01:00")
@@ -734,6 +882,124 @@ def test_standard_acquisition_uses_supported_controlled_feeds_for_all_five_scope
         )
         assert inspection.missing_attempt_ids == ()
         assert len(inspection.records) == 10
+
+
+def test_standard_acquisition_retains_date_only_candidates_as_scope_blockers(
+    tmp_path: Path,
+) -> None:
+    from matchvet.active_scope import SUCCESSOR_FIVE_SCOPE
+    from matchvet.fixture_coverage import FixtureIdentityState
+    from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.ingestion import (
+        FixtureHistoryImporter,
+        StaticSourceFetcher,
+        league_by_key,
+        openfootball_url,
+    )
+    from matchvet.slate_fixture_coverage_acquisition import SlateFixtureCoverageAcquirer
+    from matchvet.slate_window import SlateWindow
+    from matchvet.store import open_store
+
+    sources = {
+        openfootball_url(league_by_key(key), SUCCESSOR_FIVE_SCOPE.season): b'{"matches":[]}'
+        for key in SUCCESSOR_FIVE_SCOPE.league_keys
+    }
+    sources[openfootball_url(league_by_key("premier_league"), SUCCESSOR_FIVE_SCOPE.season)] = (
+        b'{"matches":[{"date":"2026-10-16","team1":"Arsenal","team2":"Chelsea","score":{}}]}'
+    )
+    fetcher = StaticSourceFetcher(
+        sources,
+        retrieved_at_utc="2026-10-15T12:00:00.000000+00:00",
+    )
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    with open_store(private_root / "store.sqlite3", private_root=private_root) as store:
+        acquired = SlateFixtureCoverageAcquirer(
+            FixtureHistoryImporter(store, private_root=private_root),
+            fetcher,
+            attempted_at=lambda: "2026-10-15T12:00:00+00:00",
+            current_authority=lambda: None,
+        ).acquire(SlateWindow.from_owner_bounds("2026-10-16T11:00:00Z", "2026-10-16T12:00:00Z"))
+        candidates = tuple(
+            item
+            for item in acquired.assessment.identity_resolutions
+            if item.state is FixtureIdentityState.UNRESOLVED_FIXTURE_IDENTITY
+        )
+        assert len(candidates) == 1
+        assert candidates[0].reason_code == "KICKOFF_TIME_UNRESOLVED"
+        assert acquired.assessment.scope_assessments[0].identity_blocker_candidate_ids == (
+            candidates[0].candidate_id,
+        )
+        assert FixtureCoverageRepository(store).get_any(acquired.assessment.digest) == (
+            acquired.assessment
+        )
+
+
+def test_standard_acquisition_refuses_commit_after_current_authority_withdrawal(
+    tmp_path: Path,
+) -> None:
+    from matchvet.active_scope import SUCCESSOR_FIVE_SCOPE
+    from matchvet.ingestion import (
+        DownloadedSource,
+        FixtureHistoryImporter,
+        StaticSourceFetcher,
+        league_by_key,
+        openfootball_url,
+    )
+    from matchvet.slate_fixture_coverage_acquisition import SlateFixtureCoverageAcquirer
+    from matchvet.slate_window import SlateWindow
+    from matchvet.store import open_store
+
+    sources = {
+        openfootball_url(league_by_key(key), SUCCESSOR_FIVE_SCOPE.season): b'{"matches":[]}'
+        for key in SUCCESSOR_FIVE_SCOPE.league_keys
+    }
+    authority = {"current": True}
+    base_fetcher = StaticSourceFetcher(
+        sources,
+        retrieved_at_utc="2026-10-15T12:00:00.000000+00:00",
+    )
+
+    class WithdrawAfterLastFetch:
+        calls = 0
+
+        def fetch(self, url: str, *, cache_key: str, refresh: bool = False) -> DownloadedSource:
+            self.calls += 1
+            try:
+                return base_fetcher.fetch(url, cache_key=cache_key, refresh=refresh)
+            finally:
+                if self.calls == 10:
+                    authority["current"] = False
+
+    def require_current_authority() -> None:
+        if not authority["current"]:
+            raise PermissionError("current source authority was withdrawn")
+
+    fetcher = WithdrawAfterLastFetch()
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    with open_store(private_root / "store.sqlite3", private_root=private_root) as store:
+        acquirer = SlateFixtureCoverageAcquirer(
+            FixtureHistoryImporter(store, private_root=private_root),
+            fetcher,
+            attempted_at=lambda: "2026-10-15T12:00:00+00:00",
+            current_authority=require_current_authority,
+        )
+        with pytest.raises(PermissionError, match="withdrawn"):
+            acquirer.acquire(
+                SlateWindow.from_owner_bounds("2026-10-16T00:00:00Z", "2026-10-17T00:00:00Z")
+            )
+        connection = store._connection_for_repository()
+        assert (
+            connection.execute(
+                "SELECT count(*) FROM slate_fixture_coverage_assessments"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute("SELECT count(*) FROM slate_provider_health_records").fetchone()[0]
+            == 0
+        )
 
 
 def test_replay_reads_v1_and_v2_f01_and_health_from_one_store(tmp_path: Path) -> None:
@@ -965,21 +1231,45 @@ def test_older_schema_refuses_interval_health_writes(tmp_path: Path) -> None:
         assert old_store.status.schema_version == 14
 
 
+def test_older_application_refuses_writes_to_schema_fifteen_store(tmp_path: Path) -> None:
+    from matchvet.store import MIGRATIONS, StoreMode, open_store
+
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    database_path = private_root / "store.sqlite3"
+    with open_store(database_path, private_root=private_root) as current_store:
+        assert current_store.status.schema_version == 15
+
+    with open_store(
+        database_path, private_root=private_root, migrations=MIGRATIONS[:-1]
+    ) as older_store:
+        assert older_store.status.mode is StoreMode.READ_ONLY_RECOVERY
+        assert older_store.status.issues[0].code == "MV-STORE-SCHEMA_TOO_NEW"
+        with pytest.raises(PermissionError, match="read-only"), older_store.transaction():
+            pass
+
+
 def test_v2_f05_uses_assessment_attempt_key_and_refuses_invented_or_corrupt_rows(
     tmp_path: Path,
 ) -> None:
     from matchvet.fixture_coverage import ProviderAttempt, ProviderAttemptState
     from matchvet.fixture_coverage_repository import FixtureCoverageRepository
+    from matchvet.provider_health import ProviderHealthRecordV2
     from matchvet.provider_health_acquisition import build_slate_provider_health_records
     from matchvet.provider_health_repository import (
         ProviderHealthIntegrityError,
         ProviderHealthRepository,
     )
-    from matchvet.slate_fixture_coverage import assess_slate_fixture_coverage
+    from matchvet.slate_fixture_coverage import (
+        SlateFixtureCoverageAssessment,
+        assess_slate_fixture_coverage,
+    )
     from matchvet.slate_window import SlateWindow
     from matchvet.store import open_store
 
-    def make_assessment(start: str, end: str):
+    def make_assessment(
+        start: str, end: str
+    ) -> tuple[SlateFixtureCoverageAssessment, ProviderHealthRecordV2]:
         window = SlateWindow.from_owner_bounds(start, end)
         attempt = ProviderAttempt(
             attempt_id="shared-attempt-id",

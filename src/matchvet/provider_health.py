@@ -1058,34 +1058,9 @@ class FixtureCoverageAssessmentReference:
     def from_f01(
         cls,
         assessment: object,
-        fixture_scope: F01FixtureScopeReference | SlateF01FixtureScopeReference,
+        fixture_scope: F01FixtureScopeReference,
     ) -> FixtureCoverageAssessmentReference:
         """Project one original F01 scope result and its exact evidence membership."""
-        if isinstance(fixture_scope, SlateF01FixtureScopeReference):
-            try:
-                from matchvet.slate_fixture_coverage import SlateFixtureCoverageAssessment
-
-                if type(assessment) is not SlateFixtureCoverageAssessment:
-                    raise ValueError("V2 F01 reference requires the exact interval assessment.")
-                matching = tuple(
-                    value
-                    for value in assessment.scope_assessments
-                    if value.scope.scope_id == fixture_scope.scope_id
-                )
-                if len(matching) != 1:
-                    raise ValueError("F01 assessment must contain exactly one matching scope.")
-                selected = matching[0]
-                return cls(
-                    assessment_digest=assessment.digest,
-                    contract_version=assessment.contract_version,
-                    schema_version=assessment.schema_version,
-                    fixture_scope_id=fixture_scope.scope_id,
-                    scope_state=str(selected.coverage_state),
-                    provider_attempt_ids=selected.provider_attempt_ids,
-                    coverage_evidence_ids=selected.coverage_evidence_ids,
-                )
-            except (AttributeError, TypeError) as error:
-                raise ValueError("Value is not a valid interval F01 assessment.") from error
         if not isinstance(fixture_scope, F01FixtureScopeReference):
             raise ValueError("F01 assessment projection requires a typed FixtureScope reference.")
         try:
@@ -1114,6 +1089,37 @@ class FixtureCoverageAssessmentReference:
             )
         except (AttributeError, TypeError) as error:
             raise ValueError("Value is not a valid F01 Fixture Coverage Assessment.") from error
+
+    @classmethod
+    def from_slate_f01(
+        cls,
+        assessment: object,
+        fixture_scope: SlateF01FixtureScopeReference,
+    ) -> FixtureCoverageAssessmentReference:
+        """Project only the exact interval F01 identity for the v2 health contract."""
+        from matchvet.slate_fixture_coverage import SlateFixtureCoverageAssessment
+
+        if type(assessment) is not SlateFixtureCoverageAssessment:
+            raise ValueError("V2 F01 reference requires the exact interval assessment.")
+        if not isinstance(fixture_scope, SlateF01FixtureScopeReference):
+            raise ValueError("V2 F01 reference requires a typed interval scope.")
+        matching = tuple(
+            value
+            for value in assessment.scope_assessments
+            if value.scope.scope_id == fixture_scope.scope_id
+        )
+        if len(matching) != 1:
+            raise ValueError("F01 assessment must contain exactly one matching scope.")
+        selected = matching[0]
+        return cls(
+            assessment_digest=assessment.digest,
+            contract_version=assessment.contract_version,
+            schema_version=assessment.schema_version,
+            fixture_scope_id=fixture_scope.scope_id,
+            scope_state=str(selected.coverage_state),
+            provider_attempt_ids=selected.provider_attempt_ids,
+            coverage_evidence_ids=selected.coverage_evidence_ids,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -2296,6 +2302,32 @@ class ProviderHealthRecordV2(ProviderHealthRecord):
         fixture_scope = self.requested_scope.fixture_scope
         if not isinstance(fixture_scope, SlateF01FixtureScopeReference):
             raise ValueError("Provider Health v2 requires a typed interval F01 scope.")
+        from matchvet.slate_fixture_coverage import (
+            SLATE_FIXTURE_COVERAGE_CONTRACT_VERSION,
+            SLATE_FIXTURE_COVERAGE_SCHEMA_VERSION,
+        )
+
+        f01_references = {
+            item
+            for item in self._all_evidence_references()
+            if isinstance(item, FixtureCoverageAssessmentReference)
+        }
+        f01_reference = next(iter(f01_references), None)
+        if (
+            len(f01_references) != 1
+            or f01_reference is None
+            or (
+                f01_reference.contract_version,
+                f01_reference.schema_version,
+            )
+            != (
+                SLATE_FIXTURE_COVERAGE_CONTRACT_VERSION,
+                SLATE_FIXTURE_COVERAGE_SCHEMA_VERSION,
+            )
+        ):
+            raise ValueError(
+                "Provider Health v2 requires exactly the successor F01 v5/schema5 pair."
+            )
         if (
             self.capability.capability_id != "scheduled-fixtures"
             or self.intended_use_id != "matchvet:research-only:upcoming-fixture-acquisition"
@@ -2464,8 +2496,12 @@ def _time_scope_from_json(value: object) -> RequestedTimeScope:
 
 def _fixture_scope_from_json(
     value: object,
+    *,
+    allow_slate: bool = False,
 ) -> F01FixtureScopeReference | SlateF01FixtureScopeReference:
     if isinstance(value, dict) and "slate_window" in value:
+        if not allow_slate:
+            raise ProviderHealthPayloadError("Provider Health v1 does not accept interval scopes.")
         item = _object(
             value,
             ("active_scope", "league_key", "scope_id", "season", "slate_window"),
@@ -2553,7 +2589,7 @@ def _selector_from_json(value: object) -> NamedSelectorFacet:
     return NamedSelectorFacet(key=_string(item["key"], "selector key"), facet=facet)
 
 
-def _scope_from_json(value: object) -> RequestedScope:
+def _scope_from_json(value: object, *, allow_slate: bool = False) -> RequestedScope:
     item = _object(
         value,
         (
@@ -2583,7 +2619,7 @@ def _scope_from_json(value: object) -> RequestedScope:
         fixture_scope=(
             None
             if item["fixture_scope"] is None
-            else _fixture_scope_from_json(item["fixture_scope"])
+            else _fixture_scope_from_json(item["fixture_scope"], allow_slate=allow_slate)
         ),
     )
 
@@ -3075,7 +3111,9 @@ def _record_from_json(
     record = record_type.create(
         provider=_identity_from_json(item["provider"]),
         capability=_capability_from_json(item["capability"]),
-        requested_scope=_scope_from_json(item["requested_scope"]),
+        requested_scope=_scope_from_json(
+            item["requested_scope"], allow_slate=record_type is ProviderHealthRecordV2
+        ),
         intended_use_id=_string(item["intended_use_id"], "intended_use_id"),
         checked_at_utc=_string(item["checked_at_utc"], "checked_at_utc"),
         provenance=_evidence_references_from_json(item["provenance"]),

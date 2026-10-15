@@ -7,12 +7,14 @@ import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from matchvet.fixture_coverage import ProviderAttemptState
+from matchvet.ingestion import league_by_key, openfootball_text_url, openfootball_url
 from matchvet.slate_fixture_coverage import (
     SlateFixtureCoverageAssessment,
     decode_slate_f01,
     encode_slate_f01,
 )
-from matchvet.store import Store
+from matchvet.store import Store, StoreTransaction
 
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
@@ -55,6 +57,7 @@ class SlateFixtureCoverageRepository:
             with self._store.transaction() as transaction:
                 if self._write_guard is not None:
                     self._write_guard()
+                _validate_slate_provenance(transaction, assessment)
                 existing = transaction.execute(
                     """SELECT assessment_digest, assessment_json, contract_version,
                               schema_version, active_scope_id, active_scope_digest, season,
@@ -138,8 +141,160 @@ class SlateFixtureCoverageRepository:
                 raise SlateFixtureCoverageIntegrityError(
                     "Slate F01 row identity differs from its canonical payload."
                 )
+            _validate_slate_provenance(self._store._connection_for_repository(), assessment)
             return assessment
         except SlateFixtureCoverageIntegrityError:
             raise
         except (TypeError, ValueError, IndexError) as error:
             raise SlateFixtureCoverageIntegrityError("Stored slate F01 is corrupt.") from error
+
+
+def _validate_slate_provenance(
+    connection: sqlite3.Connection | StoreTransaction,
+    assessment: SlateFixtureCoverageAssessment,
+) -> None:
+    """Verify every source, revision, and assertion reference against retained Store rows."""
+    scopes = {item.scope.scope_id: item.scope for item in assessment.scope_assessments}
+    captures: dict[str, tuple[str, str]] = {}
+
+    for attempt in assessment.provider_attempts:
+        if attempt.state is not ProviderAttemptState.CAPTURED:
+            continue
+        if attempt.capture_id is None or attempt.capture_digest is None:
+            raise SlateFixtureCoverageIntegrityError(
+                "Captured slate F01 attempt is missing its source capture."
+            )
+        scope = scopes[attempt.scope_id]
+        league = league_by_key(scope.league_key)
+        expected_source, expected_locator = {
+            "openfootball-json": ("openfootball", openfootball_url(league, scope.season)),
+            "openfootball-footballtxt": (
+                "openfootball-footballtxt",
+                openfootball_text_url(league, scope.season),
+            ),
+        }.get(attempt.provider_id, (None, None))
+        row = connection.execute(
+            """SELECT c.content_sha256, c.retrieved_at_utc, c.locator, s.source_key
+               FROM source_captures AS c
+               JOIN source_identities AS s ON s.source_id = c.source_id
+               WHERE c.capture_id = ?""",
+            (attempt.capture_id,),
+        ).fetchone()
+        if (
+            row is None
+            or expected_source is None
+            or str(row[0]) != attempt.capture_digest.removeprefix("sha256:")
+            or _utc_instant(str(row[1])) != _utc_instant(attempt.retrieved_at_utc)
+            or str(row[2]) != expected_locator
+            or str(row[3]) != expected_source
+        ):
+            raise SlateFixtureCoverageIntegrityError(
+                f"Slate F01 capture {attempt.capture_id} is missing or has conflicting "
+                "source provenance."
+            )
+        captures[attempt.capture_id] = (attempt.scope_id, attempt.capture_digest)
+
+    for evidence in assessment.coverage_evidence:
+        matching_attempt = next(
+            (
+                item
+                for item in assessment.provider_attempts
+                if item.attempt_id == evidence.attempt_id
+            ),
+            None,
+        )
+        retained = captures.get(evidence.capture_id)
+        if (
+            matching_attempt is None
+            or matching_attempt.state is not ProviderAttemptState.CAPTURED
+            or matching_attempt.scope_id != evidence.scope_id
+            or matching_attempt.capture_id != evidence.capture_id
+            or matching_attempt.capture_digest != evidence.capture_digest
+            or retained != (evidence.scope_id, evidence.capture_digest)
+        ):
+            raise SlateFixtureCoverageIntegrityError(
+                "Slate F01 coverage evidence does not match retained source provenance."
+            )
+
+    for revision in assessment.fixture_revisions:
+        row = connection.execute(
+            "SELECT fixture_id, revision_digest FROM fixture_revisions WHERE revision_id = ?",
+            (revision.revision_id,),
+        ).fetchone()
+        if (
+            row is None
+            or str(row[0]) != revision.fixture_id
+            or str(row[1]) != revision.revision_digest.removeprefix("sha256:")
+            or not revision.source_capture_ids
+            or any(
+                captures.get(capture_id, (None, None))[0] != revision.scope_id
+                for capture_id in revision.source_capture_ids
+            )
+        ):
+            raise SlateFixtureCoverageIntegrityError(
+                f"Slate F01 fixture revision {revision.revision_id} has invalid source provenance."
+            )
+        _validate_assertion_links(
+            connection,
+            revision.source_assertion_ids,
+            revision.source_capture_ids,
+            revision.revision_id,
+        )
+
+    for identity in assessment.identity_resolutions:
+        if not identity.source_capture_ids or any(
+            captures.get(capture_id, (None, None))[0] != identity.scope_id
+            for capture_id in identity.source_capture_ids
+        ):
+            raise SlateFixtureCoverageIntegrityError(
+                f"Slate F01 candidate {identity.candidate_id} has invalid "
+                "source capture provenance."
+            )
+        _validate_assertion_links(
+            connection,
+            identity.source_assertion_ids,
+            identity.source_capture_ids,
+            None,
+        )
+
+
+def _validate_assertion_links(
+    connection: sqlite3.Connection | StoreTransaction,
+    assertion_ids: tuple[str, ...],
+    capture_ids: tuple[str, ...],
+    revision_id: str | None,
+) -> None:
+    for assertion_id in assertion_ids:
+        row = connection.execute(
+            "SELECT capture_id FROM source_assertions WHERE assertion_id = ?", (assertion_id,)
+        ).fetchone()
+        if row is None or str(row[0]) not in capture_ids:
+            raise SlateFixtureCoverageIntegrityError(
+                f"Slate F01 source assertion {assertion_id} is missing or has an unrelated capture."
+            )
+        if (
+            revision_id is not None
+            and connection.execute(
+                """SELECT 1 FROM fixture_revision_assertions
+               WHERE revision_id = ? AND assertion_id = ?""",
+                (revision_id, assertion_id),
+            ).fetchone()
+            is None
+        ):
+            raise SlateFixtureCoverageIntegrityError(
+                f"Slate F01 source assertion {assertion_id} is not linked to its fixture revision."
+            )
+
+
+def _utc_instant(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise SlateFixtureCoverageIntegrityError(
+            "Slate F01 source retrieval time is invalid."
+        ) from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise SlateFixtureCoverageIntegrityError(
+            "Slate F01 source retrieval time must include a UTC offset."
+        )
+    return parsed.astimezone(UTC)

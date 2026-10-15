@@ -129,7 +129,18 @@ def _record_for_attempt(
     else:
         fixture_scope = F01FixtureScopeReference.from_f01(matching_scopes[0])
     attempt_reference = ProviderAttemptReference.from_f01(attempt)
-    assessment_reference = FixtureCoverageAssessmentReference.from_f01(assessment, fixture_scope)
+    if interval_v2:
+        if not isinstance(fixture_scope, SlateF01FixtureScopeReference):
+            raise ValueError("F05 v2 requires the exact interval F01 scope reference.")
+        assessment_reference = FixtureCoverageAssessmentReference.from_slate_f01(
+            assessment, fixture_scope
+        )
+    else:
+        if not isinstance(fixture_scope, F01FixtureScopeReference):
+            raise ValueError("F05 v1 requires the historical Friday F01 scope reference.")
+        assessment_reference = FixtureCoverageAssessmentReference.from_f01(
+            assessment, fixture_scope
+        )
     coverage_evidence = _matching_coverage_evidence(assessment, attempt, fixture_scope)
     coverage_references = tuple(
         ProviderCoverageEvidenceReference.from_f01(evidence, attempt_reference)

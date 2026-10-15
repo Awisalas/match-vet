@@ -864,7 +864,7 @@ def _validate_slate_record_references(
         or attempt_reference.retrieved_at_utc != record.checked_at_utc
     ):
         raise ProviderHealthIntegrityError("F05 v2 identity differs from its F01 attempt.")
-    expected_assessment_reference = FixtureCoverageAssessmentReference.from_f01(
+    expected_assessment_reference = FixtureCoverageAssessmentReference.from_slate_f01(
         assessment, fixture_scope
     )
     references = {
@@ -938,7 +938,7 @@ def _validate_record_references(
     assessment: SupportedFixtureCoverageAssessment,
 ) -> None:
     fixture_scope = record.requested_scope.fixture_scope
-    if fixture_scope is None:
+    if not isinstance(fixture_scope, F01FixtureScopeReference):
         raise ProviderHealthIntegrityError("F05 record has no typed F01 Fixture Scope.")
     matching_scope_assessments = tuple(
         scope_assessment
