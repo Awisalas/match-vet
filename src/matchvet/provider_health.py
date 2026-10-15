@@ -1768,7 +1768,10 @@ class ProviderHealthRecord:
         ):
             if not isinstance(value, value_type):
                 raise ValueError(f"Provider Health Record requires a typed {name} assessment.")
-        if type(self) is ProviderHealthRecord:
+        if (self.contract_version, self.schema_version) == (
+            PROVIDER_HEALTH_CONTRACT_VERSION,
+            PROVIDER_HEALTH_SCHEMA_VERSION,
+        ):
             _validate_provider_health_v1_shape(self)
         if any(
             not isinstance(
@@ -2428,11 +2431,16 @@ def provider_health_record_to_canonical_json(record: ProviderHealthRecord) -> st
     """Return a complete provider health record in canonical JSON form."""
     if not isinstance(record, ProviderHealthRecord):
         raise TypeError("Expected a ProviderHealthRecord.")
-    if type(record) is ProviderHealthRecord:
+    if type(record) is ProviderHealthRecord or (
+        record.contract_version,
+        record.schema_version,
+    ) == (PROVIDER_HEALTH_CONTRACT_VERSION, PROVIDER_HEALTH_SCHEMA_VERSION):
         try:
             _validate_provider_health_v1_shape(record)
         except ValueError as error:
             raise ProviderHealthPayloadError("Provider Health v1 has an invalid shape.") from error
+    elif type(record) is not ProviderHealthRecordV2:
+        raise ProviderHealthPayloadError("Unsupported Provider Health record type.")
     return _canonical_json(_json_value(record))
 
 

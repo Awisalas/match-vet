@@ -360,6 +360,12 @@ def test_provider_health_v1_and_v2_codecs_keep_closed_scope_and_f01_shapes() -> 
     with pytest.raises(ValueError, match="Provider Health v1"):
         ProviderHealthRecord(**v1_record_values)
 
+    class DerivedProviderHealthRecord(ProviderHealthRecord):
+        pass
+
+    with pytest.raises(ValueError, match="Provider Health v1"):
+        DerivedProviderHealthRecord(**v1_record_values)
+
     # Exercise the public encoder's guard even if an invalid typed value bypasses construction.
     invalid_v1_record = object.__new__(ProviderHealthRecord)
     for item in fields(ProviderHealthRecord):
