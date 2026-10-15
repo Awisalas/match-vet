@@ -1768,6 +1768,8 @@ class ProviderHealthRecord:
         ):
             if not isinstance(value, value_type):
                 raise ValueError(f"Provider Health Record requires a typed {name} assessment.")
+        if type(self) is ProviderHealthRecord:
+            _validate_provider_health_v1_shape(self)
         if any(
             not isinstance(
                 reference,
@@ -2347,6 +2349,26 @@ def _attempt_retrieval_time(record: ProviderHealthRecord) -> str:
     return next(iter(references)).retrieved_at_utc
 
 
+def _validate_provider_health_v1_shape(record: ProviderHealthRecord) -> None:
+    fixture_scope = record.requested_scope.fixture_scope
+    if record.requested_scope.scope_kind == "slate-fixture-scope" or isinstance(
+        fixture_scope, SlateF01FixtureScopeReference
+    ):
+        raise ValueError("Provider Health v1 does not accept interval F01 scopes.")
+    from matchvet.slate_fixture_coverage import (
+        SLATE_FIXTURE_COVERAGE_CONTRACT_VERSION,
+        SLATE_FIXTURE_COVERAGE_SCHEMA_VERSION,
+    )
+
+    if any(
+        isinstance(reference, FixtureCoverageAssessmentReference)
+        and (reference.contract_version, reference.schema_version)
+        == (SLATE_FIXTURE_COVERAGE_CONTRACT_VERSION, SLATE_FIXTURE_COVERAGE_SCHEMA_VERSION)
+        for reference in record._all_evidence_references()
+    ):
+        raise ValueError("Provider Health v1 does not accept successor F01 references.")
+
+
 def _json_value(value: object) -> object:
     if isinstance(value, StrEnum):
         return value.value
@@ -2406,6 +2428,11 @@ def provider_health_record_to_canonical_json(record: ProviderHealthRecord) -> st
     """Return a complete provider health record in canonical JSON form."""
     if not isinstance(record, ProviderHealthRecord):
         raise TypeError("Expected a ProviderHealthRecord.")
+    if type(record) is ProviderHealthRecord:
+        try:
+            _validate_provider_health_v1_shape(record)
+        except ValueError as error:
+            raise ProviderHealthPayloadError("Provider Health v1 has an invalid shape.") from error
     return _canonical_json(_json_value(record))
 
 
@@ -2603,8 +2630,11 @@ def _scope_from_json(value: object, *, allow_slate: bool = False) -> RequestedSc
         ),
         "Requested scope",
     )
+    scope_kind = _string(item["scope_kind"], "scope_kind")
+    if not allow_slate and scope_kind == "slate-fixture-scope":
+        raise ProviderHealthPayloadError("Provider Health v1 does not accept interval scopes.")
     return RequestedScope(
-        scope_kind=_string(item["scope_kind"], "scope_kind"),
+        scope_kind=scope_kind,
         competition=_facet(item["competition"], "competition facet", _competition_from_json),
         season=_facet(item["season"], "season facet", _season_from_json),
         time=_facet(item["time"], "time facet", _time_scope_from_json),

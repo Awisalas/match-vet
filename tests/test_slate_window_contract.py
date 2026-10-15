@@ -181,6 +181,74 @@ def test_slate_f01_rejects_unretained_capture_provenance_on_write_and_replay(
             repository.get(assessment.digest)
 
 
+def test_slate_f01_rejects_unretained_malformed_capture_on_write_and_replay(
+    tmp_path: Path,
+) -> None:
+    from matchvet.fixture_coverage import ProviderAttempt, ProviderAttemptState
+    from matchvet.slate_fixture_coverage import assess_slate_fixture_coverage, encode_slate_f01
+    from matchvet.slate_fixture_coverage_repository import (
+        SlateFixtureCoverageIntegrityError,
+        SlateFixtureCoverageRepository,
+    )
+    from matchvet.slate_window import SlateWindow
+    from matchvet.store import open_store
+
+    window = SlateWindow.from_owner_bounds("2026-10-16T00:00:00Z", "2026-10-17T00:00:00Z")
+    attempt = ProviderAttempt(
+        attempt_id="attempt-invented-malformed-capture",
+        scope_id=f"premier_league:2026-27:{window.slate_id}",
+        provider_id="openfootball-json",
+        capability_id="scheduled-fixtures",
+        state=ProviderAttemptState.MALFORMED,
+        retrieved_at_utc="2026-10-15T12:00:00.000000+00:00",
+        capture_id="missing-malformed-capture",
+        capture_digest="b" * 64,
+    )
+    assessment = assess_slate_fixture_coverage(
+        window=window,
+        provider_attempts=(attempt,),
+        coverage_evidence=(),
+        fixture_revisions=(),
+        identity_resolutions=(),
+        freshness_results=(),
+    )
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    with open_store(private_root / "store.sqlite3", private_root=private_root) as store:
+        repository = SlateFixtureCoverageRepository(store)
+        with pytest.raises(SlateFixtureCoverageIntegrityError, match="capture"):
+            repository.persist(assessment)
+
+        with store.transaction() as transaction:
+            transaction.execute(
+                """INSERT INTO slate_fixture_coverage_assessments (
+                       assessment_digest, assessment_json, contract_version, schema_version,
+                       active_scope_id, active_scope_digest, season, window_contract_id,
+                       window_version, window_id, window_digest, start_utc, end_utc,
+                       schedule_state, first_persisted_at_utc
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    assessment.digest,
+                    encode_slate_f01(assessment),
+                    assessment.contract_version,
+                    assessment.schema_version,
+                    assessment.active_scope.contract_id,
+                    assessment.active_scope.digest,
+                    assessment.active_scope.season,
+                    window.contract_id,
+                    window.version,
+                    window.slate_id,
+                    window.digest,
+                    window.start_utc,
+                    window.end_utc,
+                    assessment.schedule_state.value,
+                    "2026-10-15T12:00:00+00:00",
+                ),
+            )
+        with pytest.raises(SlateFixtureCoverageIntegrityError, match="capture"):
+            repository.get(assessment.digest)
+
+
 def test_provider_health_v2_binds_failed_attempt_to_exact_interval_f01() -> None:
     from matchvet.fixture_coverage import ProviderAttempt, ProviderAttemptState
     from matchvet.provider_health import (
@@ -252,7 +320,6 @@ def test_provider_health_v1_and_v2_codecs_keep_closed_scope_and_f01_shapes() -> 
         ProviderHealthRecordV2,
         SlateF01FixtureScopeReference,
         _canonical_json,
-        provider_health_record_from_canonical_json,
         provider_health_record_to_canonical_json,
         provider_health_v2_record_from_canonical_json,
     )
@@ -287,17 +354,18 @@ def test_provider_health_v1_and_v2_codecs_keep_closed_scope_and_f01_shapes() -> 
         FixtureCoverageAssessmentReference.from_slate_f01(assessment, slate_scope)
         in record.provenance
     )
-    v1_record = ProviderHealthRecord(
-        **{
-            item.name: getattr(record, item.name)
-            for item in fields(ProviderHealthRecord)
-            if item.init
-        }
-    )
-    with pytest.raises(ProviderHealthPayloadError):
-        provider_health_record_from_canonical_json(
-            provider_health_record_to_canonical_json(v1_record)
-        )
+    v1_record_values = {
+        item.name: getattr(record, item.name) for item in fields(ProviderHealthRecord) if item.init
+    }
+    with pytest.raises(ValueError, match="Provider Health v1"):
+        ProviderHealthRecord(**v1_record_values)
+
+    # Exercise the public encoder's guard even if an invalid typed value bypasses construction.
+    invalid_v1_record = object.__new__(ProviderHealthRecord)
+    for item in fields(ProviderHealthRecord):
+        object.__setattr__(invalid_v1_record, item.name, getattr(record, item.name))
+    with pytest.raises(ProviderHealthPayloadError, match="Provider Health v1"):
+        provider_health_record_to_canonical_json(invalid_v1_record)
 
     legacy_payload = json.loads(provider_health_record_to_canonical_json(record))
 

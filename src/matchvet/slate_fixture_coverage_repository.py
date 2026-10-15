@@ -155,14 +155,18 @@ def _validate_slate_provenance(
 ) -> None:
     """Verify every source, revision, and assertion reference against retained Store rows."""
     scopes = {item.scope.scope_id: item.scope for item in assessment.scope_assessments}
-    captures: dict[str, tuple[str, str]] = {}
+    captures: dict[str, tuple[str, str, ProviderAttemptState]] = {}
 
     for attempt in assessment.provider_attempts:
-        if attempt.state is not ProviderAttemptState.CAPTURED:
+        if attempt.capture_id is None:
+            if attempt.state is ProviderAttemptState.CAPTURED:
+                raise SlateFixtureCoverageIntegrityError(
+                    "Captured slate F01 attempt is missing its source capture."
+                )
             continue
-        if attempt.capture_id is None or attempt.capture_digest is None:
+        if attempt.capture_digest is None:
             raise SlateFixtureCoverageIntegrityError(
-                "Captured slate F01 attempt is missing its source capture."
+                "Slate F01 attempt capture reference is missing its content digest."
             )
         scope = scopes[attempt.scope_id]
         league = league_by_key(scope.league_key)
@@ -192,7 +196,7 @@ def _validate_slate_provenance(
                 f"Slate F01 capture {attempt.capture_id} is missing or has conflicting "
                 "source provenance."
             )
-        captures[attempt.capture_id] = (attempt.scope_id, attempt.capture_digest)
+        captures[attempt.capture_id] = (attempt.scope_id, attempt.capture_digest, attempt.state)
 
     for evidence in assessment.coverage_evidence:
         matching_attempt = next(
@@ -210,7 +214,9 @@ def _validate_slate_provenance(
             or matching_attempt.scope_id != evidence.scope_id
             or matching_attempt.capture_id != evidence.capture_id
             or matching_attempt.capture_digest != evidence.capture_digest
-            or retained != (evidence.scope_id, evidence.capture_digest)
+            or retained is None
+            or retained[:2] != (evidence.scope_id, evidence.capture_digest)
+            or retained[2] is not ProviderAttemptState.CAPTURED
         ):
             raise SlateFixtureCoverageIntegrityError(
                 "Slate F01 coverage evidence does not match retained source provenance."
@@ -227,7 +233,8 @@ def _validate_slate_provenance(
             or str(row[1]) != revision.revision_digest.removeprefix("sha256:")
             or not revision.source_capture_ids
             or any(
-                captures.get(capture_id, (None, None))[0] != revision.scope_id
+                captures.get(capture_id, (None, None, None))[0] != revision.scope_id
+                or captures[capture_id][2] is not ProviderAttemptState.CAPTURED
                 for capture_id in revision.source_capture_ids
             )
         ):
@@ -243,7 +250,8 @@ def _validate_slate_provenance(
 
     for identity in assessment.identity_resolutions:
         if not identity.source_capture_ids or any(
-            captures.get(capture_id, (None, None))[0] != identity.scope_id
+            captures.get(capture_id, (None, None, None))[0] != identity.scope_id
+            or captures[capture_id][2] is not ProviderAttemptState.CAPTURED
             for capture_id in identity.source_capture_ids
         ):
             raise SlateFixtureCoverageIntegrityError(
