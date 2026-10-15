@@ -1,6 +1,6 @@
 # Match vetting
 
-MatchVet evaluates upcoming football matches in configured domestic top-flight leagues against every Betting Preference in the active Preference Set. It returns one Primary Recommendation only when the candidate with the highest Selection Strength passes the Selection Policy; otherwise it returns AVOID MATCH.
+MatchVet evaluates upcoming football matches in configured domestic top-flight leagues against every Betting Preference in the active Preference Set. Completed qualified vetting can select one candidate or return AVOID MATCH; recommendation publication additionally requires the Odds Publication Gate. Diagnostic Telegram Alpha can retain research results without manufacturing either outcome. Historical contracts retain their versioned meanings.
 
 ## Scope
 
@@ -8,10 +8,10 @@ MatchVet evaluates upcoming football matches in configured domestic top-flight l
 A configured domestic top-flight competition and season whose upcoming fixtures are eligible for recommendations. Cups, continental competitions, friendlies, and lower divisions are excluded unless separately configured.
 
 **2026/27 Target League Set**:
-The fixed active recommendation scope for the 2026/27 season: ENG Premier League, ITA Serie A, ESP LaLiga, GER Bundesliga, FRA Ligue 1, and POR Primeira Liga. Belgian Pro League is outside active scope under the [six-league product decision](docs/adr/0007-six-active-leagues-without-paid-data.md).
+The fixed active recommendation scope for the reset: ENG Premier League, ITA Serie A, ESP LaLiga, GER Bundesliga, and FRA Ligue 1. Portugal and Belgium are outside this set under the [five-league reset decision](docs/adr/0010-five-league-owner-alpha-reset.md).
 
 **Historical Target League Set**:
-The exact recommendation scope retained with an earlier Matchweek and its evidence. Historical seven-league Matchweeks include Belgian Pro League and keep their original membership and meaning.
+The exact recommendation scope retained with an earlier Matchweek and its evidence. Historical six-league scope includes Portugal, and historical seven-league scope additionally includes Belgium; each keeps its original membership and meaning.
 
 **Matchweek**:
 The user-facing Friday-through-Monday calendar slate containing every eligible Target Match in its declared Target League Set whose scheduled kickoff falls within that window. Official league round numbers do not control membership; a rescheduled fixture outside the window belongs to another Matchweek.
@@ -68,10 +68,10 @@ Relevant matches and events outside the recommendation scope that may inform fat
 A completed match used for research, backtesting, calibration, or evaluation rather than a current recommendation.
 
 **Pre-lineup Recommendation**:
-A recommendation finalized from evidence available at the Matchweek Research Cutoff, before confirmed starting lineups are released, and never refreshed or revised afterward. Expected lineups and unresolved player availability remain part of its uncertainty.
+A recommendation whose research and candidate selection are frozen at the Matchweek Research Cutoff, with its separate odds capture, durable commitment, and first Telegram publication all preceding either team's confirmed lineup release. Later views use its retained publication snapshot, while expected lineups and unresolved player availability remain part of its research uncertainty.
 
 **Matchweek Research Cutoff**:
-The single point at which all research and evidence collection for an entire Matchweek must be completed and its information state frozen, initially six hours before its earliest eligible kickoff. Every Target Match uses that same frozen state. No later collection, refresh, replacement, or research can change a frozen recommendation. The lead time is an explicit, versioned policy parameter; later Target Matches receive greater Evidence Freshness and Probability Uncertainty penalties where time-sensitive evidence ages.
+The single point at which all research and collection of research inputs for an entire Matchweek must be completed and its information state frozen, initially six hours before its earliest eligible kickoff. Every Target Match uses that same frozen state. No later collection, refresh, replacement, or research can change the frozen research or Selected Candidate. The lead time is an explicit, versioned policy parameter; later Target Matches receive greater Evidence Freshness and Probability Uncertainty penalties where time-sensitive evidence ages.
 
 **Match Evidence Cutoff**:
 A match's immutable reference to the common Matchweek Research Cutoff, tied to its exact frozen membership, controlling Fixture Revision, and Match Evidence Cutoff Policy. Every included match in the same frozen Matchweek has the same evidence boundary. The boundary is separate from Matchweek Membership Freeze and its creation time.
@@ -97,7 +97,7 @@ The immutable V2 snapshot of the founder's enabled Betting Preferences, selected
 The versioned set of market contracts the engine can represent and evaluate. Capability does not imply that a Betting Preference is enabled in a Preference Profile.
 
 **Initial Preference Set**:
-The first Preference Set contains Home Win, Draw, Away Win; Match Goals Over 1.5, 2.5, and 3.5; Home Team Goals Over 1.5 and 2.5; Away Team Goals Over 1.5 and 2.5; First-Half Over 1.5; Second-Half Over 1.5; Double Chance 1X, X2, and 12; and Asian Handicaps Home or Away 0.0, +1.0, +1.5, -1.0, and -1.5. Its corner preferences are Full-Match Total Corners Over 8.5, 9.5, and 10.5; Corner Match Winner Home, Draw, and Away; and Home Team or Away Team Corners Over 3.5, 4.5, and 5.5.
+The 37-preference founder set retained by the reset contains Home Win, Draw, Away Win; Match Goals Over 1.5, 2.5, and 3.5; Home Team Goals Over 1.5 and 2.5; Away Team Goals Over 1.5 and 2.5; First-Half Over 1.5; Second-Half Over 1.5; Double Chance 1X, X2, and 12; and Asian Handicaps Home or Away 0.0, +1.0, +1.5, -1.0, and -1.5. Its corner preferences are Full-Match Total Corners Over 8.5, 9.5, and 10.5; Corner Match Winner Home, Draw, and Away; and Home Team or Away Team Corners Over 3.5, 4.5, and 5.5.
 
 **Prohibited Preference**:
 A market or exact line that cannot belong to any Preference Set or appear as a Primary Recommendation, Correlated Secondary Fit, or fallback. Every Under market, every Over 0.5 line, and Under 0.5 are prohibited across all Preference Families.
@@ -169,7 +169,7 @@ The shared acceptance principles for probability, uncertainty, Data Quality, Mod
 The mandatory rejection of any Trivial Preference before Selection Strength ranking. It uses historical market and line base rates plus calibration, never bookmaker odds alone, and does not reject high confidence produced by unusual match-specific evidence.
 
 **Primary Recommendation**:
-The Betting Preference with the highest Selection Strength among those that pass the Selection Policy for a Target Match. Each PLAY has exactly one Primary Recommendation.
+The single justified Selected Candidate that passes the applicable Selection Policy and, in the reset, the Odds Publication Gate for a Target Match. Each PLAY has exactly one Primary Recommendation; historical recommendation contracts keep their original qualification rules.
 _Avoid_: Primary pick, tip
 
 **Correlated Secondary Fit**:
@@ -181,23 +181,29 @@ The state in which a Selection Strength difference is not meaningful relative to
 ## Outcomes
 
 **PLAY**:
-The production match-level outcome used when at least one Preference Fit passes a Selection Policy Version with validated thresholds. PLAY depends on predicted success, not bookmaker price or expected profit; each PLAY qualifies independently, with no required or arbitrary maximum count per Matchweek.
+The production match-level outcome authorized by a Selection Policy Version with validated thresholds, with no required or arbitrary maximum count per Matchweek. Candidate selection depends on predicted success independently of bookmaker price or expected profit; the reset separately requires the Odds Publication Gate before recommendation publication.
 
 **Research-only Candidate Ranking**:
 A development output that orders candidates before validated Selection Policy thresholds exist. It cannot be labeled or counted as a production PLAY recommendation.
 
+**Diagnostic Telegram Alpha**:
+Owner-only RESEARCH_ONLY Telegram output that retains reproducible research and model diagnostics when a qualified decision is unavailable. It does not manufacture a recommendation or AVOID MATCH, and failed or unfinished research remains incomplete.
+
+**Owner-alpha Chronology Purpose**:
+A separately versioned private RESEARCH_ONLY chronology purpose for the diagnostic five-league owner alpha, independent of #70 corpus collection. It preserves the accepted conditional assurance and refusal boundaries while historical #70 purposes retain their original meaning.
+
 **AVOID MATCH**:
-The valid match-level outcome used when no Betting Preference clears the Selection Policy. It has one primary AVOID Reason, may have supporting reasons and free-text explanation, and remains valid for every Target Match in a Matchweek, including when the whole Matchweek has zero PLAY outcomes.
+The valid completed match-level decision used when qualified vetting justifies no preference under the Selection Policy. It retains its reasons and can apply to every match in a Matchweek; an unavailable qualified decision, unfinished research, or a failed odds-publication gate alone does not manufacture this outcome.
 _Avoid_: AVOID, no pick, skip
 
 **AVOID Reason**:
-A standardized explanation category for AVOID MATCH: insufficient probability, excessive uncertainty, insufficient Data Quality, incomplete research, Material Conflict, adversarial veto, Non-Triviality Gate failure, model disagreement, or no preference passed absolute gates.
+A standardized explanation category for a qualified completed AVOID MATCH decision, including insufficient probability, excessive uncertainty, insufficient Data Quality, completed investigation with insufficient support, Material Conflict, adversarial veto, Non-Triviality Gate failure, model disagreement, or no preference passed absolute gates. Historical reason codes retain their original versioned meaning.
 
 **Withdrawn Recommendation**:
 A frozen recommendation removed because its Target Match was postponed or cancelled after the Matchweek Research Cutoff. It receives a VOID Settlement Result rather than AVOID MATCH, while the original analysis remains available for audit and evaluation.
 
 **REJECT**:
-The preference-level outcome used when a Preference Fit does not pass the Selection Policy. A Target Match becomes AVOID MATCH only when every Betting Preference is rejected.
+The preference-level outcome used when a Preference Fit does not pass the Selection Policy. Completed qualified vetting can return AVOID MATCH when every preference is rejected, while an unavailable qualified decision remains unavailable.
 
 **Settlement Result**:
 The result assigned to a completed recommendation under the exact rules of its Supported Line: WIN, LOSS, PUSH, VOID, and, when quarter lines are supported, HALF_WIN or HALF_LOSS. PUSH and VOID do not count as wins or losses in calibration.
@@ -394,7 +400,25 @@ A sufficiently large group of comparable recommendations, such as a Target Leagu
 Enough out-of-sample evidence under predeclared Preference Family or Supported Line requirements, with acceptable metric uncertainty, to support a subgroup-specific conclusion without reacting to small-sample noise. Until then, sparse league and line groups borrow shared or hierarchical evidence and are not restricted solely for weak local results.
 
 **Odds Context**:
-Optional bookmaker price data retained for research or benchmarking with its source and observation time. Odds never determine PLAY or AVOID MATCH, and missing odds never block a recommendation.
+Optional bookmaker price data retained for research or benchmarking with its source and observation time. Historical contracts retain their optional-odds behavior; the reset separately requires the Odds Publication Gate.
+
+**Selected Candidate**:
+The reset's single Betting Preference chosen by the Selection Policy before publication eligibility is checked. Odds never change this choice or cause substitution of another preference.
+
+**Frozen Publication Snapshot**:
+The single retained, separately versioned odds state for one match, used to assess publication eligibility after candidate selection. It can follow the Matchweek Research Cutoff without changing frozen research inputs or the Selected Candidate, and later views use only this snapshot.
+
+**Reference Bookmaker**:
+The fixed bookmaker whose offer is used to assess publication odds eligibility. SportyBet Nigeria is the owner-alpha Reference Bookmaker, with no best-price shopping.
+
+**Eligible Reference Offer**:
+An ordinary unboosted standalone pre-match price from SportyBet Nigeria for the exact Selected Candidate. Boosts, promos, accumulator-only enhancements, free-bet or other conditional prices, and specials are excluded.
+
+**Publication Odds Evidence**:
+Retained evidence of a decimal offer from the Reference Bookmaker for the exact Selected Candidate at the Frozen Publication Snapshot. Qualified retained owner-verified captures identify the exact fixture, market, side, line, price, bookmaker, timestamp, and evidence.
+
+**Odds Publication Gate**:
+The reset's requirement that recommendation publication have a verified Eligible Reference Offer with decimal odds of at least 1.20 at the Frozen Publication Snapshot. Missing or unverifiable odds remain UNKNOWN and block publication; internal diagnostics may retain the Selected Candidate.
 
 **Match Decision Result**:
 The immutable V2 result of vetting each enabled Betting Preference against one exact Target Match, with one Primary Recommendation or AVOID MATCH and its exact profile, evidence, policy, model, uncertainty, and vetting lineage.

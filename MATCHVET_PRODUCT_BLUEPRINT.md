@@ -1,19 +1,29 @@
 # MATCHVET PRODUCT BLUEPRINT — REFOCUS V3
 
-**Status:** Proposed new product source of truth  
-**Date:** 2026-10-14  
+**Status:** Accepted product source of truth; reset implementation remains pending
+
+**Date:** 2026-10-14
+
+**Settled-decision ledger audited:** 2026-10-15
+
 **Repository baseline audited:** `bc9fda2dee3252db7522a57965706ee26b258800`
+
+The [accepted reset decision](docs/adr/0010-five-league-owner-alpha-reset.md) records active-direction supersession while preserving historical contracts.
 
 ## 1. Purpose
 
 MatchVet is a football research and betting-preference vetting system.
 
-For every eligible pre-lineup match in the configured Matchweek, MatchVet should research the match using cutoff-valid evidence, evaluate every enabled Betting Preference, and return either:
+For every eligible pre-lineup match in the configured Matchweek, MatchVet should research the match using cutoff-valid evidence and evaluate every enabled Betting Preference. Completed qualified vetting returns either:
 
-- exactly one strongest justified recommendation, or
+- exactly one strongest justified candidate, published as a recommendation only after its publication gates pass, or
 - `AVOID MATCH` when the evidence or model support is not good enough.
 
 It must prefer correctness and abstention over volume. It must never turn missing evidence into favorable evidence.
+
+A selected candidate that fails publication eligibility remains available for internal diagnostics. Publication refusal is distinct from a completed research decision that finds no justified preference.
+
+R4 may succeed as a diagnostic owner-only Telegram alpha. An unavailable qualified decision is reported as such; the alpha never manufactures a recommendation or `AVOID MATCH` to claim completion.
 
 The immediate goal is not a mobile app, website, subscription business, or multi-league expansion. The immediate goal is a trustworthy weekly system the owner can run, inspect and test through Telegram.
 
@@ -90,13 +100,15 @@ Experimental outputs may be tested privately, but unsupported numerical componen
 
 ### 3.4 Pre-lineup only
 
-Recommendations use the frozen pre-lineup information boundary. MatchVet does not refresh a recommendation after the declared research cutoff merely because a later fixture is farther away.
+Research inputs, model results, and preference selection use the frozen pre-lineup research boundary. MatchVet does not refresh them after the declared research cutoff merely because a later fixture is farther away.
+
+Recommendation publication has a separately versioned pre-lineup odds snapshot after candidate selection. This snapshot can occur after the research cutoff and affects only publication eligibility. It never changes the frozen research or selected preference.
 
 Settlement and later evaluation are separate.
 
 ### 3.5 Preference rules
 
-Keep the existing founder preference families:
+Retain all **37** existing founder preferences, including Full-Match Total Corners Over **8.5, 9.5, and 10.5**. Keep the existing founder preference families:
 
 - Match Winner (1X2)
 - Double Chance (1X, X2, 12)
@@ -104,7 +116,7 @@ Keep the existing founder preference families:
 - Totals, overs only
 - First-half overs
 - Second-half overs
-- Corners: winner, home over, away over
+- Corners: total over, winner, home over, away over
 - Team Goals: home/away overs
 
 Keep banned:
@@ -118,9 +130,19 @@ Do not add new markets during refocus.
 
 ### 3.6 Odds
 
-Odds do not choose the recommendation.
+Select the strongest justified candidate without using odds. Recommendation publication then requires verified decimal odds **>= 1.20** for that exact selected preference at the frozen pre-lineup publication snapshot.
 
-Odds may later be retained as evaluation context, but no price/value optimizer belongs in the selection path.
+Odds are post-selection publication eligibility only. They never rank candidates, change the selected preference, or trigger substitution of another preference. Missing odds remain UNKNOWN and fail the publication gate. Internal diagnostics may still show the selected candidate when publication is blocked.
+
+This is an owner-set product eligibility rule, not a statistically fitted confidence threshold or a price/value optimizer. The verification path must satisfy the zero-spend constraint. If no qualified no-cost path is available, publication remains blocked.
+
+Each match has one retained, separately versioned publication-time odds snapshot after candidate selection. Capture, durable commitment, and first Telegram publication must all occur before either team's confirmed lineup is released. Later views use only the retained snapshot. Research inputs and candidate selection remain frozen at the existing cutoff.
+
+SportyBet Nigeria ordinary unboosted standalone pre-match prices are the fixed owner-alpha reference. Exclude boosts, promos, accumulator-only enhancements, free-bet or other conditional prices, and specials. No best-price shopping or alternative-bookmaker substitution is allowed.
+
+Qualified retained owner-verified captures are permitted. Each capture contains the exact fixture, market, side, line, decimal price, bookmaker, timestamp, and evidence. Missing or unverifiable odds remain UNKNOWN and block publication. This permission supplies no claim of automated SportyBet coverage.
+
+The [publication-gate decision](docs/adr/0008-odds-publication-eligibility.md) and [publication snapshot decision](docs/adr/0009-sportybet-publication-snapshot.md) preserve historical contracts and replay. The [reset reconciliation](docs/design/refocus-reconciliation.md) has no remaining product or design decision that blocks specification. Source and timing qualification remain required work before operation.
 
 ## 4. Principles that survive the reset
 
@@ -151,7 +173,8 @@ five-league fixture acquisition
     -> evidence collection and evidence health
     -> prediction + uncertainty
     -> vet every enabled preference
-    -> one recommendation or AVOID
+    -> one selected candidate or AVOID
+    -> separately frozen SportyBet odds publication gate for the selected candidate
     -> Telegram owner report
     -> outcome acquisition / settlement
     -> transparent performance record
@@ -185,8 +208,8 @@ Keep the first command surface intentionally small:
 
 - `/week` — current frozen Matchweek status and league coverage
 - `/today` — eligible matches today from the active frozen Matchweek
-- `/match <id>` — one match's research status and terminal decision
-- `/record` — settled performance summary for completed research-only recommendations
+- `/match <id>` — one match's research status, terminal decision, and separate publication eligibility
+- `/record` — settled performance summary for published research-only recommendations
 - `/health` — source/data/run health for the owner
 
 Do not build accounts, onboarding, payments, social features, inline betting, or chatty AI conversation.
@@ -299,6 +322,8 @@ Rules:
 - any simplification that changes #70's frozen structural decisions requires a new ADR/version, not silent reinterpretation.
 
 Until this is resolved, Telegram alpha may show research/model diagnostics and experimental candidate state, but must clearly mark unvalidated decision confidence.
+
+Create a separately versioned private RESEARCH_ONLY Owner-alpha Chronology Purpose, independent of #70's corpus-collection purpose. Preserve the accepted conditional chronology premises and refusal rules through explicit successor contracts. Existing #70 purpose identities, authorities, profiles, policies, artifacts, and replay keep their original meanings. This planning decision neither activates collection nor qualifies a recommendation.
 
 ## 10. Test strategy
 
@@ -541,6 +566,8 @@ One Matchweek should be able to:
 4. format the result in Telegram,
 5. persist exact references so the same message can be reproduced,
 6. remain owner-only and RESEARCH_ONLY.
+
+R4 succeeds with reproducible diagnostic results even when no recommendation or AVOID MATCH is qualified. It reports research and policy availability explicitly. A failed or unfinished research process stays incomplete, and a missing qualified policy never becomes a manufactured recommendation or AVOID MATCH. The separately versioned Owner-alpha Chronology Purpose supports this milestone without changing #70.
 
 This is the first milestone that should feel like “MatchVet works.”
 
