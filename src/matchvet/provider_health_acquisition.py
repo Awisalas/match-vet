@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
+from typing import cast
 
 from matchvet.fixture_coverage import (
     ProviderAttempt,
@@ -34,6 +36,7 @@ from matchvet.provider_health import (
     ProviderAttemptReference,
     ProviderCoverageEvidenceReference,
     ProviderHealthRecord,
+    ProviderHealthRecordV2,
     ProviderIdentity,
     ReachabilityAssessment,
     ReachabilityState,
@@ -41,12 +44,14 @@ from matchvet.provider_health import (
     ScopeContract,
     ScopeFacet,
     SeasonScope,
+    SlateF01FixtureScopeReference,
     StructuralValidityAssessment,
     StructuralValidityState,
     UsePermissionAssessment,
     UsePermissionState,
     UtcInterval,
 )
+from matchvet.slate_fixture_coverage import SlateFixtureCoverageAssessment
 
 INTENDED_USE_ID = "matchvet:research-only:upcoming-fixture-acquisition"
 PERMISSION_POLICY_ID = "t06-source-policy"
@@ -80,11 +85,37 @@ def build_provider_health_records(
     return tuple(sorted(records, key=lambda record: record.digest))
 
 
+def build_slate_provider_health_records(
+    assessment: SlateFixtureCoverageAssessment,
+    *,
+    attempt_diagnostics: Mapping[str, str] | None = None,
+) -> tuple[ProviderHealthRecordV2, ...]:
+    """Create one interval-bound v2 health record for every retained F01 attempt."""
+    if type(assessment) is not SlateFixtureCoverageAssessment:
+        raise TypeError("F05 v2 requires the exact five-league interval F01 assessment.")
+    diagnostics = dict(attempt_diagnostics or {})
+    attempts_by_id = {attempt.attempt_id: attempt for attempt in assessment.provider_attempts}
+    if not set(diagnostics).issubset(attempts_by_id):
+        raise ValueError("F05 diagnostics must identify attempts in the F01 assessment.")
+    records = tuple(
+        cast(
+            ProviderHealthRecordV2,
+            _record_for_attempt(
+                assessment, attempt, diagnostics.get(attempt.attempt_id), interval_v2=True
+            ),
+        )
+        for attempt in assessment.provider_attempts
+    )
+    return tuple(sorted(records, key=lambda record: record.digest))
+
+
 def _record_for_attempt(
-    assessment: SupportedFixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment | SlateFixtureCoverageAssessment,
     attempt: ProviderAttempt,
     diagnostic: str | None,
-) -> ProviderHealthRecord:
+    *,
+    interval_v2: bool = False,
+) -> ProviderHealthRecord | ProviderHealthRecordV2:
     matching_scopes = tuple(
         item.scope
         for item in assessment.scope_assessments
@@ -92,7 +123,11 @@ def _record_for_attempt(
     )
     if len(matching_scopes) != 1:
         raise ValueError("F05 requires one matching Fixture Scope in the F01 assessment.")
-    fixture_scope = F01FixtureScopeReference.from_f01(matching_scopes[0])
+    fixture_scope: F01FixtureScopeReference | SlateF01FixtureScopeReference
+    if interval_v2:
+        fixture_scope = SlateF01FixtureScopeReference.from_f01(assessment, matching_scopes[0])
+    else:
+        fixture_scope = F01FixtureScopeReference.from_f01(matching_scopes[0])
     attempt_reference = ProviderAttemptReference.from_f01(attempt)
     assessment_reference = FixtureCoverageAssessmentReference.from_f01(assessment, fixture_scope)
     coverage_evidence = _matching_coverage_evidence(assessment, attempt, fixture_scope)
@@ -160,7 +195,8 @@ def _record_for_attempt(
     else:
         raise ValueError("F05 cannot map an unsupported F01 Provider Attempt state.")
 
-    record = ProviderHealthRecord(
+    record_type = ProviderHealthRecordV2 if interval_v2 else ProviderHealthRecord
+    record = record_type(
         provider=ProviderIdentity(
             provider_id=attempt.provider_id,
             source_lineage_id=_source_lineage_id(attempt.provider_id),
@@ -177,7 +213,7 @@ def _record_for_attempt(
             ),
         ),
         requested_scope=RequestedScope(
-            scope_kind="fixture-scope",
+            scope_kind="slate-fixture-scope" if interval_v2 else "fixture-scope",
             competition=ScopeFacet.known(
                 CompetitionScope(fixture_scope.league_key, fixture_scope.league_key)
             ),
@@ -206,9 +242,9 @@ def _record_for_attempt(
 
 
 def _matching_coverage_evidence(
-    assessment: SupportedFixtureCoverageAssessment,
+    assessment: SupportedFixtureCoverageAssessment | SlateFixtureCoverageAssessment,
     attempt: ProviderAttempt,
-    scope: F01FixtureScopeReference,
+    scope: F01FixtureScopeReference | SlateF01FixtureScopeReference,
 ) -> tuple[ProviderCoverageEvidence, ...]:
     return tuple(
         evidence
@@ -226,7 +262,7 @@ def _matching_coverage_evidence(
 
 def _coverage_assessment(
     attempt: ProviderAttempt,
-    fixture_scope: F01FixtureScopeReference,
+    fixture_scope: F01FixtureScopeReference | SlateF01FixtureScopeReference,
     attempt_reference: ProviderAttemptReference,
     evidence_references: tuple[ProviderCoverageEvidenceReference, ...],
 ) -> CoverageAssessment:
@@ -241,6 +277,38 @@ def _coverage_assessment(
         evidence=evidence_references,
         attempts=(attempt_reference,),
     )
+    if isinstance(fixture_scope, SlateF01FixtureScopeReference):
+        requested_start = datetime.fromisoformat(fixture_scope.window_start_utc)
+        requested_end = datetime.fromisoformat(fixture_scope.window_end_utc)
+        ranges: list[tuple[datetime, datetime]] = []
+        empty_ranges: list[tuple[datetime, datetime]] = []
+        partial = False
+        for reference in evidence_references:
+            if reference.bounds_start_utc is None or reference.bounds_end_utc is None:
+                continue
+            source_start = datetime.fromisoformat(reference.bounds_start_utc)
+            source_end = datetime.fromisoformat(reference.bounds_end_utc)
+            start = max(requested_start, source_start)
+            end = min(requested_end, source_end)
+            if start >= end:
+                continue
+            if (
+                reference.coverage_basis_id is not None
+                and reference.pagination_exhausted
+                and reference.required_partition_ids == reference.accounted_partition_ids
+            ):
+                ranges.append((start, end))
+                if reference.affirmatively_empty:
+                    empty_ranges.append((start, end))
+            else:
+                partial = True
+        if _slate_interval_covered(requested_start, requested_end, ranges):
+            if _slate_interval_covered(requested_start, requested_end, empty_ranges):
+                return CoverageAssessment(CoverageState.CONFIRMED_EMPTY, witness)
+            return CoverageAssessment(CoverageState.COMPLETE, witness)
+        if ranges or partial:
+            return CoverageAssessment(CoverageState.PARTIAL, witness)
+        return CoverageAssessment(CoverageState.UNKNOWN)
     candidates = (
         (CoverageState.CONFIRMED_EMPTY, witness.has_affirmative_empty_scope_evidence),
         (CoverageState.COMPLETE, witness.has_complete_scope_evidence),
@@ -254,6 +322,23 @@ def _coverage_assessment(
         except ValueError:
             continue
     return CoverageAssessment(CoverageState.UNKNOWN)
+
+
+def _slate_interval_covered(
+    requested_start: datetime,
+    requested_end: datetime,
+    ranges: list[tuple[datetime, datetime]],
+) -> bool:
+    cursor = requested_start
+    for start, end in sorted(ranges):
+        if end <= cursor:
+            continue
+        if start > cursor:
+            return False
+        cursor = max(cursor, end)
+        if cursor >= requested_end:
+            return True
+    return False
 
 
 def _source_lineage_id(provider_id: str) -> str:

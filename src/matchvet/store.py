@@ -3226,6 +3226,157 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        number=15,
+        name="slate_f01_and_interval_provider_health",
+        statements=(
+            """
+            CREATE TABLE slate_fixture_coverage_assessments (
+                assessment_digest TEXT PRIMARY KEY CHECK (
+                    length(assessment_digest) = 71
+                    AND substr(assessment_digest, 1, 7) = 'sha256:'
+                    AND substr(assessment_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                ),
+                assessment_json TEXT NOT NULL CHECK (
+                    json_valid(assessment_json)
+                    AND json_type(assessment_json, '$') IS 'object'
+                    AND json_extract(assessment_json, '$.digest') = assessment_digest
+                    AND json_extract(assessment_json, '$.contract_version') = contract_version
+                    AND json_extract(assessment_json, '$.schema_version') = schema_version
+                    AND json_extract(assessment_json, '$.active_scope.digest') = active_scope_digest
+                    AND json_extract(
+                        assessment_json, '$.active_scope.contract_id'
+                    ) = active_scope_id
+                    AND json_extract(assessment_json, '$.active_scope.season') = season
+                    AND json_extract(
+                        assessment_json, '$.slate_window.contract_id'
+                    ) = window_contract_id
+                    AND json_extract(assessment_json, '$.slate_window.version') = window_version
+                    AND json_extract(assessment_json, '$.slate_window.slate_id') = window_id
+                    AND json_extract(assessment_json, '$.slate_window.digest') = window_digest
+                    AND json_extract(assessment_json, '$.slate_window.start_utc') = start_utc
+                    AND json_extract(assessment_json, '$.slate_window.end_utc') = end_utc
+                ),
+                contract_version TEXT NOT NULL CHECK (
+                    contract_version = 'fixture-coverage-v5-slate-v1'
+                ),
+                schema_version INTEGER NOT NULL CHECK (schema_version = 5),
+                active_scope_id TEXT NOT NULL CHECK (
+                    active_scope_id = 'matchvet-active-scope-v3'
+                ),
+                active_scope_digest TEXT NOT NULL CHECK (length(active_scope_digest) = 71),
+                season TEXT NOT NULL CHECK (season = '2026-27'),
+                window_contract_id TEXT NOT NULL CHECK (
+                    window_contract_id = 'matchvet-slate-window-v1'
+                ),
+                window_version INTEGER NOT NULL CHECK (window_version = 1),
+                window_id TEXT NOT NULL CHECK (length(window_id) > 0),
+                window_digest TEXT NOT NULL CHECK (length(window_digest) = 71),
+                start_utc TEXT NOT NULL CHECK (length(start_utc) > 0),
+                end_utc TEXT NOT NULL CHECK (end_utc > start_utc),
+                schedule_state TEXT NOT NULL CHECK (
+                    schedule_state IN ('COMPLETE', 'CONFIRMED_EMPTY', 'PARTIAL', 'UNKNOWN', 'STALE')
+                ),
+                first_persisted_at_utc TEXT NOT NULL CHECK (length(first_persisted_at_utc) > 0)
+            ) STRICT
+            """,
+            """
+            CREATE INDEX slate_fixture_coverage_window_idx
+            ON slate_fixture_coverage_assessments (
+                active_scope_digest, season, start_utc, end_utc, first_persisted_at_utc
+            )
+            """,
+            """
+            CREATE TRIGGER slate_fixture_coverage_assessments_no_update
+            BEFORE UPDATE ON slate_fixture_coverage_assessments
+            BEGIN SELECT RAISE(ABORT, 'slate fixture coverage assessments are immutable'); END
+            """,
+            """
+            CREATE TRIGGER slate_fixture_coverage_assessments_no_delete
+            BEFORE DELETE ON slate_fixture_coverage_assessments
+            BEGIN SELECT RAISE(ABORT, 'slate fixture coverage assessments are immutable'); END
+            """,
+            """
+            CREATE TABLE slate_provider_health_records (
+                record_digest TEXT PRIMARY KEY CHECK (
+                    length(record_digest) = 71
+                    AND substr(record_digest, 1, 7) = 'sha256:'
+                    AND substr(record_digest, 8) NOT GLOB '*[^0-9a-f]*'
+                ),
+                record_json TEXT NOT NULL CHECK (
+                    json_valid(record_json)
+                    AND json_type(record_json, '$') IS 'object'
+                    AND json_extract(record_json, '$.digest') = record_digest
+                    AND json_extract(record_json, '$.contract_version') = contract_version
+                    AND json_extract(record_json, '$.schema_version') = schema_version
+                    AND json_extract(record_json, '$.provider.provider_id') = provider_id
+                    AND json_extract(record_json, '$.capability.capability_id') = capability_id
+                    AND json_extract(
+                        record_json, '$.requested_scope.fixture_scope.scope_id'
+                    ) = scope_id
+                    AND json_extract(record_json, '$.requested_scope.fixture_scope.season') = season
+                    AND json_extract(
+                        record_json,
+                        '$.requested_scope.fixture_scope.active_scope.digest'
+                    ) = active_scope_digest
+                    AND json_extract(
+                        record_json,
+                        '$.requested_scope.fixture_scope.slate_window.slate_id'
+                    ) = window_id
+                    AND json_extract(
+                        record_json,
+                        '$.requested_scope.fixture_scope.slate_window.digest'
+                    ) = window_digest
+                    AND json_extract(
+                        record_json,
+                        '$.requested_scope.fixture_scope.slate_window.start_utc'
+                    ) = start_utc
+                    AND json_extract(
+                        record_json,
+                        '$.requested_scope.fixture_scope.slate_window.end_utc'
+                    ) = end_utc
+                    AND json_extract(record_json, '$.checked_at_utc') = checked_at_utc
+                ),
+                contract_version TEXT NOT NULL CHECK (contract_version = 'provider-health-v2'),
+                schema_version INTEGER NOT NULL CHECK (schema_version = 2),
+                provider_id TEXT NOT NULL CHECK (length(provider_id) > 0),
+                capability_id TEXT NOT NULL CHECK (capability_id = 'scheduled-fixtures'),
+                scope_id TEXT NOT NULL CHECK (length(scope_id) > 0),
+                season TEXT NOT NULL CHECK (season = '2026-27'),
+                active_scope_digest TEXT NOT NULL CHECK (length(active_scope_digest) = 71),
+                window_id TEXT NOT NULL CHECK (length(window_id) > 0),
+                window_digest TEXT NOT NULL CHECK (length(window_digest) = 71),
+                start_utc TEXT NOT NULL CHECK (length(start_utc) > 0),
+                end_utc TEXT NOT NULL CHECK (end_utc > start_utc),
+                intended_use_id TEXT NOT NULL CHECK (
+                    intended_use_id = 'matchvet:research-only:upcoming-fixture-acquisition'
+                ),
+                checked_at_utc TEXT NOT NULL CHECK (length(checked_at_utc) > 0),
+                attempt_id TEXT NOT NULL CHECK (length(attempt_id) > 0),
+                assessment_digest TEXT NOT NULL REFERENCES
+                    slate_fixture_coverage_assessments(assessment_digest),
+                first_persisted_at_utc TEXT NOT NULL CHECK (length(first_persisted_at_utc) > 0),
+                UNIQUE (assessment_digest, attempt_id)
+            ) STRICT
+            """,
+            """
+            CREATE INDEX slate_provider_health_window_idx
+            ON slate_provider_health_records (
+                active_scope_digest, season, start_utc, end_utc, scope_id, checked_at_utc
+            )
+            """,
+            """
+            CREATE TRIGGER slate_provider_health_records_no_update
+            BEFORE UPDATE ON slate_provider_health_records
+            BEGIN SELECT RAISE(ABORT, 'slate provider health records are immutable'); END
+            """,
+            """
+            CREATE TRIGGER slate_provider_health_records_no_delete
+            BEFORE DELETE ON slate_provider_health_records
+            BEGIN SELECT RAISE(ABORT, 'slate provider health records are immutable'); END
+            """,
+        ),
+    ),
 )
 
 

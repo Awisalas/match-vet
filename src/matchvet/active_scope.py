@@ -15,6 +15,7 @@ _SIX_KEYS: Final = (
     "ligue_1",
     "liga_portugal",
 )
+_FIVE_KEYS: Final = _SIX_KEYS[:5]
 
 
 @dataclass(frozen=True)
@@ -26,9 +27,15 @@ class ActiveScopeContract:
     digest: str = ""
 
     def __post_init__(self) -> None:
-        if type(self.version) is not int or self.version not in (1, 2):
+        if type(self.version) is not int or self.version not in (1, 2, 3):
             raise ValueError("Unsupported active-scope version.")
-        keys = (*_SIX_KEYS, "belgian_pro_league") if self.version == 1 else _SIX_KEYS
+        keys = (
+            (*_SIX_KEYS, "belgian_pro_league")
+            if self.version == 1
+            else _SIX_KEYS
+            if self.version == 2
+            else _FIVE_KEYS
+        )
         if (
             self.contract_id != f"matchvet-active-scope-v{self.version}"
             or self.season != "2026-27"
@@ -52,6 +59,9 @@ class ActiveScopeContract:
 
 LEGACY_SEVEN_SCOPE: Final = ActiveScopeContract(
     "matchvet-active-scope-v1", 1, "2026-27", (*_SIX_KEYS, "belgian_pro_league")
+)
+SUCCESSOR_FIVE_SCOPE: Final = ActiveScopeContract(
+    "matchvet-active-scope-v3", 3, "2026-27", _FIVE_KEYS
 )
 SUCCESSOR_SIX_SCOPE: Final = ActiveScopeContract(
     "matchvet-active-scope-v2", 2, "2026-27", _SIX_KEYS

@@ -54,6 +54,7 @@ from matchvet.operator_fixture_attestation import (
     validate_attested_assessment_base,
     validate_operator_coverage_attestation,
 )
+from matchvet.slate_fixture_coverage import SlateFixtureCoverageAssessment
 from matchvet.store import Store, StoreTransaction
 
 if TYPE_CHECKING:
@@ -207,6 +208,15 @@ class FixtureCoverageRepository:
                     (assessment.digest, assertion_id, capture_id),
                 )
         return assessment.digest
+
+    def persist_slate(self, assessment: object) -> str:
+        """Append one exact interval successor through its closed additive repository."""
+        from matchvet.slate_fixture_coverage import SlateFixtureCoverageAssessment
+        from matchvet.slate_fixture_coverage_repository import SlateFixtureCoverageRepository
+
+        if type(assessment) is not SlateFixtureCoverageAssessment:
+            raise TypeError("F01 interval persistence requires the exact slate assessment type.")
+        return SlateFixtureCoverageRepository(self._store).persist(assessment)
 
     def persist_attestation(
         self, attestation: OperatorCoverageAttestation
@@ -465,6 +475,20 @@ class FixtureCoverageRepository:
             raise FixtureCoverageIntegrityError(
                 "Fixture Coverage payload or provenance is corrupt."
             ) from error
+
+    def get_any(
+        self, assessment_digest: str
+    ) -> SupportedFixtureCoverageAssessment | SlateFixtureCoverageAssessment | None:
+        """Dispatch an exact digest read across released and interval F01 relations."""
+        legacy = self.get(assessment_digest)
+        if self._store.status.schema_version < 15:
+            return legacy
+        from matchvet.slate_fixture_coverage_repository import SlateFixtureCoverageRepository
+
+        slate = SlateFixtureCoverageRepository(self._store).get(assessment_digest)
+        if legacy is not None and slate is not None:
+            raise FixtureCoverageIntegrityError("One F01 digest appears in both assessment tables.")
+        return legacy if legacy is not None else slate
 
     def list_for_matchweek(
         self, season: str, friday: str

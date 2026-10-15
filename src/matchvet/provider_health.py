@@ -12,6 +12,8 @@ from typing import Any, cast
 
 PROVIDER_HEALTH_CONTRACT_VERSION = "provider-health-v1"
 PROVIDER_HEALTH_SCHEMA_VERSION = 1
+PROVIDER_HEALTH_V2_CONTRACT_VERSION = "provider-health-v2"
+PROVIDER_HEALTH_V2_SCHEMA_VERSION = 2
 
 
 class ProviderHealthPayloadError(ValueError):
@@ -298,6 +300,132 @@ class F01FixtureScopeReference:
         return projected
 
 
+@dataclass(frozen=True, slots=True)
+class ActiveScopeReference:
+    contract_id: str
+    version: int
+    digest: str
+
+    def __post_init__(self) -> None:
+        _identifier(self.contract_id, "Active scope contract ID")
+        _identifier(self.digest, "Active scope digest")
+        if type(self.version) is not int or self.version != 3:
+            raise ValueError("Slate health requires active-scope version 3.")
+
+
+@dataclass(frozen=True, slots=True)
+class SlateWindowReference:
+    contract_id: str
+    version: int
+    slate_id: str
+    digest: str
+    start_utc: str
+    end_utc: str
+
+    def __post_init__(self) -> None:
+        from matchvet.slate_window import SLATE_WINDOW_CONTRACT_ID, SLATE_WINDOW_VERSION
+
+        if self.contract_id != SLATE_WINDOW_CONTRACT_ID or self.version != SLATE_WINDOW_VERSION:
+            raise ValueError("Unsupported Slate Window reference identity.")
+        _identifier(self.slate_id, "Slate ID")
+        _identifier(self.digest, "Slate Window digest")
+        interval = UtcInterval(self.start_utc, self.end_utc)
+        object.__setattr__(self, "start_utc", interval.start_utc)
+        object.__setattr__(self, "end_utc", interval.end_utc)
+        if self.slate_id != f"slate:{self.digest}":
+            raise ValueError("Slate ID must derive from the retained window digest.")
+
+    @property
+    def interval(self) -> UtcInterval:
+        return UtcInterval(self.start_utc, self.end_utc)
+
+
+@dataclass(frozen=True, slots=True)
+class SlateF01FixtureScopeReference:
+    """V2 typed interval projection; intentionally has no Friday field."""
+
+    scope_id: str
+    league_key: str
+    season: str
+    active_scope: ActiveScopeReference
+    slate_window: SlateWindowReference
+
+    def __post_init__(self) -> None:
+        from matchvet.active_scope import SUCCESSOR_FIVE_SCOPE
+
+        _identifier(self.scope_id, "Slate F01 scope ID")
+        if self.league_key not in SUCCESSOR_FIVE_SCOPE.league_keys:
+            raise ValueError("Slate F01 scope must use one installed five-league member.")
+        if self.season != SUCCESSOR_FIVE_SCOPE.season:
+            raise ValueError("Slate F01 scope season must match the installed contract.")
+        expected_scope = ActiveScopeReference(
+            SUCCESSOR_FIVE_SCOPE.contract_id,
+            SUCCESSOR_FIVE_SCOPE.version,
+            SUCCESSOR_FIVE_SCOPE.digest,
+        )
+        if self.active_scope != expected_scope:
+            raise ValueError("Slate F01 scope must retain the exact installed active scope.")
+        from matchvet.slate_window import SlateWindow
+
+        exact_window = SlateWindow(
+            self.slate_window.start_utc,
+            self.slate_window.end_utc,
+        )
+        if (
+            self.slate_window.contract_id != exact_window.contract_id
+            or self.slate_window.version != exact_window.version
+            or self.slate_window.slate_id != exact_window.slate_id
+            or self.slate_window.digest != exact_window.digest
+        ):
+            raise ValueError("Slate Window reference differs from its canonical bounds identity.")
+        expected_id = f"{self.league_key}:{self.season}:{self.slate_window.slate_id}"
+        if self.scope_id != expected_id:
+            raise ValueError("Slate F01 scope ID must bind its league, season, and exact window.")
+
+    @property
+    def interval(self) -> UtcInterval:
+        return self.slate_window.interval
+
+    @property
+    def window_start_utc(self) -> str:
+        return self.slate_window.start_utc
+
+    @property
+    def window_end_utc(self) -> str:
+        return self.slate_window.end_utc
+
+    @classmethod
+    def from_f01(cls, assessment: object, scope: object) -> SlateF01FixtureScopeReference:
+        from matchvet.slate_fixture_coverage import SlateFixtureCoverageAssessment
+
+        if type(assessment) is not SlateFixtureCoverageAssessment:
+            raise ValueError("Expected the exact five-league interval F01 assessment.")
+        matching = tuple(
+            item
+            for item in assessment.scope_assessments
+            if item.scope.scope_id == _field(scope, "scope_id")
+        )
+        if len(matching) != 1:
+            raise ValueError("Slate F01 scope must occur exactly once in its assessment.")
+        source = matching[0].scope
+        active = source.active_scope
+        window = source.slate_window
+        return cls(
+            scope_id=source.scope_id,
+            league_key=source.league_key,
+            season=source.season,
+            active_scope=ActiveScopeReference(active.contract_id, active.version, active.digest),
+            slate_window=SlateWindowReference(
+                window.contract_id,
+                window.version,
+                window.slate_id,
+                window.digest,
+                window.start_utc,
+                window.end_utc,
+            ),
+        )
+
+
 class SubjectKind(StrEnum):
     MATCH = "MATCH"
     TEAM = "TEAM"
@@ -420,7 +548,7 @@ class RequestedScope:
     time: ScopeFacet[RequestedTimeScope]
     subjects: ScopeFacet[tuple[SubjectIdentifier, ...]]
     selectors: tuple[NamedSelectorFacet, ...]
-    fixture_scope: F01FixtureScopeReference | None = None
+    fixture_scope: F01FixtureScopeReference | SlateF01FixtureScopeReference | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.scope_kind, "Scope kind")
@@ -453,8 +581,10 @@ class RequestedScope:
         )
         object.__setattr__(self, "selectors", normalized_selectors)
         if self.fixture_scope is not None:
-            if not isinstance(self.fixture_scope, F01FixtureScopeReference):
-                raise ValueError("F01 fixture scope must be a typed F01FixtureScopeReference.")
+            if not isinstance(
+                self.fixture_scope, (F01FixtureScopeReference, SlateF01FixtureScopeReference)
+            ):
+                raise ValueError("F01 fixture scope must be a typed F01 scope reference.")
             if (
                 self.competition.state is not ScopeFacetState.KNOWN
                 or self.competition.value is None
@@ -472,7 +602,13 @@ class RequestedScope:
             if self.time.state is not ScopeFacetState.KNOWN or self.time.value is None:
                 raise ValueError("F01 fixture scope requires a known requested time scope.")
             time_scope = self.time.value
-            if isinstance(time_scope, UtcInterval):
+            if isinstance(self.fixture_scope, SlateF01FixtureScopeReference):
+                if self.scope_kind != "slate-fixture-scope":
+                    raise ValueError("V2 F01 scope kind must be slate-fixture-scope.")
+                matches_time = isinstance(time_scope, UtcInterval) and time_scope == (
+                    self.fixture_scope.interval
+                )
+            elif isinstance(time_scope, UtcInterval):
                 matches_time = time_scope == self.fixture_scope.interval
             else:
                 matches_time = (
@@ -920,9 +1056,36 @@ class FixtureCoverageAssessmentReference:
 
     @classmethod
     def from_f01(
-        cls, assessment: object, fixture_scope: F01FixtureScopeReference
+        cls,
+        assessment: object,
+        fixture_scope: F01FixtureScopeReference | SlateF01FixtureScopeReference,
     ) -> FixtureCoverageAssessmentReference:
         """Project one original F01 scope result and its exact evidence membership."""
+        if isinstance(fixture_scope, SlateF01FixtureScopeReference):
+            try:
+                from matchvet.slate_fixture_coverage import SlateFixtureCoverageAssessment
+
+                if type(assessment) is not SlateFixtureCoverageAssessment:
+                    raise ValueError("V2 F01 reference requires the exact interval assessment.")
+                matching = tuple(
+                    value
+                    for value in assessment.scope_assessments
+                    if value.scope.scope_id == fixture_scope.scope_id
+                )
+                if len(matching) != 1:
+                    raise ValueError("F01 assessment must contain exactly one matching scope.")
+                selected = matching[0]
+                return cls(
+                    assessment_digest=assessment.digest,
+                    contract_version=assessment.contract_version,
+                    schema_version=assessment.schema_version,
+                    fixture_scope_id=fixture_scope.scope_id,
+                    scope_state=str(selected.coverage_state),
+                    provider_attempt_ids=selected.provider_attempt_ids,
+                    coverage_evidence_ids=selected.coverage_evidence_ids,
+                )
+            except (AttributeError, TypeError) as error:
+                raise ValueError("Value is not a valid interval F01 assessment.") from error
         if not isinstance(fixture_scope, F01FixtureScopeReference):
             raise ValueError("F01 assessment projection requires a typed FixtureScope reference.")
         try:
@@ -1980,7 +2143,7 @@ class ProviderHealthRecord:
                 if (
                     evidence_interval.start_utc < requested_interval.start_utc
                     or evidence_interval.end_utc > requested_interval.end_utc
-                ):
+                ) and not isinstance(fixture_scope, SlateF01FixtureScopeReference):
                     raise ValueError("Coverage evidence bounds fall outside requested time scope.")
 
     def _validate_coverage_state_scope(self) -> None:
@@ -2119,6 +2282,37 @@ class ProviderHealthRecord:
             failure=failure,
             provenance=provenance,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderHealthRecordV2(ProviderHealthRecord):
+    """Interval-only successor record; v1 objects and their codec stay closed."""
+
+    contract_version: str = field(default=PROVIDER_HEALTH_V2_CONTRACT_VERSION, init=False)
+    schema_version: int = field(default=PROVIDER_HEALTH_V2_SCHEMA_VERSION, init=False)
+
+    def __post_init__(self) -> None:
+        super(ProviderHealthRecordV2, self).__post_init__()
+        fixture_scope = self.requested_scope.fixture_scope
+        if not isinstance(fixture_scope, SlateF01FixtureScopeReference):
+            raise ValueError("Provider Health v2 requires a typed interval F01 scope.")
+        if (
+            self.capability.capability_id != "scheduled-fixtures"
+            or self.intended_use_id != "matchvet:research-only:upcoming-fixture-acquisition"
+            or self.checked_at_utc != _attempt_retrieval_time(self)
+        ):
+            raise ValueError("Provider Health v2 identity must match its scheduled F01 attempt.")
+
+
+def _attempt_retrieval_time(record: ProviderHealthRecord) -> str:
+    references = {
+        reference
+        for reference in record._all_evidence_references()
+        if isinstance(reference, ProviderAttemptReference)
+    }
+    if len(references) != 1:
+        raise ValueError("Provider Health v2 requires exactly one retained F01 attempt.")
+    return next(iter(references)).retrieved_at_utc
 
 
 def _json_value(value: object) -> object:
@@ -2268,7 +2462,52 @@ def _time_scope_from_json(value: object) -> RequestedTimeScope:
     raise ProviderHealthPayloadError("Requested time scope has an unsupported shape.")
 
 
-def _fixture_scope_from_json(value: object) -> F01FixtureScopeReference:
+def _fixture_scope_from_json(
+    value: object,
+) -> F01FixtureScopeReference | SlateF01FixtureScopeReference:
+    if isinstance(value, dict) and "slate_window" in value:
+        item = _object(
+            value,
+            ("active_scope", "league_key", "scope_id", "season", "slate_window"),
+            "V2 F01 Slate scope reference",
+        )
+        active_value = _object(
+            item["active_scope"], ("contract_id", "version", "digest"), "Active scope reference"
+        )
+        version = active_value["version"]
+        if type(version) is not int:
+            raise ProviderHealthPayloadError("Active scope version must be an integer.")
+        window_value = _object(
+            item["slate_window"],
+            ("contract_id", "digest", "end_utc", "slate_id", "start_utc", "version"),
+            "Slate Window reference",
+        )
+        window_version = window_value["version"]
+        if type(window_version) is not int:
+            raise ProviderHealthPayloadError("Slate Window version must be an integer.")
+        try:
+            return SlateF01FixtureScopeReference(
+                scope_id=_string(item["scope_id"], "scope_id"),
+                league_key=_string(item["league_key"], "league_key"),
+                season=_string(item["season"], "season"),
+                active_scope=ActiveScopeReference(
+                    _string(active_value["contract_id"], "contract_id"),
+                    version,
+                    _string(active_value["digest"], "digest"),
+                ),
+                slate_window=SlateWindowReference(
+                    _string(window_value["contract_id"], "contract_id"),
+                    window_version,
+                    _string(window_value["slate_id"], "slate_id"),
+                    _string(window_value["digest"], "digest"),
+                    _string(window_value["start_utc"], "start_utc"),
+                    _string(window_value["end_utc"], "end_utc"),
+                ),
+            )
+        except ValueError as error:
+            raise ProviderHealthPayloadError(
+                "V2 F01 Slate scope reference is inconsistent."
+            ) from error
     item = _object(
         value,
         (
@@ -2791,7 +3030,11 @@ def _state_from_assessment(
     return _enum(state_type, _assessment_fields(value, label, keys)["state"], f"{label} state")
 
 
-def _record_from_json(value: object) -> ProviderHealthRecord:
+def _record_from_json(
+    value: object,
+    *,
+    record_type: type[ProviderHealthRecord] = ProviderHealthRecord,
+) -> ProviderHealthRecord:
     item = _object(
         value,
         (
@@ -2814,12 +3057,22 @@ def _record_from_json(value: object) -> ProviderHealthRecord:
         ),
         "Provider Health Record",
     )
-    if _string(item["contract_version"], "contract_version") != PROVIDER_HEALTH_CONTRACT_VERSION:
+    expected_contract = (
+        PROVIDER_HEALTH_V2_CONTRACT_VERSION
+        if record_type is ProviderHealthRecordV2
+        else PROVIDER_HEALTH_CONTRACT_VERSION
+    )
+    expected_schema = (
+        PROVIDER_HEALTH_V2_SCHEMA_VERSION
+        if record_type is ProviderHealthRecordV2
+        else PROVIDER_HEALTH_SCHEMA_VERSION
+    )
+    if _string(item["contract_version"], "contract_version") != expected_contract:
         raise ProviderHealthPayloadError("Unsupported Provider Health contract version.")
     schema_version = item["schema_version"]
-    if type(schema_version) is not int or schema_version != PROVIDER_HEALTH_SCHEMA_VERSION:
+    if type(schema_version) is not int or schema_version != expected_schema:
         raise ProviderHealthPayloadError("Unsupported Provider Health schema version.")
-    record = ProviderHealthRecord.create(
+    record = record_type.create(
         provider=_identity_from_json(item["provider"]),
         capability=_capability_from_json(item["capability"]),
         requested_scope=_scope_from_json(item["requested_scope"]),
@@ -2932,3 +3185,19 @@ def provider_health_record_from_canonical_json(encoded: str) -> ProviderHealthRe
         raise
     except (TypeError, ValueError, KeyError) as error:
         raise ProviderHealthPayloadError("Provider Health payload is invalid.") from error
+
+
+def provider_health_v2_record_from_canonical_json(encoded: str) -> ProviderHealthRecordV2:
+    """Decode only the closed interval F04 contract, retaining v1 dispatch unchanged."""
+    try:
+        raw = json.loads(encoded, object_pairs_hook=_unique_object)
+        if _canonical_json(raw) != encoded:
+            raise ProviderHealthPayloadError("Provider Health v2 payload is not canonical JSON.")
+        record = _record_from_json(raw, record_type=ProviderHealthRecordV2)
+        if provider_health_record_to_canonical_json(record) != encoded:
+            raise ProviderHealthPayloadError("Provider Health v2 payload is not normalized.")
+        return cast(ProviderHealthRecordV2, record)
+    except ProviderHealthPayloadError:
+        raise
+    except (TypeError, ValueError, KeyError) as error:
+        raise ProviderHealthPayloadError("Provider Health v2 payload is invalid.") from error
