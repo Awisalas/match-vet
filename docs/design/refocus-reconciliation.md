@@ -1,7 +1,9 @@
 # Five-league reset reconciliation
 
 Date: 2026-10-15.
-Status: product and design decision frontier is empty; ready to move to specification. No implementation, issue changes, live acquisition, or runtime activation is authorized by this record.
+Status: product and design decision frontier is empty; decisions are synthesized in the authoritative implementation spec. No implementation, issue changes, live acquisition, or runtime activation is authorized by this record.
+
+The [authoritative five-league reset implementation spec](five-league-reset-spec.md) now synthesizes these decisions into implementation boundaries, sequencing, qualification obligations, and acceptance criteria. No tracker publication or runtime implementation is implied.
 
 The [blueprint](../../MATCHVET_PRODUCT_BLUEPRINT.md) is the product source of truth. The owner's [odds publication rule](../adr/0008-odds-publication-eligibility.md) is settled. Recommendations require verified decimal odds >= 1.20 at the frozen pre-lineup publication snapshot, after selection. Odds never rank candidates or substitute another preference. Missing odds are UNKNOWN and block publication. Diagnostics may still show the selected candidate.
 

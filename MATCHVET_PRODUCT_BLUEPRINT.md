@@ -10,6 +10,8 @@
 
 The [accepted reset decision](docs/adr/0010-five-league-owner-alpha-reset.md) records active-direction supersession while preserving historical contracts.
 
+The [five-league reset implementation spec](docs/design/five-league-reset-spec.md) defines successor boundaries, ownership, test lanes, qualification, rollout, and acceptance under these settled decisions.
+
 ## 1. Purpose
 
 MatchVet is a football research and betting-preference vetting system.
